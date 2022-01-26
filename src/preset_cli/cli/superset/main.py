@@ -5,10 +5,7 @@ Dispatcher for Superset commands.
 from typing import Any, List, Optional
 
 import click
-import requests
-from superset_sdk.auth.jwt import JWTAuth
 from superset_sdk.cli.main import superset_cli
-from yarl import URL
 
 from preset_cli.api.client import PresetClient
 
@@ -27,24 +24,10 @@ def split_comma(  # pylint: disable=unused-argument
     return [option.strip() for option in value.split(",")]
 
 
-def get_access_token(baseurl: URL, api_token: str, api_secret: str) -> str:
-    """
-    Fetch the JWT access token.
-    """
-    response = requests.post(
-        baseurl / "api/v1/auth/",
-        json={"name": api_token, "secret": api_secret},
-        headers={"Content-Type": "application/json"},
-    )
-    payload = response.json()
-    return payload["payload"]["access_token"]
-
-
 def get_status_icon(status: str) -> str:
     """
     Return an icon (emoji) for a given status.
     """
-    print(status)
     icons = {
         "READY": "✅",
         "LOADING_EXAMPLES": "📊",
@@ -88,29 +71,16 @@ def parse_workspace_selection(selection: str, count: int) -> List[int]:
 
 
 @click.group()
-@click.option("--baseurl", default="https://manage.app.preset.io/")
 @click.option("--workspaces", callback=split_comma)
-@click.option("--api-token")
-@click.option("--api-secret")
 @click.pass_context
-def superset(
-    ctx: click.core.Context,
-    baseurl: URL,
-    workspaces: List[str],
-    api_token: str,
-    api_secret: str,
-) -> None:
+def superset(ctx: click.core.Context, workspaces: List[str]) -> None:
     """
     Send commands to one or more Superset instances.
     """
     ctx.ensure_object(dict)
 
-    # store auth so it's used by the Superset SDK
-    access_token = get_access_token(URL(baseurl), api_token, api_secret)
-    ctx.obj["AUTH"] = JWTAuth(access_token)
-
     if not workspaces:
-        client = PresetClient(baseurl, ctx.obj["AUTH"])
+        client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
         click.echo("Choose one or more workspaces (eg: 1-3,5,8-):")
         i = 1
         hostnames = {}
