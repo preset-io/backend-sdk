@@ -2,23 +2,62 @@
 Dispatcher for Superset commands.
 """
 
-from typing import Any, Optional, Tuple
+from typing import Any, List, Optional
 
 import click
+import requests
+from superset_sdk.auth.jwt import JWTAuth
 from superset_sdk.cli.main import superset_cli
+from yarl import URL
+
+
+def split_comma(ctx: click.core.Context, param: str, value: str) -> List[str]:
+    """
+    Split CLI option into multiple values.
+    """
+    return [option.strip() for option in value.split(",")]
+
+
+def get_access_token(baseurl: URL, api_token: str, api_secret: str) -> str:
+    """
+    Fetch the JWT access token.
+    """
+    response = requests.post(
+        baseurl / "api/v1/auth/",
+        json={"name": api_token, "secret": api_secret},
+        headers={"Content-Type": "application/json"},
+    )
+    payload = response.json()
+    return payload["payload"]["access_token"]
 
 
 @click.group()
-@click.option("--workspaces")
+@click.option("--baseurl", default="https://manage.app.preset.io/")
+@click.option("--workspaces", callback=split_comma)
+@click.option("--api-token")
+@click.option("--api-secret")
 @click.pass_context
-def superset(ctx: click.core.Context, workspaces: Tuple[str]) -> None:
+def superset(
+    ctx: click.core.Context,
+    baseurl: URL,
+    workspaces: List[str],
+    api_token: str,
+    api_secret: str,
+) -> None:
     """
     Send commands to one or more Superset instances.
     """
     ctx.ensure_object(dict)
     # XXX map from workspace name to URLs
     # XXX prompt for workspaces
-    ctx.obj["WORKSPACES"] = workspaces.split(",")
+
+    # Store workspaces, since the Superset command will run for each workspace, instead
+    # of a single instance.
+    ctx.obj["WORKSPACES"] = workspaces
+
+    # Store auth.
+    access_token = get_access_token(URL(baseurl), api_token, api_secret)
+    ctx.obj["AUTH"] = JWTAuth(access_token)
 
 
 def add_superset_commands(group: click.core.Group) -> None:
