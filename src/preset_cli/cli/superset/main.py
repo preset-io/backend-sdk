@@ -121,10 +121,8 @@ def add_superset_commands(group: click.core.Group) -> None:
         ) -> None:
             for instance in ctx.obj["WORKSPACES"]:
                 click.echo(f"\n{instance}")
-                ctx.invoke(command, instance=instance, *args, **kwargs)
-
-        # remove INSTANCE argument from the command
-        new_command.params = command.params[1:]
+                ctx.obj["INSTANCE"] = instance
+                ctx.invoke(command, *args, **kwargs)
 
         group.add_command(new_command, name)
 
