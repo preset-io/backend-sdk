@@ -108,23 +108,39 @@ def superset(ctx: click.core.Context, workspaces: List[str]) -> None:
     ctx.obj["WORKSPACES"] = workspaces
 
 
-def add_superset_commands(group: click.core.Group) -> None:
+def mutate_commands(source: click.core.Group, target: click.core.Group) -> None:
     """
-    Programmatically add Superset commands to the group.
+    Programmatically modify commands so they work with workspaces.
     """
-    for name, command in superset_cli.commands.items():
+    for name, command in source.commands.items():
 
-        @click.command()
-        @click.pass_context
-        def new_command(
-            ctx: click.core.Context, *args: Any, command=command, **kwargs: Any
-        ) -> None:
-            for instance in ctx.obj["WORKSPACES"]:
-                click.echo(f"\n{instance}")
-                ctx.obj["INSTANCE"] = instance
+        if isinstance(command, click.core.Group):
+
+            @click.group()
+            @click.pass_context
+            def new_group(
+                ctx: click.core.Context, *args: Any, command=command, **kwargs: Any
+            ) -> None:
                 ctx.invoke(command, *args, **kwargs)
 
-        group.add_command(new_command, name)
+            mutate_commands(command, new_group)
+            new_group.params = command.params[:]
+            target.add_command(new_group, name)
+
+        else:
+
+            @click.command()
+            @click.pass_context
+            def new_command(
+                ctx: click.core.Context, *args: Any, command=command, **kwargs: Any
+            ) -> None:
+                for instance in ctx.obj["WORKSPACES"]:
+                    click.echo(f"\n{instance}")
+                    ctx.obj["INSTANCE"] = instance
+                    ctx.invoke(command, *args, **kwargs)
+
+            new_command.params = command.params[:]
+            target.add_command(new_command, name)
 
 
-add_superset_commands(superset)
+mutate_commands(superset_cli, superset)
