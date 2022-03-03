@@ -5,7 +5,7 @@ Main entry point for the CLI.
 import getpass
 import webbrowser
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import click
 import requests
@@ -14,9 +14,70 @@ from appdirs import user_config_dir
 from superset_sdk.auth.jwt import JWTAuth
 from yarl import URL
 
+from preset_cli.api.client import PresetClient
 from preset_cli.cli.superset.main import superset
 
 CREDENTIALS_FILE = "credentials.yaml"
+
+
+def split_comma(  # pylint: disable=unused-argument
+    ctx: click.core.Context,
+    param: str,
+    value: Optional[str],
+) -> List[str]:
+    """
+    Split CLI option into multiple values.
+    """
+    if value is None:
+        return []
+
+    return [option.strip() for option in value.split(",")]
+
+
+def get_status_icon(status: str) -> str:
+    """
+    Return an icon (emoji) for a given status.
+    """
+    icons = {
+        "READY": "✅",
+        "LOADING_EXAMPLES": "📊",
+        "CREATING_DB": "💾",
+        "INITIALIZING_DB": "💾",
+        "MIGRATING_DB": "🚧",
+        "ROTATING_SECRETS": "🕵️ ",
+        "UNKNOWN": "❓",
+        "ERROR": "❗️",
+        "UPGRADING": "⤴️ ",
+    }
+    return icons.get(status, "❓")
+
+
+def parse_workspace_selection(selection: str, count: int) -> List[int]:
+    """
+    Parse a range of numbers.
+
+        >>> parse_workspace_selection("1-4,7", 10)
+        [1, 2, 3, 4, 7]
+
+    """
+    numbers = []
+    for part in selection.split(","):
+        if "-" in part:
+            if part[0] == "-":
+                part = "1" + part
+            if part[-1] == "-":
+                part = part + str(count)
+            start, end = [int(number) for number in part.split("-", 1)]
+            if end > count:
+                raise Exception("Range {part} is greater than {count}")
+            numbers.extend(range(start, end + 1))
+        else:
+            number = int(part)
+            if number > count:
+                raise Exception("Number {number} is greater than {count}")
+            numbers.append(int(part))
+
+    return numbers
 
 
 def get_access_token(baseurl: URL, api_token: str, api_secret: str) -> str:
@@ -37,14 +98,16 @@ def get_access_token(baseurl: URL, api_token: str, api_secret: str) -> str:
 @click.option("--api-token", envvar="PRESET_API_TOKEN")
 @click.option("--api-secret", envvar="PRESET_API_SECRET")
 @click.option("--jwt-token", envvar="PRESET_JWT_TOKEN")
+@click.option("--workspaces", callback=split_comma)
 @click.pass_context
-def preset_cli(
+def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-arguments
     ctx: click.core.Context,
     baseurl: str,
     api_token: Optional[str],
     api_secret: Optional[str],
     jwt_token: Optional[str],
-):
+    workspaces: List[str],
+) -> None:
     """
     A CLI for Preset.
     """
@@ -91,6 +154,34 @@ def preset_cli(
 
     # store auth in context so it's used by the Superset SDK
     ctx.obj["AUTH"] = JWTAuth(jwt_token)
+
+    if not workspaces:
+        client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
+        click.echo("Choose one or more workspaces (eg: 1-3,5,8-):")
+        i = 1
+        hostnames = {}
+        for team in client.get_teams():
+            click.echo(f'\n# {team["title"]} #')
+            for workspace in client.get_workspaces(team_name=team["name"]):
+                status = get_status_icon(workspace["workspace_status"])
+                click.echo(f'{status} ({i}) {workspace["title"]}')
+                hostnames[i] = "https://" + workspace["hostname"]
+                i += 1
+
+        if i == 1:
+            click.echo("No workspaces available")
+            return
+
+        while not workspaces:
+            try:
+                choices = parse_workspace_selection(input("> "), i - 1)
+                workspaces = [hostnames[choice] for choice in choices]
+                break
+            except Exception:  # pylint: disable=broad-except
+                click.echo("Invalid choice")
+
+    # store workspaces in order to invoke the command for each one
+    ctx.obj["WORKSPACES"] = workspaces
 
 
 preset_cli.add_command(superset)
