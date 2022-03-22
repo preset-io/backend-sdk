@@ -1,0 +1,16 @@
+database_name: Google Sheets
+sqlalchemy_uri: gsheets://
+cache_timeout: null
+expose_in_sqllab: true
+allow_run_async: false
+allow_ctas: false
+allow_cvas: false
+allow_file_upload: false
+extra:
+  engine_params:
+    catalog:
+      country_cnt: https://docs.google.com/spreadsheets/d/1LcWZMsdCl92g7nA-D6qGRqg1T5TiHyuKJUY1u9XAnsk/edit#gid=0
+  metadata_params: {}
+  schemas_allowed_for_file_upload: []
+uuid: 7737158f-bce3-4350-a2dc-85ca6a2998a0
+version: 1.0.0

@@ -59,11 +59,13 @@ In summary, there are 3 options for credentials:
 Workspaces
 ==========
 
-The CLI can run commands against one or more Preset workspaces (Superset instances). When running a command you can specify the workspace(s) by passing a comma-separated list of URLs to the ``--workspaces`` option:
+The CLI can run commands against one or more Preset workspaces (Apache Superset instances). When running a command you can specify the workspace(s) by passing a comma-separated list of URLs to the ``--workspaces`` option:
 
 .. code-block:: bash
 
-    % preset-cli --workspaces https://abcdef12.us1a.app.preset.io/,https://34567890.us1a.app.preset.io/ superset sql
+    % preset-cli \
+    > --workspaces=https://abcdef12.us1a.app.preset.io/,https://34567890.us1a.app.preset.io/ \
+    > superset sql
 
 If you omit the ``--workspaces`` option you will be prompted interactively:
 
@@ -117,8 +119,8 @@ The CLI offers an easy way to run SQL against an analytical database in a worksp
 
 .. code-block:: bash
 
-    % preset-cli --workspaces https://abcdef12.us1a.app.preset.io/ superset sql \
-    > --database-id 1 -e "SELECT COUNT(*) AS revenue FROM sales"
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ superset sql \
+    > --database-id=1 -e "SELECT COUNT(*) AS revenue FROM sales"
 
     https://abcdef12.us1a.app.preset.io/
       revenue
@@ -130,5 +132,150 @@ If you don't specify the database ID you will be shown a list of available datab
 Synchronizing from exports
 --------------------------
 
+You can use the CLI to manage workspaces resources — databases, datasets, charts, and dashboards — from source control. The configuration should be stored as YAML files, using the same format the Apache Superset uses for importing and exporting resources.
+
+The easiest way to generate the configuration files is to build one or more dashboards in a Preset workspace, export them together, and unzip the generated file into a directory.
+
+.. image:: https://github.com/preset-io/preset-cli/raw/master/docs/images/export_dashboards.png
+
+After unzipping the directory should look like this:
+
+- ``charts/``
+- ``dashboards/``
+- ``databases/``
+- ``datasets/``
+- ``metadata.yaml``
+
+You can see an example `here <https://github.com/preset-io/preset-cli/tree/master/examples/exports>`_.
+
+To synchronize these files to a Preset workspace you only need to run:
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > sync native /path/to/directory/
+
+If any of the resources already exist you need to pass the ``--overwrite`` flag in order to replace them. The CLI will warn you of any resources that already exist if the flag is not passed:
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > sync native /path/to/directory/
+    Error importing database
+    The following file(s) already exist. Pass --overwrite to replace them.
+    - databases/Google_Sheets.yaml
+    Error importing dataset
+    The following file(s) already exist. Pass --overwrite to replace them.
+    - datasets/Google_Sheets/country_cnt.yaml
+    Error importing chart
+    The following file(s) already exist. Pass --overwrite to replace them.
+    - charts/Total_count_134.yaml
+    Error importing dashboard
+    The following file(s) already exist. Pass --overwrite to replace them.
+    - dashboards/White_label_test.yaml
+
+(Note: this is currently returning an exception instead of printing the messages above. This is being worked on.)
+
+Using templates
+~~~~~~~~~~~~~~~
+
+One of the most powerful features of this command is that the YAML configuration files are treated as `Jinja2 <https://jinja.palletsprojects.com/en/3.0.x/>`_ templates, allowing you to parametrize the synchronized files. For example, imagine a simple chart like this:
+
+.. code-block:: yaml
+
+    slice_name: Total sales
+    viz_type: big_number_total
+    params:
+      metric: sum__sales
+      adhoc_filters: []
+
+The chart shows the metric ``sum__sales``, representing the total (unfiltered) sales of a given product. We can change the chart configuration to look like this instead:
+
+.. code-block:: yaml
+
+    {% if country %}
+    slice_name: Sales in {{ country }}
+    {% else %}
+    slice_name: Total sales
+    {% endif %}
+    viz_type: big_number_total
+    params:
+      metric: sum__sales
+      {% if country %}
+      adhoc_filters:
+        - clause: WHERE
+          expressionType: SQL
+          sqlExpression: country = '{{ country }}'
+          subject: null
+          operator: null
+          comparator: null
+      {% else %}
+      adhoc_filters: []
+      {% endif %}
+
+Now, if the ``country`` parameter is set the chart will have a different title and an additional filter. Multiple parameters can be passed as optiona via the command line:
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > sync native /path/to/directory/ -o country=BR
+
+Templates also have access to the workspace name through the ``instance`` variable (a `URL object <https://pypi.org/project/yarl/>`_):
+
+.. code-block:: yaml
+
+    params:
+      metric: sum__sales
+      adhoc_filters:
+        - clause: WHERE
+          expressionType: SQL
+          {% if instance.host == '//abcdef12.us1a.app.preset.io/ %}
+          sqlExpression: warehouse_id = 1
+          {% elif instance.host == '//34567890.us1a.app.preset.io/ %}
+          sqlExpression: warehouse_id = 2
+          {% else %}
+          sqlExpression: warehouse_id = 3
+          {% endif %}
+
+Finally, as shown in the next section, templates can leverage user-defined functions.
+
+User defined functions
+~~~~~~~~~~~~~~~~~~~~~~
+
+You can create your own functions to be used in the configuration templates. Simply create a sub-directory called ``functions/`` in the directory where the configuration files are stored, and add one or more Python files. As a simple example, imagine a file called ``functions/demo.py`` with the following content:
+
+.. code-block:: python
+
+    # functions/demo.py
+    def hello_world() -> str:
+        return "Hello, world!"
+
+The function can then be called from any template the following way:
+
+.. code-block:: yaml
+
+    slice_name: {{ functions.demo.hello_world() }}
+    viz_type: big_number_total
+    params:
+      ...
+
 Synchronizing to and from DBT
 -----------------------------
+
+The CLI also allows you to synchronize sources, models, and metrics from a `DBT <https://www.getdbt.com/>`_ project, together with databases from a profile. The full command is:
+
+.. code-block:: bash
+
+   % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+   > sync dbt /path/to/dbt/my_project/target/manifest.json \
+   > --project=my_project --target=dev --profile=${HOME}/.dbt/profiles.yml \
+   > --exposures=/path/to/dbt/my_project/models/exposures.yaml \
+   > --import-db
+
+Running this command will:
+
+1. Read the DBT profile and create the ``$target`` database for the specified project in the Preset workspace.
+2. Every source in the project will be created as a dataset in the Preset workspace.
+3. Every model in the project will be created as a dataset in the Preset workspace.
+4. Any `metrics <https://docs.getdbt.com/docs/building-a-dbt-project/metrics>`_ will be added to the corresponding datasets.
+5. Every dashboard built on top of the DBT sources and/or models will be synchronized back to DBT as an `exposure <https://docs.getdbt.com/docs/building-a-dbt-project/exposures>`_.

@@ -1,0 +1,40 @@
+{% if country %}
+slice_name: {{ functions.demo.hello_world() }} Count in {{ country }}
+{% else %}
+slice_name: Total count
+{% endif %}
+viz_type: big_number_total
+params:
+  {% if country %}
+  adhoc_filters:
+  - clause: WHERE
+    comparator: null
+    expressionType: SQL
+    filterOptionName: filter_osfx5u3a5ks_qu7tlefn04j
+    isExtra: false
+    isNew: false
+    operator: null
+    sqlExpression: country = '{{ country }}'
+    subject: null
+  {% else %}
+  adhoc_filters: []
+  {% endif %}
+  datasource: 27__table
+  extra_form_data: {}
+  header_font_size: 0.4
+  metric: count
+  slice_id: 134
+  subheader_font_size: 0.15
+  time_format: smart_date
+  time_grain_sqla: P1D
+  time_range: No filter
+  time_range_endpoints:
+  - inclusive
+  - exclusive
+  url_params: {}
+  viz_type: big_number_total
+  y_axis_format: SMART_NUMBER
+cache_timeout: null
+uuid: 3f966611-8afc-4841-abdc-fa4361ff69f8
+version: 1.0.0
+dataset_uuid: fe3bd066-ab04-4ab8-a89a-30bf3d8423b4

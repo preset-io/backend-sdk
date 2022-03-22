@@ -1,0 +1,50 @@
+dashboard_title: White label test {{ country }}
+description: null
+css: null
+slug: null
+uuid: c64ca0c9-5cdf-46d8-a0b2-7b269b10f36c
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    children:
+    - GRID_ID
+    id: ROOT_ID
+    type: ROOT
+  GRID_ID:
+    children:
+    - ROW-N-OZVI6W96
+    id: GRID_ID
+    parents:
+    - ROOT_ID
+    type: GRID
+  HEADER_ID:
+    id: HEADER_ID
+    meta:
+      text: White label test
+    type: HEADER
+  ROW-N-OZVI6W96:
+    children:
+    - CHART-BVI44PWH
+    id: ROW-N-OZVI6W96
+    meta:
+      '0': ROOT_ID
+      background: BACKGROUND_TRANSPARENT
+    type: ROW
+    parents:
+    - ROOT_ID
+    - GRID_ID
+  CHART-BVI44PWH:
+    children: []
+    id: CHART-BVI44PWH
+    meta:
+      chartId: 134
+      height: 50
+      sliceName: Total count
+      uuid: 3f966611-8afc-4841-abdc-fa4361ff69f8
+      width: 4
+    type: CHART
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-N-OZVI6W96
+version: 1.0.0
