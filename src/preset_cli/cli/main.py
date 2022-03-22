@@ -45,10 +45,10 @@ def get_status_icon(status: str) -> str:
         "CREATING_DB": "💾",
         "INITIALIZING_DB": "💾",
         "MIGRATING_DB": "🚧",
-        "ROTATING_SECRETS": "🕵️ ",
+        "ROTATING_SECRETS": "🕵️",
         "UNKNOWN": "❓",
         "ERROR": "❗️",
-        "UPGRADING": "⤴️ ",
+        "UPGRADING": "⤴️",
     }
     return icons.get(status, "❓")
 
