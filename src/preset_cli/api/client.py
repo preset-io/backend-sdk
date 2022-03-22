@@ -7,6 +7,8 @@ from typing import Any, List, Union
 from superset_sdk.auth.main import Auth
 from yarl import URL
 
+from preset_cli import __version__
+
 
 class PresetClient:  # pylint: disable=too-few-public-methods
 
@@ -18,6 +20,12 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         # convert to URL if necessary
         self.baseurl = URL(baseurl)
         self.auth = auth
+        self.auth.headers.update(
+            {
+                "User-Agent": "Preset CLI",
+                "X-Client-Version": __version__,
+            }
+        )
 
     def get_teams(self) -> List[Any]:
         """
