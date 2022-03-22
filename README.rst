@@ -175,6 +175,16 @@ If any of the resources already exist you need to pass the ``--overwrite`` flag 
 
 (Note: this is currently returning an exception instead of printing the messages above. This is being worked on.)
 
+All synchronized resources will be marked as "externally managed", and in the near future they won't be editable in the UI. it's also possible to provide a URL where the resource can be modified, eg, a link to a file in a Github repository. This can be done by passing the ``--external-url-prefix`` flag:
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > sync native /path/to/directory/ \
+    > --external-url-prefix=https://github.com/org/project/blob/master/
+
+This way, the file ``dashboards/White_label_test.yaml`` would have an external URL pointing to https://github.com/org/project/blob/master/dashboards/White_label_test.yaml. Currently the URL is not displayed anywhere, but in the near future we should have affordances pointing users to it from the instance UI.
+
 Using templates
 ~~~~~~~~~~~~~~~
 
@@ -269,7 +279,8 @@ The CLI also allows you to synchronize sources, models, and metrics from a `DBT 
    > sync dbt /path/to/dbt/my_project/target/manifest.json \
    > --project=my_project --target=dev --profile=${HOME}/.dbt/profiles.yml \
    > --exposures=/path/to/dbt/my_project/models/exposures.yaml \
-   > --import-db
+   > --import-db \
+   > --external-url-prefix=http://localhost:8080/
 
 Running this command will:
 
@@ -278,3 +289,5 @@ Running this command will:
 3. Every model in the project will be created as a dataset in the Preset workspace.
 4. Any `metrics <https://docs.getdbt.com/docs/building-a-dbt-project/metrics>`_ will be added to the corresponding datasets.
 5. Every dashboard built on top of the DBT sources and/or models will be synchronized back to DBT as an `exposure <https://docs.getdbt.com/docs/building-a-dbt-project/exposures>`_.
+
+The ``--external-url-prefix`` should point to your DBT docs, so that the resources in the workspace can point to the source of truth where they are being managed.
