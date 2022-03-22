@@ -85,13 +85,12 @@ Each workspace has an icon depicting its status:
 
 - ✅ ready
 - 📊 loading examples
-- 💾 creating metadata database
-- 💾 initializing metadata database
+- 💾 creating/initializing metadata database
 - 🚧 migrating metadata database
 - 🕵️ migrating secrets
-- ❓ unknown state
-- ❗️ error
 - ⤴️ upgrading workspace
+- ❗️ error
+- ❓ unknown state
 
 You can specify one or more workspaces by using a comma-separated list of numbers and/or ranges:
 
@@ -115,7 +114,7 @@ The following commands are currently available:
 Running SQL
 -----------
 
-The CLI offers an easy way to run SQL against an analytical database in a workspace. This can be done programmatically or interactively. For example, to run the query ``SELECT COUNT(*) FROM sales`` given a workspace URL and a database ID you can run:
+The CLI offers an easy way to run SQL against an analytical database in a workspace. This can be done programmatically or interactively. For example, to run the query ``SELECT COUNT(*) AS revenue FROM sales`` given a workspace URL and a database ID you can run:
 
 .. code-block:: bash
 
