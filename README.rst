@@ -173,8 +173,6 @@ If any of the resources already exist you need to pass the ``--overwrite`` flag 
     The following file(s) already exist. Pass --overwrite to replace them.
     - dashboards/White_label_test.yaml
 
-(Note: this is currently returning an exception instead of printing the messages above. This is being worked on.)
-
 All synchronized resources will be marked as "externally managed", and in the near future they won't be editable in the UI. it's also possible to provide a URL where the resource can be modified, eg, a link to a file in a Github repository. This can be done by passing the ``--external-url-prefix`` flag:
 
 .. code-block:: bash
