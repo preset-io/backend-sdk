@@ -24,7 +24,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             {
                 "User-Agent": "Preset CLI",
                 "X-Client-Version": __version__,
-            }
+            },
         )
 
     def get_teams(self) -> List[Any]:
@@ -48,7 +48,8 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         session = self.auth.get_session()
         headers = self.auth.get_headers()
         response = session.get(
-            self.baseurl / "api/v1/teams" / team_name / "workspaces/", headers=headers
+            self.baseurl / "api/v1/teams" / team_name / "workspaces/",
+            headers=headers,
         )
         response.raise_for_status()
 

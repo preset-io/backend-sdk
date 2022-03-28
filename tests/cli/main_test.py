@@ -4,13 +4,14 @@ Tests for ``preset_cli.cli.main``.
 # pylint: disable=unused-argument, invalid-name, redefined-outer-name
 
 from pathlib import Path
+from typing import Any, Dict
 
 import pytest
 import yaml
 from click.testing import CliRunner
-from requests_mock.mocker import Mocker
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
+from requests_mock.mocker import Mocker
 from yarl import URL
 
 from preset_cli.cli.main import (
@@ -85,7 +86,9 @@ def test_get_access_token(requests_mock: Mocker) -> None:
     )
 
     access_token = get_access_token(
-        URL("https://manage.app.preset.io/"), "API_TOKEN", "API_SECRET"
+        URL("https://manage.app.preset.io/"),
+        "API_TOKEN",
+        "API_SECRET",
     )
     assert access_token == "TOKEN"
 
@@ -133,7 +136,9 @@ def test_auth(mocker: MockerFixture) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        preset_cli, ["--jwt-token", "JWT_TOKEN", "auth"], catch_exceptions=False
+        preset_cli,
+        ["--jwt-token", "JWT_TOKEN", "auth"],
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
 
@@ -155,7 +160,9 @@ def test_auth_overwrite(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     runner = CliRunner()
 
     result = runner.invoke(
-        preset_cli, ["--jwt-token", "JWT_TOKEN", "auth"], catch_exceptions=False
+        preset_cli,
+        ["--jwt-token", "JWT_TOKEN", "auth"],
+        catch_exceptions=False,
     )
     assert result.exit_code == 1
 
@@ -195,6 +202,29 @@ def test_jwt_token_credentials_exist(
     result = runner.invoke(preset_cli, ["auth", "--help"], catch_exceptions=False)
     assert result.exit_code == 0
     JWTAuth.assert_called_with("JWT_TOKEN")
+
+
+def test_jwt_token_invalid_credentials(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the command when the credentials are stored.
+    """
+    credentials_path = Path("/path/to/config/credentials.yaml")
+    fs.create_file(
+        credentials_path,
+        contents=yaml.dump({"api_token": "API_TOKEN"}),
+    )
+    mocker.patch(
+        "preset_cli.cli.main.get_credentials_path",
+        return_value=credentials_path,
+    )
+    mocker.patch("preset_cli.cli.main.get_access_token", return_value="JWT_TOKEN")
+
+    runner = CliRunner()
+    result = runner.invoke(preset_cli, ["auth", "--help"], catch_exceptions=False)
+    assert result.exit_code == 1
 
 
 def test_jwt_token_prompt_for_credentials(
@@ -257,7 +287,7 @@ def test_workspaces(mocker: MockerFixture) -> None:
     mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
 
     runner = CliRunner()
-    obj = {}
+    obj: Dict[str, Any] = {}
     result = runner.invoke(
         preset_cli,
         ["--jwt-token", "JWT_TOKEN", "superset", "--help"],
@@ -279,7 +309,7 @@ def test_workspaces_no_workspaces(mocker: MockerFixture) -> None:
     mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
 
     runner = CliRunner()
-    obj = {}
+    obj: Dict[str, Any] = {}
     result = runner.invoke(
         preset_cli,
         ["--jwt-token", "JWT_TOKEN", "superset", "--help"],
