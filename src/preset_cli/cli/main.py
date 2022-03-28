@@ -6,7 +6,7 @@ import getpass
 import sys
 import webbrowser
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, cast
 
 import click
 import requests
@@ -61,7 +61,7 @@ def parse_workspace_selection(selection: str, count: int) -> List[int]:
         [1, 2, 3, 4, 7]
 
     """
-    numbers = []
+    numbers: List[int] = []
     for part in selection.split(","):
         if "-" in part:
             if part[0] == "-":
@@ -148,19 +148,25 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
             # check for stored credentials
             credentials_path = get_credentials_path()
             if credentials_path.exists():
-                with open(credentials_path, encoding="utf-8") as input_:
-                    credentials = yaml.load(input_, Loader=yaml.SafeLoader)
-                api_token = credentials["api_token"]
-                api_secret = credentials["api_secret"]
+                try:
+                    with open(credentials_path, encoding="utf-8") as input_:
+                        credentials = yaml.load(input_, Loader=yaml.SafeLoader)
+                    api_token = credentials["api_token"]
+                    api_secret = credentials["api_secret"]
+                except Exception:  # pylint: disable=broad-except
+                    click.echo("Couldn't read credentials")
+                    sys.exit(1)
             else:
                 click.echo(
-                    "You need to specify a JWT token or an API key (name and secret)"
+                    "You need to specify a JWT token or an API key (name and secret)",
                 )
                 webbrowser.open(str(manager_url / "app/user"))
                 api_token = input("API token: ")
                 api_secret = getpass.getpass("API secret: ")
                 store_credentials(api_token, api_secret, credentials_path)
 
+        api_token = cast(str, api_token)
+        api_secret = cast(str, api_secret)
         jwt_token = get_access_token(manager_url, api_token, api_secret)
 
     # store auth in context so it's used by the Superset SDK
@@ -197,7 +203,10 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
 @click.command()
 @click.option("--baseurl", default="https://manage.app.preset.io/")
 @click.option(
-    "--overwrite", is_flag=True, default=False, help="Overwrite existing credentials"
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Overwrite existing credentials",
 )
 def auth(baseurl: str, overwrite: bool = False) -> None:
     """
@@ -212,13 +221,13 @@ def auth(baseurl: str, overwrite: bool = False) -> None:
                     "Pass --overwrite to replace it."
                 ),
                 fg="bright_red",
-            )
+            ),
         )
         sys.exit(1)
 
     manager_url = URL(baseurl)
     click.echo(
-        f"Please generate a new token at {manager_url} if you don't have one already"
+        f"Please generate a new token at {manager_url} if you don't have one already",
     )
     webbrowser.open(str(manager_url / "app/user"))
     api_token = input("API token: ")

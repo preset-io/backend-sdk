@@ -1,3 +1,7 @@
+"""
+Package version.
+"""
+
 import sys
 
 if sys.version_info[:2] >= (3, 8):
@@ -8,7 +12,7 @@ else:
 
 try:
     # Change here if project is renamed and does not equal the package name
-    dist_name = "preset-cli"
+    dist_name = "preset-cli"  # pylint: disable=C0103
     __version__ = version(dist_name)
 except PackageNotFoundError:  # pragma: no cover
     __version__ = "unknown"
