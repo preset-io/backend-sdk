@@ -70,12 +70,12 @@ def parse_workspace_selection(selection: str, count: int) -> List[int]:
                 part = part + str(count)
             start, end = [int(number) for number in part.split("-", 1)]
             if end > count:
-                raise Exception("Range {part} is greater than {count}")
+                raise Exception(f"End {end} is greater than {count}")
             numbers.extend(range(start, end + 1))
         else:
             number = int(part)
             if number > count:
-                raise Exception("Number {number} is greater than {count}")
+                raise Exception(f"Number {number} is greater than {count}")
             numbers.append(int(part))
 
     return numbers
@@ -181,13 +181,12 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
 
         if i == 1:
             click.echo("No workspaces available")
-            return
+            sys.exit(1)
 
         while not workspaces:
             try:
                 choices = parse_workspace_selection(input("> "), i - 1)
                 workspaces = [hostnames[choice] for choice in choices]
-                break
             except Exception:  # pylint: disable=broad-except
                 click.echo("Invalid choice")
 
