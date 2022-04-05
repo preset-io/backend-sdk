@@ -12,10 +12,10 @@ import click
 import requests
 import yaml
 from appdirs import user_config_dir
-from superset_sdk.auth.jwt import JWTAuth
 from yarl import URL
 
-from preset_cli.api.client import PresetClient
+from preset_cli.api.clients.preset import PresetClient
+from preset_cli.auth.jwt import JWTAuth
 from preset_cli.cli.superset.main import superset
 
 CREDENTIALS_FILE = "credentials.yaml"

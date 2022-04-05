@@ -1,11 +1,11 @@
 """
-Tests for ``preset_cli.api.client``.
+Tests for ``preset_cli.api.clients.preset``.
 """
 
 from requests_mock.mocker import Mocker
-from superset_sdk.auth.main import Auth
 
-from preset_cli.api.client import PresetClient
+from preset_cli.api.clients.preset import PresetClient
+from preset_cli.auth.main import Auth
 
 
 def test_preset_client_get_teams(requests_mock: Mocker) -> None:
