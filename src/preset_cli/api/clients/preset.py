@@ -4,10 +4,10 @@ A simple client for interacting with the Preset API.
 
 from typing import Any, List, Union
 
-from superset_sdk.auth.main import Auth
 from yarl import URL
 
 from preset_cli import __version__
+from preset_cli.auth.main import Auth
 
 
 class PresetClient:  # pylint: disable=too-few-public-methods
