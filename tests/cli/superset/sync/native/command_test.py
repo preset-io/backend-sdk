@@ -15,7 +15,7 @@ from freezegun import freeze_time
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
-from preset_cli.cli.superset.main import superset
+from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     import_resource,
     load_user_modules,
@@ -171,7 +171,7 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         ["https://superset.example.org/", "sync", "native", str(root)],
         catch_exceptions=False,
     )
@@ -218,7 +218,7 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sync",

@@ -9,7 +9,7 @@ from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
-from preset_cli.cli.superset.main import superset
+from preset_cli.cli.superset.main import superset_cli
 from preset_cli.exceptions import DatabaseNotFoundError
 
 
@@ -43,7 +43,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sync",
@@ -91,7 +91,7 @@ def test_dbt_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sync",
@@ -134,7 +134,7 @@ def test_dbt_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sync",
@@ -179,7 +179,7 @@ def test_dbt_no_database(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sync",

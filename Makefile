@@ -1,11 +1,11 @@
 pyenv: .python-version
 
 .python-version: setup.cfg
-	if [ -z "`pyenv virtualenvs | grep preset-cli`" ]; then\
-	    pyenv virtualenv preset-cli;\
+	if [ -z "`pyenv virtualenvs | grep backend-sdk`" ]; then\
+	    pyenv virtualenv backend-sdk;\
 	fi
 	if [ ! -f .python-version ]; then\
-	    pyenv local preset-cli;\
+	    pyenv local backend-sdk;\
 	fi
 	pip install -e '.[testing]'
 	touch .python-version
@@ -14,7 +14,7 @@ test: pyenv
 	pytest --cov=src/preset_cli -vv tests/ --doctest-modules src/preset_cli
 
 clean:
-	pyenv virtualenv-delete preset-cli
+	pyenv virtualenv-delete backend-sdk
 
 spellcheck:
 	codespell -S "*.json" src/preset_cli docs/*rst tests templates
@@ -22,3 +22,6 @@ spellcheck:
 requirements.txt: .python-version
 	pip install --upgrade pip
 	pip-compile --no-annotate
+
+check:
+	pre-commit run --all-files

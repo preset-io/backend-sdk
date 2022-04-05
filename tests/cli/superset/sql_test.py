@@ -12,7 +12,7 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 from yarl import URL
 
-from preset_cli.cli.superset.main import superset
+from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sql import run_query, run_session
 from preset_cli.exceptions import ErrorLevel, SupersetError
 
@@ -101,6 +101,52 @@ def test_run_session(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         == """  answer
 --------
       42
+Goodbye!
+"""
+    )
+
+
+def test_run_session_multiple_commands(
+    mocker: MockerFixture, fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``run_session``.
+    """
+    history = Path("/path/to/.config/preset-cli/")
+    os = mocker.patch("preset_cli.cli.superset.sql.os")
+    os.path.expanduser.return_value = str(history)
+
+    client = mocker.MagicMock()
+    client.run_query.side_effect = [
+        pd.DataFrame([{"answer": 42}]),
+        pd.DataFrame([{"question": "Life, universe, everything"}]),
+    ]
+
+    stdout = mocker.patch("sys.stdout", new_callable=StringIO)
+    PromptSession = mocker.patch("preset_cli.cli.superset.sql.PromptSession")
+    session = PromptSession()
+    session.prompt.side_effect = [
+        "SELECT 42 AS answer;",
+        "SELECT 'Life, universe, everything' AS question;",
+        "",
+        EOFError(),
+    ]
+
+    run_session(
+        client=client,
+        database_id=1,
+        database_name="GSheets",
+        url=URL("https://superset.example.org/"),
+    )
+    result = stdout.getvalue()
+    assert (
+        result
+        == """  answer
+--------
+      42
+question
+--------------------------
+Life, universe, everything
 Goodbye!
 """
     )
@@ -224,7 +270,7 @@ def test_sql_run_query(mocker: MockerFixture) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sql",
@@ -251,7 +297,7 @@ def test_sql_run_session(mocker: MockerFixture) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sql",
@@ -281,7 +327,7 @@ def test_sql_run_query_no_databases(mocker: MockerFixture) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sql",
@@ -312,7 +358,7 @@ def test_sql_choose_database(mocker: MockerFixture) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         [
             "https://superset.example.org/",
             "sql",
