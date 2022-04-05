@@ -14,7 +14,7 @@ Install the CLI with ``pip``:
 .. code-block:: bash
 
     $ pip install -U setuptools setuptools_scm wheel  # for good measure
-    $ pip install "git+https://github.com/preset-io/preset-cli.git"
+    $ pip install "git+https://github.com/preset-io/backend-sdk.git"
 
 Make sure you're using Python 3.8 or newer.
 
