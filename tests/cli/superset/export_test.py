@@ -15,7 +15,7 @@ from pytest_mock import MockerFixture
 
 from preset_cli.auth.main import Auth
 from preset_cli.cli.superset.export import export_resource
-from preset_cli.cli.superset.main import superset
+from preset_cli.cli.superset.main import superset_cli
 
 
 @pytest.fixture
@@ -101,7 +101,7 @@ def test_export(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         ["https://superset.example.org/", "export", "/path/to/root"],
         catch_exceptions=False,
     )
@@ -130,7 +130,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
 
     runner = CliRunner()
     result = runner.invoke(
-        superset,
+        superset_cli,
         ["https://superset.example.org/", "export", "/path/to/root"],
         catch_exceptions=False,
         obj={"AUTH": Auth()},

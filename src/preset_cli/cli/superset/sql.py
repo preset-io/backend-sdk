@@ -136,6 +136,8 @@ def run_session(
         is_terminated, quote_context = get_query_termination(query)
         if is_terminated:
             run_query(client, database_id, query)
+            lines = []
+            quote_context = " "
 
     click.echo("Goodbye!")
 
