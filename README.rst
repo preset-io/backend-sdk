@@ -108,8 +108,21 @@ The following commands are currently available:
 
 - ``preset-cli auth``: store authentication credentials.
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
+- ``preset-cli superset export``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
 - ``preset-cli superset sync native``: synchronize the workspace from a directory of templated configuration files.
 - ``preset-cli superset sync dbt``: synchronize the workspace from a DBT project.
+
+All the ``superset`` sub-commands can also be executed against a standalone Superset instance, using the ``superset-cli`` command. This means that if you are running an instance of Superset at https://superset.example.org/ you can export its resources with the command:
+
+.. code-block:: bash
+
+    % superset-cli https://superset.example.org/ export /path/to/directory
+
+And then import everything to a Preset workspace with:
+
+.. code-block:: bash
+
+    % preset-cli superset sync native /path/to/directory
 
 Running SQL
 -----------
@@ -152,14 +165,14 @@ To synchronize these files to a Preset workspace you only need to run:
 .. code-block:: bash
 
     % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
-    > sync native /path/to/directory/
+    > superset sync native /path/to/directory/
 
 If any of the resources already exist you need to pass the ``--overwrite`` flag in order to replace them. The CLI will warn you of any resources that already exist if the flag is not passed:
 
 .. code-block:: bash
 
     % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
-    > sync native /path/to/directory/
+    > superset sync native /path/to/directory/
     Error importing database
     The following file(s) already exist. Pass --overwrite to replace them.
     - databases/Google_Sheets.yaml
@@ -178,7 +191,7 @@ All synchronized resources will be marked as "externally managed", and in the ne
 .. code-block:: bash
 
     % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
-    > sync native /path/to/directory/ \
+    > superset sync native /path/to/directory/ \
     > --external-url-prefix=https://github.com/org/project/blob/master/
 
 This way, the file ``dashboards/White_label_test.yaml`` would have an external URL pointing to https://github.com/org/project/blob/master/dashboards/White_label_test.yaml. Currently the URL is not displayed anywhere, but in the near future we should have affordances pointing users to it from the instance UI.
@@ -225,7 +238,7 @@ Now, if the ``country`` parameter is set the chart will have a different title a
 .. code-block:: bash
 
     % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
-    > sync native /path/to/directory/ -o country=BR
+    > superset sync native /path/to/directory/ -o country=BR
 
 Templates also have access to the workspace name through the ``instance`` variable (a `URL object <https://pypi.org/project/yarl/>`_):
 
@@ -274,7 +287,7 @@ The CLI also allows you to synchronize sources, models, and metrics from a `DBT 
 .. code-block:: bash
 
    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
-   > sync dbt /path/to/dbt/my_project/target/manifest.json \
+   > superset sync dbt /path/to/dbt/my_project/target/manifest.json \
    > --project=my_project --target=dev --profile=${HOME}/.dbt/profiles.yml \
    > --exposures=/path/to/dbt/my_project/models/exposures.yaml \
    > --import-db \
@@ -289,3 +302,36 @@ Running this command will:
 5. Every dashboard built on top of the DBT sources and/or models will be synchronized back to DBT as an `exposure <https://docs.getdbt.com/docs/building-a-dbt-project/exposures>`_.
 
 The ``--external-url-prefix`` should point to your DBT docs, so that the resources in the workspace can point to the source of truth where they are being managed.
+
+Exporting resources
+-------------------
+
+The CLI can also be used to export all resources (databases, datasets, charts, and dashboards) from a given Preset workspace (using ``preset-cli``) or Superset instance (using ``superset-cli``). This is useful for migrating resources between workspaces, from an existing Superset installation to Preset, or even from Preset to Superset (one of the advantages of Preset is no vendor lock in!).
+
+The run the commmand on a self-hosted Superset instance:
+
+.. code-block:: bash
+
+    % superset-cli https://superset.example.org/ export /path/to/directory
+
+This will create a nice directory structure in ``/path/to/directory``, ready to be imported using the ``sync native`` command.
+
+To export resources from a Preset workspace:
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > superset export /path/to/directory
+
+To import the exported resources into a Preset workspace:
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > superset sync native /path/to/directory
+
+Finally, to import in a standalone Superset instance:
+
+.. code-block:: bash
+
+    % superset-cli https://superset.example.org/ sync native /path/to/directory
