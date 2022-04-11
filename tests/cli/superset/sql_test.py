@@ -107,7 +107,8 @@ Goodbye!
 
 
 def test_run_session_multiple_commands(
-    mocker: MockerFixture, fs: FakeFilesystem,
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
 ) -> None:
     """
     Test ``run_session``.

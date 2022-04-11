@@ -65,7 +65,8 @@ def load_user_modules(root: Path) -> Dict[str, ModuleType]:
 )
 @click.option(
     "--disallow-edits",
-    default=True,
+    is_flag=True,
+    default=False,
     help="Mark resources as manged externally to prevent edits",
 )
 @click.option("--external-url-prefix", default="", help="Base URL for resources")
@@ -108,8 +109,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
 
                 # mark resource as being managed externally
                 config = yaml.load(content, Loader=yaml.SafeLoader)
-                # TODO (betodealmeida): depends on https://github.com/apache/superset/pull/19315
-                # config["is_managed_externally"] = disallow_edits
+                config["is_managed_externally"] = disallow_edits
                 if base_url:
                     config["external_url"] = str(
                         base_url / str(relative_path),

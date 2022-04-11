@@ -69,8 +69,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         database = client.update_database(
             database_id=database["id"],
             database_name=database_name,
-            # TODO (betodealmeida): depends on https://github.com/apache/superset/pull/19318
-            # is_managed_externally=disallow_edits,
+            is_managed_externally=disallow_edits,
             **meta,
         )
     elif not import_db:
@@ -80,8 +79,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         database = client.create_database(
             database_name=database_name,
             sqlalchemy_uri=sqlalchemy_uri,
-            # TODO (betodealmeida): depends on https://github.com/apache/superset/pull/19318
-            # is_managed_externally=disallow_edits,
+            is_managed_externally=disallow_edits,
             **meta,
         )
 

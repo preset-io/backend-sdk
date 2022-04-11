@@ -38,7 +38,8 @@ from preset_cli.exceptions import DatabaseNotFoundError
 )
 @click.option(
     "--disallow-edits",
-    default=True,
+    is_flag=True,
+    default=False,
     help="Mark resources as manged externally to prevent edits",
 )
 @click.option("--external-url-prefix", default="", help="Base URL for resources")

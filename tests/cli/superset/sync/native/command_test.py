@@ -145,8 +145,12 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
-    database_config = {"database_name": "GSheets", "sqlalchemy_uri": "gsheets://"}
-    dataset_config = {"table_name": "test"}
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+    }
+    dataset_config = {"table_name": "test", "is_managed_externally": False}
     fs.create_file(
         root / "databases/gsheets.yaml",
         contents=yaml.dump(database_config),
@@ -196,8 +200,17 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
-    database_config = {"database_name": "GSheets", "sqlalchemy_uri": "gsheets://"}
-    dataset_config = {"table_name": "test"}
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "external_url": "https://repo.example.com/databases/gsheets.yaml",
+        "is_managed_externally": True,
+    }
+    dataset_config = {
+        "table_name": "test",
+        "external_url": "https://repo.example.com/datasets/gsheets/test.yaml",
+        "is_managed_externally": True,
+    }
     fs.create_file(
         root / "databases/gsheets.yaml",
         contents=yaml.dump(database_config),
@@ -226,6 +239,7 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             str(root),
             "--external-url-prefix",
             "https://repo.example.com/",
+            "--disallow-edits",
         ],
         catch_exceptions=False,
     )

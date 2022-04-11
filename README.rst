@@ -186,12 +186,12 @@ If any of the resources already exist you need to pass the ``--overwrite`` flag 
     The following file(s) already exist. Pass --overwrite to replace them.
     - dashboards/White_label_test.yaml
 
-All synchronized resources will be marked as "externally managed", and in the near future they won't be editable in the UI. it's also possible to provide a URL where the resource can be modified, eg, a link to a file in a Github repository. This can be done by passing the ``--external-url-prefix`` flag:
+Synchronized resources can be marked as "externally managed" by passing the ``--disallow-edits`` flag to the command. When the flag is passed users won't be able to edit the resources. It's also possible to provide a URL where the resource can be modified, eg, a link to a file in a Github repository. This can be done by passing the ``--external-url-prefix`` flag:
 
 .. code-block:: bash
 
     % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
-    > superset sync native /path/to/directory/ \
+    > superset sync native /path/to/directory/ --disallow-edits \
     > --external-url-prefix=https://github.com/org/project/blob/master/
 
 This way, the file ``dashboards/White_label_test.yaml`` would have an external URL pointing to https://github.com/org/project/blob/master/dashboards/White_label_test.yaml. Currently the URL is not displayed anywhere, but in the near future we should have affordances pointing users to it from the instance UI.
@@ -301,14 +301,14 @@ Running this command will:
 4. Any `metrics <https://docs.getdbt.com/docs/building-a-dbt-project/metrics>`_ will be added to the corresponding datasets.
 5. Every dashboard built on top of the DBT sources and/or models will be synchronized back to DBT as an `exposure <https://docs.getdbt.com/docs/building-a-dbt-project/exposures>`_.
 
-The ``--external-url-prefix`` should point to your DBT docs, so that the resources in the workspace can point to the source of truth where they are being managed.
+The ``--external-url-prefix`` should point to your DBT docs, so that the resources in the workspace can point to the source of truth where they are being managed. Similar to the native sync, the DBT sync also supports the ``--disallow-edits`` flag.
 
 Exporting resources
 -------------------
 
 The CLI can also be used to export all resources (databases, datasets, charts, and dashboards) from a given Preset workspace (using ``preset-cli``) or Superset instance (using ``superset-cli``). This is useful for migrating resources between workspaces, from an existing Superset installation to Preset, or even from Preset to Superset (one of the advantages of Preset is no vendor lock in!).
 
-The run the commmand on a self-hosted Superset instance:
+The run the command on a self-hosted Superset instance:
 
 .. code-block:: bash
 
