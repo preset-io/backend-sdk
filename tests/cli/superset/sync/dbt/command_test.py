@@ -63,10 +63,10 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "default",
         "dev",
         False,
-        True,
+        False,
         "",
     )
-    sync_datasets.assert_called_with(client, manifest, sync_database(), True, "")
+    sync_datasets.assert_called_with(client, manifest, sync_database(), False, "")
     sync_dashboards.assert_called_with(client, exposures, sync_datasets())
 
 
@@ -152,7 +152,7 @@ def test_dbt_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "default",
         "dev",
         False,
-        True,
+        False,
         "",
     )
 

@@ -42,6 +42,7 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     client.create_database.assert_called_with(
         database_name="my_project_dev",
         sqlalchemy_uri="dummy://",
+        is_managed_externally=False,
     )
 
 
@@ -162,7 +163,7 @@ def test_sync_database_external_url_prefix(
         project_name="my_project",
         target_name="dev",
         import_db=True,
-        disallow_edits=False,
+        disallow_edits=True,
         external_url_prefix="https://dbt.example.org/",
     )
 
@@ -170,6 +171,7 @@ def test_sync_database_external_url_prefix(
         database_name="my_project_dev",
         sqlalchemy_uri="dummy://",
         external_url="https://dbt.example.org/#!/overview",
+        is_managed_externally=True,
     )
 
 
@@ -203,6 +205,7 @@ def test_sync_database_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
     client.update_database.assert_called_with(
         database_id=1,
         database_name="my_project_dev",
+        is_managed_externally=False,
     )
 
 
