@@ -5,7 +5,6 @@ Tests for the export command.
 
 from io import BytesIO
 from pathlib import Path
-from unittest import mock
 from zipfile import ZipFile
 
 import pytest
@@ -106,14 +105,7 @@ def test_export(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    export_resource.assert_has_calls(
-        [
-            mock.call("database", Path("/path/to/root"), client, False),
-            mock.call("dataset", Path("/path/to/root"), client, False),
-            mock.call("chart", Path("/path/to/root"), client, False),
-            mock.call("dashboard", Path("/path/to/root"), client, False),
-        ],
-    )
+    export_resource.assert_called_with("assets", root, client, False)
 
 
 def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -136,11 +128,4 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
         obj={"AUTH": Auth()},
     )
     assert result.exit_code == 0
-    export_resource.assert_has_calls(
-        [
-            mock.call("database", Path("/path/to/root"), client, False),
-            mock.call("dataset", Path("/path/to/root"), client, False),
-            mock.call("chart", Path("/path/to/root"), client, False),
-            mock.call("dashboard", Path("/path/to/root"), client, False),
-        ],
-    )
+    export_resource.assert_called_with("assets", root, client, False)

@@ -9,6 +9,7 @@ import click
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.constants import METADATA_FILENAME
 from preset_cli.lib import remove_root
 
 
@@ -34,8 +35,7 @@ def export(  # pylint: disable=too-many-locals
     client = SupersetClient(url, auth)
     root = Path(directory)
 
-    for resource in ["database", "dataset", "chart", "dashboard"]:
-        export_resource(resource, root, client, overwrite)
+    export_resource("assets", root, client, overwrite)
 
 
 def export_resource(
@@ -47,9 +47,7 @@ def export_resource(
     """
     Export a given resource and unzip it in a directory.
     """
-    resources = client.get_resources(resource)
-    ids = [resource["id"] for resource in resources]
-    buf = client.export_zip(resource, ids)
+    buf = client.export_zip(resource)
 
     with ZipFile(buf) as bundle:
         contents = {
@@ -58,8 +56,7 @@ def export_resource(
         }
 
     for file_name, file_contents in contents.items():
-        # skip related files
-        if not file_name.startswith(resource):
+        if file_name == METADATA_FILENAME:
             continue
 
         target = root / file_name

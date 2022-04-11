@@ -184,14 +184,7 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
-    import_resource.assert_has_calls(
-        [
-            mock.call("database", contents, client, False),
-            mock.call("dataset", contents, client, False),
-            mock.call("chart", contents, client, False),
-            mock.call("dashboard", contents, client, False),
-        ],
-    )
+    import_resource.assert_called_with("assets", contents, client, False)
 
 
 def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -252,14 +245,7 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
-    import_resource.assert_has_calls(
-        [
-            mock.call("database", contents, client, False),
-            mock.call("dataset", contents, client, False),
-            mock.call("chart", contents, client, False),
-            mock.call("dashboard", contents, client, False),
-        ],
-    )
+    import_resource.assert_called_with("assets", contents, client, False)
 
 
 def test_load_user_modules(mocker: MockerFixture, fs: FakeFilesystem) -> None:

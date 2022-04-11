@@ -28,6 +28,7 @@ PASSWORD_MASK = "X" * 10
 
 
 resource_types = {
+    "assets": "assets",
     "chart": "Slice",
     "dashboard": "Dashboard",
     "database": "Database",
@@ -119,9 +120,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
 
                 contents[str("bundle" / relative_path)] = yaml.safe_dump(config)
 
-    # TODO (betodealmeida): use endpoint from https://github.com/apache/superset/pull/19220
-    for resource in ["database", "dataset", "chart", "dashboard"]:
-        import_resource(resource, contents, client, overwrite)
+    import_resource("assets", contents, client, overwrite)
 
 
 def prompt_for_passwords(path: Path, config: Dict[str, Any]) -> None:

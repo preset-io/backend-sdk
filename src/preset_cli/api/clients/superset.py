@@ -442,12 +442,12 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
         """
         return self.update_resource("dashboard", dashboard_id, **kwargs)
 
-    def export_zip(self, resource: str, ids: List[int]) -> BytesIO:
+    def export_zip(self, resource: str, ids: Optional[List[int]] = None) -> BytesIO:
         """
         Export one or more of a resource.
         """
         url = self.baseurl / "api/v1" / resource / "export/"
-        params = {"q": prison.dumps(ids)}
+        params = {"q": prison.dumps(ids)} if ids is not None else {}
 
         session = self.auth.get_session()
         headers = self.auth.get_headers()
@@ -466,14 +466,17 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
         """
         url = self.baseurl / "api/v1" / resource / "import/"
 
+        # the key used for ZIP uploads
+        key = "bundle" if resource == "assets" else "formData"
+
         session = self.auth.get_session()
         headers = self.auth.get_headers()
         headers["Referer"] = str(self.baseurl)
         headers["Accept"] = "application/json"
         response = session.post(
             url,
-            files=dict(formData=data),
-            data=dict(overwrite=json.dumps(overwrite)),
+            files={key: data},
+            data={"overwrite": json.dumps(overwrite)},
             headers=headers,
         )
 
