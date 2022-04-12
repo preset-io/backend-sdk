@@ -20,7 +20,8 @@ def build_sqlalchemy_uri(target: Dict[str, Any]) -> URL:
 
     raise Exception(
         f"Unable to build a SQLAlchemy URI for a target of type {type_}. Please file an "
-        "issue at https://github.com/preset-io/backend-sdk/issues/new.",
+        "issue at https://github.com/preset-io/backend-sdk/issues/new?labels=enhancement&"
+        f"title=Backend+for+{type_}.",
     )
 
 
