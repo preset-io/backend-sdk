@@ -45,9 +45,12 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         )
 
     target = outputs[target_name]
-    sqlalchemy_uri = str(build_sqlalchemy_uri(target))
 
-    database_name = f"{project_name}_{target_name}"
+    # read additional metadata that should be applied to the DB
+    meta = target.get("meta", {}).get("superset", {})
+
+    sqlalchemy_uri = meta.pop("sqlalchemy_uri", str(build_sqlalchemy_uri(target)))
+    database_name = meta.pop("database_name", f"{project_name}_{target_name}")
     databases = client.get_databases(
         sqlalchemy_uri=sqlalchemy_uri,
         database_name=database_name,
@@ -56,9 +59,6 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         raise Exception(
             "More than one database with the same SQLAlchemy URI and name found",
         )
-
-    # read additional metadata that should be applied to the DB
-    meta = target.get("meta", {}).get("superset", {})
 
     if base_url and "external_url" not in meta:
         meta["external_url"] = str(base_url.with_fragment("!/overview"))

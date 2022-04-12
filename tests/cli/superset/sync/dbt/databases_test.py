@@ -46,6 +46,56 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
 
+def test_sync_database_new_custom_sqlalchemy_uri(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``sync_database`` when we want to import a new DB.
+    """
+    fs.create_file(
+        "/path/to/.dbt/profiles.yml",
+        contents=yaml.dump(
+            {
+                "my_project": {
+                    "outputs": {
+                        "dev": {
+                            "meta": {
+                                "superset": {
+                                    "sqlalchemy_uri": "sqlite://",
+                                    "database_name": "my_database",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        ),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_uri",
+        return_value="dummy://",
+    )
+    client = mocker.MagicMock()
+    client.get_databases.return_value = []
+
+    sync_database(
+        client=client,
+        profiles_path=Path("/path/to/.dbt/profiles.yml"),
+        project_name="my_project",
+        target_name="dev",
+        import_db=True,
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+
+    client.create_database.assert_called_with(
+        database_name="my_database",
+        sqlalchemy_uri="sqlite://",
+        is_managed_externally=False,
+    )
+
+
 def test_sync_database_no_project(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test ``sync_database`` when the project is invalid.
