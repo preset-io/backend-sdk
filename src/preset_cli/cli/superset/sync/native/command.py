@@ -99,7 +99,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
     queue = [root]
     while queue:
         path_name = queue.pop()
-        if path_name.is_dir():
+        if path_name.is_dir() and not path_name.stem.startswith("."):
             queue.extend(path_name.glob("*"))
         elif path_name.suffix.lower() in YAML_EXTENSIONS:
             with open(path_name, encoding="utf-8") as input_:
