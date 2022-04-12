@@ -298,6 +298,33 @@ def test_workspaces(mocker: MockerFixture) -> None:
     assert obj["WORKSPACES"] == ["https://ws1", "https://ws2"]
 
 
+def test_workspaces_since_workspace(mocker: MockerFixture) -> None:
+    """
+    Test that we don't prompt user for their workspaces if they have only one.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"name": "botafogo", "title": "Alvinegro"}]
+    client.get_workspaces.return_value = [
+        {"workspace_status": "READY", "title": "My Workspace", "hostname": "ws1"},
+    ]
+    parse_workspace_selection = mocker.patch(
+        "preset_cli.cli.main.parse_workspace_selection",
+    )
+
+    runner = CliRunner()
+    obj: Dict[str, Any] = {}
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token", "JWT_TOKEN", "superset", "--help"],
+        catch_exceptions=False,
+        obj=obj,
+    )
+    assert result.exit_code == 0
+    assert obj["WORKSPACES"] == ["https://ws1"]
+    parse_workspace_selection.assert_not_called()
+
+
 def test_workspaces_no_workspaces(mocker: MockerFixture) -> None:
     """
     Test when no workspaces are available.

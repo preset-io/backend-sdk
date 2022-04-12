@@ -175,24 +175,26 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
     if not workspaces and ctx.invoked_subcommand == "superset":
         client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
         click.echo("Choose one or more workspaces (eg: 1-3,5,8-):")
-        i = 1
-        hostnames = {}
+        i = 0
+        hostnames = []
         for team in client.get_teams():
             click.echo(f'\n# {team["title"]} #')
             for workspace in client.get_workspaces(team_name=team["name"]):
                 status = get_status_icon(workspace["workspace_status"])
-                click.echo(f'{status} ({i}) {workspace["title"]}')
-                hostnames[i] = "https://" + workspace["hostname"]
+                click.echo(f'{status} ({i+1}) {workspace["title"]}')
+                hostnames.append("https://" + workspace["hostname"])
                 i += 1
 
-        if i == 1:
+        if i == 0:
             click.echo("No workspaces available")
             sys.exit(1)
+        if i == 1:
+            workspaces = hostnames
 
         while not workspaces:
             try:
-                choices = parse_workspace_selection(input("> "), i - 1)
-                workspaces = [hostnames[choice] for choice in choices]
+                choices = parse_workspace_selection(input("> "), i)
+                workspaces = [hostnames[choice - 1] for choice in choices]
             except Exception:  # pylint: disable=broad-except
                 click.echo("Invalid choice")
 
