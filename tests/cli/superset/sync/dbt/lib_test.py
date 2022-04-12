@@ -49,5 +49,6 @@ def test_build_sqlalchemy_uri_unsupported() -> None:
         build_sqlalchemy_uri(config)
     assert str(excinfo.value) == (
         "Unable to build a SQLAlchemy URI for a target of type mysql. Please file "
-        "an issue at https://github.com/preset-io/backend-sdk/issues/new."
+        "an issue at https://github.com/preset-io/backend-sdk/issues/new?"
+        "labels=enhancement&title=Backend+for+mysql."
     )
