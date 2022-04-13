@@ -3,7 +3,8 @@ Helper functions.
 """
 
 import json
-from typing import Any, Dict
+import os
+from typing import Any, Dict, Optional
 
 from sqlalchemy.engine.url import URL
 
@@ -89,3 +90,14 @@ def build_bigquery_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return parameters
+
+
+def env_var(var: str, default: Optional[str] = None) -> str:
+    """
+    Simplified version of dbt's ``env_var``.
+
+    We need this to load the profile with secrets.
+    """
+    if var not in os.environ and not default:
+        raise Exception(f"Env var required but not provided: '{var}'")
+    return os.environ.get(var, default or "")

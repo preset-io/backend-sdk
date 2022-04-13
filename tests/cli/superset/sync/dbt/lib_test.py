@@ -8,7 +8,7 @@ import json
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
-from preset_cli.cli.superset.sync.dbt.lib import build_sqlalchemy_params
+from preset_cli.cli.superset.sync.dbt.lib import build_sqlalchemy_params, env_var
 
 
 def test_build_sqlalchemy_params_postgres() -> None:
@@ -99,3 +99,16 @@ def test_build_sqlalchemy_params_unsupported() -> None:
         "an issue at https://github.com/preset-io/backend-sdk/issues/new?"
         "labels=enhancement&title=Backend+for+mysql."
     )
+
+
+def test_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Test the ``env_var`` implementation.
+    """
+    monkeypatch.setenv("MY_USER", "Nanna")
+
+    assert env_var("MY_USER") == "Nanna"
+    assert env_var("YOUR_USER", "Jane Doe") == "Jane Doe"
+    with pytest.raises(Exception) as excinfo:
+        env_var("YOUR_USER")
+    assert str(excinfo.value) == "Env var required but not provided: 'YOUR_USER'"
