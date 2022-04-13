@@ -23,8 +23,8 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_uri",
-        return_value="dummy://",
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
+        return_value={"sqlalchemy_uri": "dummy://"},
     )
     client = mocker.MagicMock()
     client.get_databases.return_value = []
@@ -62,7 +62,9 @@ def test_sync_database_new_custom_sqlalchemy_uri(
                         "dev": {
                             "meta": {
                                 "superset": {
-                                    "sqlalchemy_uri": "sqlite://",
+                                    "connection_params": {
+                                        "sqlalchemy_uri": "sqlite://",
+                                    },
                                     "database_name": "my_database",
                                 },
                             },
@@ -73,8 +75,8 @@ def test_sync_database_new_custom_sqlalchemy_uri(
         ),
     )
     mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_uri",
-        return_value="dummy://",
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
+        return_value={"sqlalchemy_uri": "dummy://"},
     )
     client = mocker.MagicMock()
     client.get_databases.return_value = []
@@ -164,8 +166,8 @@ def test_sync_database_multiple_databases(
         contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_uri",
-        return_value="dummy://",
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
+        return_value={"sqlalchemy_uri": "dummy://"},
     )
     client = mocker.MagicMock()
     client.get_databases.return_value = [
@@ -201,8 +203,8 @@ def test_sync_database_external_url_prefix(
         contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_uri",
-        return_value="dummy://",
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
+        return_value={"sqlalchemy_uri": "dummy://"},
     )
     client = mocker.MagicMock()
     client.get_databases.return_value = []
@@ -234,8 +236,8 @@ def test_sync_database_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
         contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_uri",
-        return_value="dummy://",
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
+        return_value={"sqlalchemy_uri": "dummy://"},
     )
     client = mocker.MagicMock()
     client.get_databases.return_value = [
@@ -268,8 +270,8 @@ def test_sync_database_new_no_import(mocker: MockerFixture, fs: FakeFilesystem) 
         contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_uri",
-        return_value="dummy://",
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
+        return_value={"sqlalchemy_uri": "dummy://"},
     )
     client = mocker.MagicMock()
     client.get_databases.return_value = []

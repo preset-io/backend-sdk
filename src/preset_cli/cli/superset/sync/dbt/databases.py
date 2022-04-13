@@ -10,7 +10,7 @@ import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
-from preset_cli.cli.superset.sync.dbt.lib import build_sqlalchemy_uri
+from preset_cli.cli.superset.sync.dbt.lib import build_sqlalchemy_params
 from preset_cli.exceptions import DatabaseNotFoundError
 
 _logger = logging.getLogger(__name__)
@@ -49,10 +49,14 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     # read additional metadata that should be applied to the DB
     meta = target.get("meta", {}).get("superset", {})
 
-    sqlalchemy_uri = meta.pop("sqlalchemy_uri", str(build_sqlalchemy_uri(target)))
+    if "connection_params" in meta:
+        connection_params = meta.pop("connection_params")
+    else:
+        connection_params = build_sqlalchemy_params(target)
+
     database_name = meta.pop("database_name", f"{project_name}_{target_name}")
     databases = client.get_databases(
-        sqlalchemy_uri=sqlalchemy_uri,
+        sqlalchemy_uri=connection_params["sqlalchemy_uri"],
         database_name=database_name,
     )
     if len(databases) > 1:
@@ -78,8 +82,8 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         _logger.info("No database found, creating it")
         database = client.create_database(
             database_name=database_name,
-            sqlalchemy_uri=sqlalchemy_uri,
             is_managed_externally=disallow_edits,
+            **connection_params,
             **meta,
         )
 
