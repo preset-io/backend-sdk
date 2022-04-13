@@ -281,6 +281,80 @@ def test_sync_datasets_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
 
+def test_sync_datasets_new_bq_error(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test ``sync_datasets`` when one of the sources is in a different BQ project.
+
+    When that happens we can't add the dataset, since Superset can't read the metadata.
+    """
+    manifest = Path("/path/to/root/default/target/manifest.json")
+    fs.create_file(manifest, contents=json.dumps(manifest_config))
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [
+        Exception("Table is in a different project"),
+        {"id": 2},
+        {"id": 3},
+    ]
+
+    sync_datasets(
+        client=client,
+        manifest_path=manifest,
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="messages"),
+            mock.call(database=1, schema="public", table_name="channels"),
+            mock.call(database=1, schema="public", table_name="messages_channels"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                2,
+                description="Information about Slack channels",
+                extra=json.dumps(
+                    {
+                        "resource_type": "source",
+                        "unique_id": "source.superset_examples.public.channels",
+                        "depends_on": "source('public', 'channels')",
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                3,
+                description="",
+                extra=json.dumps(
+                    {
+                        "resource_type": "model",
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                3,
+                metrics=[
+                    {
+                        "expression": "count(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "count(*)",
+                        "description": "",
+                    },
+                ],
+            ),
+        ],
+    )
+
+
 def test_sync_datasets_existing(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test ``sync_datasets`` when datasets already exist.

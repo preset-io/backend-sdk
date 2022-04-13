@@ -26,7 +26,7 @@ def get_metric_expression(metric: Dict[str, Any]) -> str:
     return "{type}({sql})".format(**metric)
 
 
-def sync_datasets(  # pylint: disable=too-many-locals
+def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
     client: SupersetClient,
     manifest_path: Path,
     database: Any,
@@ -65,11 +65,15 @@ def sync_datasets(  # pylint: disable=too-many-locals
             _logger.info("Updating dataset %s", config["unique_id"])
         else:
             _logger.info("Creating dataset %s", config["unique_id"])
-            dataset = client.create_dataset(
-                database=database["id"],
-                schema=config["schema"],
-                table_name=config["name"],
-            )
+            try:
+                dataset = client.create_dataset(
+                    database=database["id"],
+                    schema=config["schema"],
+                    table_name=config["name"],
+                )
+            except Exception:  # pylint: disable=broad-except
+                # Superset can't add tables from different BigQuery projects
+                continue
 
         extra = {k: config[k] for k in ["resource_type", "unique_id"]}
         if config["resource_type"] == "source":
