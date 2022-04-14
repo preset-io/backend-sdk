@@ -578,7 +578,7 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "version": 2,
         "exposures": [
             {
-                "name": "Example chart",
+                "name": "Example chart [chart]",
                 "type": "analysis",
                 "maturity": "low",
                 "url": (
@@ -590,7 +590,7 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 "owner": {"name": "admin admin", "email": "unknown"},
             },
             {
-                "name": "Example dashboard",
+                "name": "Example dashboard [dashboard]",
                 "type": "dashboard",
                 "maturity": "low",
                 "url": "https://superset.example.org/superset/dashboard/12/",

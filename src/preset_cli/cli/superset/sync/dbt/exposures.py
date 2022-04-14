@@ -82,7 +82,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
         chart = client.get_chart(chart_id)["result"]
         first_owner = chart["owners"][0]
         exposure = {
-            "name": chart["slice_name"],
+            "name": chart["slice_name"] + " [chart]",
             "type": "analysis",
             "maturity": "high" if chart["certified_by"] else "low",
             "url": str(
@@ -103,7 +103,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
         dashboard = client.get_dashboard(dashboard_id)["result"]
         first_owner = dashboard["owners"][0]
         exposure = {
-            "name": dashboard["dashboard_title"],
+            "name": dashboard["dashboard_title"] + " [dashboard]",
             "type": "dashboard",
             "maturity": "high"
             if dashboard["published"] or dashboard["certified_by"]
