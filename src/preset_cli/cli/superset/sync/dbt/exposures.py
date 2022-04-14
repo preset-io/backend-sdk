@@ -90,7 +90,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
                 / "superset/explore/"
                 % {"form_data": json.dumps({"slice_id": chart_id})},
             ),
-            "description": chart["description"],
+            "description": chart["description"] or "",
             "depends_on": get_chart_depends_on(client, chart),
             "owner": {
                 "name": first_owner["first_name"] + " " + first_owner["last_name"],

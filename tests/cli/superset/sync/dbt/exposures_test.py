@@ -585,7 +585,7 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                     "https://superset.example.org/superset/explore/"
                     "?form_data=%7B%22slice_id%22:+1%7D"
                 ),
-                "description": None,
+                "description": "",
                 "depends_on": ["ref('messages_channels')"],
                 "owner": {"name": "admin admin", "email": "unknown"},
             },
