@@ -37,8 +37,8 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
     )
-    sync_dashboards = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.sync_dashboards",
+    sync_exposures = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
     )
 
     runner = CliRunner()
@@ -67,7 +67,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "",
     )
     sync_datasets.assert_called_with(client, manifest, sync_database(), False, "")
-    sync_dashboards.assert_called_with(client, exposures, sync_datasets())
+    sync_exposures.assert_called_with(client, exposures, sync_datasets())
 
 
 def test_dbt_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -85,8 +85,8 @@ def test_dbt_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_database")
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_datasets")
-    sync_dashboards = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.sync_dashboards",
+    sync_exposures = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
     )
 
     runner = CliRunner()
@@ -103,7 +103,7 @@ def test_dbt_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    sync_dashboards.assert_not_called()
+    sync_exposures.assert_not_called()
 
 
 def test_dbt_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -128,7 +128,7 @@ def test_dbt_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_datasets")
-    mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_dashboards")
+    mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_exposures")
     os = mocker.patch("preset_cli.cli.superset.sync.dbt.command.os")
     os.path.expanduser.return_value = str(profiles)
 

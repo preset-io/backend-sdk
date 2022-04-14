@@ -10,9 +10,9 @@ import click
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
-from preset_cli.cli.superset.sync.dbt.dashboards import sync_dashboards
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
+from preset_cli.cli.superset.sync.dbt.exposures import sync_exposures
 from preset_cli.exceptions import DatabaseNotFoundError
 
 
@@ -88,4 +88,4 @@ def dbt(  # pylint: disable=too-many-arguments
     )
     if exposures:
         exposures = os.path.expanduser(exposures)
-        sync_dashboards(client, Path(exposures), datasets)
+        sync_exposures(client, Path(exposures), datasets)

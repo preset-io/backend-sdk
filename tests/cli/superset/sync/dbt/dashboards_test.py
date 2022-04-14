@@ -1,5 +1,5 @@
 """
-Tests for ``preset_cli.cli.superset.sync.dbt.dashboards``.
+Tests for ``preset_cli.cli.superset.sync.dbt.exposures``.
 """
 # pylint: disable=invalid-name
 
@@ -13,7 +13,11 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 from yarl import URL
 
-from preset_cli.cli.superset.sync.dbt.dashboards import get_depends_on, sync_dashboards
+from preset_cli.cli.superset.sync.dbt.exposures import (
+    get_chart_depends_on,
+    get_dashboard_depends_on,
+    sync_exposures,
+)
 
 dashboard_response: Dict[str, Any] = {
     "result": {
@@ -143,6 +147,139 @@ datasets_response: Dict[str, Any] = {
             "verbose_map": {"__timestamp": "Time", "cnt": "count(*)", "name": "name"},
         },
     ],
+}
+
+chart_response = {
+    "description_columns": {},
+    "id": 1,
+    "label_columns": {
+        "cache_timeout": "Cache Timeout",
+        "certification_details": "Certification Details",
+        "certified_by": "Certified By",
+        "dashboards.dashboard_title": "Dashboards Dashboard Title",
+        "dashboards.id": "Dashboards Id",
+        "dashboards.json_metadata": "Dashboards Json Metadata",
+        "description": "Description",
+        "is_managed_externally": "Is Managed Externally",
+        "owners.first_name": "Owners First Name",
+        "owners.id": "Owners Id",
+        "owners.last_name": "Owners Last Name",
+        "owners.username": "Owners Username",
+        "params": "Params",
+        "query_context": "Query Context",
+        "slice_name": "Slice Name",
+        "viz_type": "Viz Type",
+    },
+    "result": {
+        "cache_timeout": None,
+        "certification_details": None,
+        "certified_by": None,
+        "dashboards": [{"dashboard_title": "Test", "id": 1, "json_metadata": None}],
+        "description": None,
+        "is_managed_externally": False,
+        "owners": [
+            {"first_name": "admin", "id": 1, "last_name": "admin", "username": "admin"},
+        ],
+        "params": json.dumps(
+            {
+                "adhoc_filters": [],
+                "all_columns": ["number_of_orders"],
+                "color_pn": True,
+                "datasource": "1__table",
+                "extra_form_data": {},
+                "granularity_sqla": "first_order_date",
+                "groupby": [],
+                "order_by_cols": [],
+                "order_desc": True,
+                "percent_metrics": [],
+                "query_mode": "raw",
+                "row_limit": 10000,
+                "server_page_length": 10,
+                "show_cell_bars": True,
+                "table_timestamp_format": "smart_date",
+                "time_grain_sqla": "P1D",
+                "time_range": "No filter",
+                "viz_type": "table",
+            },
+        ),
+        "query_context": json.dumps(
+            {
+                "datasource": {"id": 1, "type": "table"},
+                "force": False,
+                "queries": [
+                    {
+                        "time_range": "No filter",
+                        "granularity": "first_order_date",
+                        "filters": [],
+                        "extras": {
+                            "time_grain_sqla": "P1D",
+                            "having": "",
+                            "having_druid": [],
+                            "where": "",
+                        },
+                        "applied_time_extras": {},
+                        "columns": ["number_of_orders"],
+                        "orderby": [],
+                        "annotation_layers": [],
+                        "row_limit": 10000,
+                        "timeseries_limit": 0,
+                        "order_desc": True,
+                        "url_params": {},
+                        "custom_params": {},
+                        "custom_form_data": {},
+                        "post_processing": [],
+                    },
+                ],
+                "form_data": {
+                    "viz_type": "table",
+                    "datasource": "1__table",
+                    "granularity_sqla": "first_order_date",
+                    "time_grain_sqla": "P1D",
+                    "time_range": "No filter",
+                    "query_mode": "raw",
+                    "groupby": [],
+                    "all_columns": ["number_of_orders"],
+                    "percent_metrics": [],
+                    "adhoc_filters": [],
+                    "order_by_cols": [],
+                    "row_limit": 10000,
+                    "server_page_length": 10,
+                    "include_time": False,
+                    "order_desc": True,
+                    "table_timestamp_format": "smart_date",
+                    "show_cell_bars": True,
+                    "color_pn": True,
+                    "extra_form_data": {},
+                    "force": False,
+                    "result_format": "json",
+                    "result_type": "full",
+                },
+                "result_format": "json",
+                "result_type": "full",
+            },
+        ),
+        "slice_name": "Example chart",
+        "viz_type": "pie",
+    },
+    "show_columns": [
+        "cache_timeout",
+        "certified_by",
+        "certification_details",
+        "dashboards.dashboard_title",
+        "dashboards.id",
+        "dashboards.json_metadata",
+        "description",
+        "owners.first_name",
+        "owners.id",
+        "owners.last_name",
+        "owners.username",
+        "params",
+        "slice_name",
+        "viz_type",
+        "query_context",
+        "is_managed_externally",
+    ],
+    "show_title": "Show Slice",
 }
 
 
@@ -341,7 +478,7 @@ dataset_response = {
 related_objects_response = {
     "charts": {
         "count": 1,
-        "result": [{"id": 134, "slice_name": "Example chart", "viz_type": "pie"}],
+        "result": [{"id": 1, "slice_name": "Example chart", "viz_type": "pie"}],
     },
     "dashboards": {
         "count": 1,
@@ -357,22 +494,22 @@ related_objects_response = {
 }
 
 
-def test_get_depends_on(mocker: MockerFixture) -> None:
+def test_get_dashboard_depends_on(mocker: MockerFixture) -> None:
     """
-    Test ``get_depends_on``.
+    Test ``get_dashboard_depends_on``.
     """
     client = mocker.MagicMock()
     client.get_dataset.return_value = dataset_response
     session = client.auth.get_session()
     session.get().json.return_value = datasets_response
 
-    depends_on = get_depends_on(client, dashboard_response["result"])
+    depends_on = get_dashboard_depends_on(client, dashboard_response["result"])
     assert depends_on == ["ref('messages_channels')"]
 
 
-def test_get_depends_on_no_extra(mocker: MockerFixture) -> None:
+def test_get_dashboard_depends_on_no_extra(mocker: MockerFixture) -> None:
     """
-    Test ``get_depends_on``.
+    Test ``get_dashboard_depends_on``.
     """
     client = mocker.MagicMock()
     modified_dataset_response = copy.deepcopy(dataset_response)
@@ -381,13 +518,37 @@ def test_get_depends_on_no_extra(mocker: MockerFixture) -> None:
     session = client.auth.get_session()
     session.get().json.return_value = datasets_response
 
-    depends_on = get_depends_on(client, dashboard_response["result"])
-    assert depends_on == []
+    depends_on = get_dashboard_depends_on(client, dashboard_response["result"])
+    assert not depends_on
 
 
-def test_sync_dashboards(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+def test_get_chart_depends_on(mocker: MockerFixture) -> None:
     """
-    Test ``sync_dashboards``.
+    Test ``get_chart_depends_on``.
+    """
+    client = mocker.MagicMock()
+    client.get_dataset.return_value = dataset_response
+
+    depends_on = get_chart_depends_on(client, chart_response["result"])
+    assert depends_on == ["ref('messages_channels')"]
+
+
+def test_get_chart_depends_on_no_extra(mocker: MockerFixture) -> None:
+    """
+    Test ``get_chart_depends_on``.
+    """
+    client = mocker.MagicMock()
+    modified_dataset_response = copy.deepcopy(dataset_response)
+    modified_dataset_response["result"]["extra"] = None  # type: ignore
+    client.get_dataset.return_value = modified_dataset_response
+
+    depends_on = get_chart_depends_on(client, chart_response["result"])
+    assert not depends_on
+
+
+def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test ``sync_exposures``.
     """
     root = Path("/path/to/root")
     fs.create_dir(root / "models")
@@ -395,22 +556,39 @@ def test_sync_dashboards(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     client = mocker.MagicMock()
     client.baseurl = URL("https://superset.example.org/")
-    client.get_dashboards.return_value = [dashboard_response["result"]]
+    client.get_chart.return_value = chart_response
+    client.get_dashboard.return_value = dashboard_response
     session = client.auth.get_session()
     session.get().json.return_value = related_objects_response
     mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.dashboards.get_depends_on",
+        "preset_cli.cli.superset.sync.dbt.exposures.get_dashboard_depends_on",
+        return_value=["ref('messages_channels')"],
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.exposures.get_chart_depends_on",
         return_value=["ref('messages_channels')"],
     )
 
     datasets = [dataset_response["result"]]
-    sync_dashboards(client, exposures, datasets)
+    sync_exposures(client, exposures, datasets)
 
     with open(exposures, encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
     assert contents == {
         "version": 2,
         "exposures": [
+            {
+                "name": "Example chart",
+                "type": "analysis",
+                "maturity": "low",
+                "url": (
+                    "https://superset.example.org/superset/explore/"
+                    "?form_data=%7B%22slice_id%22:+1%7D"
+                ),
+                "description": None,
+                "depends_on": ["ref('messages_channels')"],
+                "owner": {"name": "admin admin", "email": "unknown"},
+            },
             {
                 "name": "Example dashboard",
                 "type": "dashboard",
@@ -424,12 +602,12 @@ def test_sync_dashboards(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     }
 
 
-def test_sync_dashboards_no_dashboards(
+def test_sync_exposures_no_charts_no_dashboards(
     mocker: MockerFixture,
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test ``sync_dashboards`` when no dashboads use the datasets.
+    Test ``sync_exposures`` when no dashboads use the datasets.
     """
     root = Path("/path/to/root")
     fs.create_dir(root / "models")
@@ -437,12 +615,14 @@ def test_sync_dashboards_no_dashboards(
 
     client = mocker.MagicMock()
     client.baseurl = URL("https://superset.example.org/")
-    client.get_dashboards.return_value = []
     session = client.auth.get_session()
-    session.get().json.return_value = related_objects_response
+    no_related_objects_response = copy.deepcopy(related_objects_response)
+    no_related_objects_response["charts"]["result"] = []
+    no_related_objects_response["dashboards"]["result"] = []
+    session.get().json.return_value = no_related_objects_response
 
     datasets = [dataset_response["result"]]
-    sync_dashboards(client, exposures, datasets)
+    sync_exposures(client, exposures, datasets)
 
     with open(exposures, encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
