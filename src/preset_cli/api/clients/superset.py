@@ -138,7 +138,7 @@ def shortid() -> str:
     return str(uuid.uuid4())[-12:]
 
 
-class SupersetClient:  # pylint: disable=too-few-public-methods
+class SupersetClient:  # pylint: disable=too-many-public-methods
 
     """
     A client for running queries against Superset.
@@ -285,11 +285,11 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
 
         return pd.DataFrame(payload["result"][0]["data"])
 
-    def get_resource(self, resource: str, resource_id: int) -> Any:
+    def get_resource(self, resource_name: str, resource_id: int) -> Any:
         """
         Return a single resource.
         """
-        url = self.baseurl / "api/v1" / resource / str(resource_id)
+        url = self.baseurl / "api/v1" / resource_name / str(resource_id)
 
         session = self.auth.get_session()
         headers = self.auth.get_headers()
@@ -301,7 +301,7 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
 
         return resource
 
-    def get_resources(self, resource: str, **kwargs: Any) -> List[Any]:
+    def get_resources(self, resource_name: str, **kwargs: Any) -> List[Any]:
         """
         Return one or more of a resource, possibly filtered.
         """
@@ -316,7 +316,7 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
                 ],
             },
         )
-        url = self.baseurl / "api/v1" / resource / "" % {"q": query}
+        url = self.baseurl / "api/v1" / resource_name / "" % {"q": query}
 
         session = self.auth.get_session()
         headers = self.auth.get_headers()
@@ -329,11 +329,11 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
 
         return resources
 
-    def create_resource(self, resource: str, **kwargs: Any) -> Any:
+    def create_resource(self, resource_name: str, **kwargs: Any) -> Any:
         """
         Create a resource.
         """
-        url = self.baseurl / "api/v1" / resource / ""
+        url = self.baseurl / "api/v1" / resource_name / ""
 
         session = self.auth.get_session()
         headers = self.auth.get_headers()
@@ -347,7 +347,7 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
 
     def update_resource(
         self,
-        resource: str,
+        resource_name: str,
         resource_id: int,
         query_args: Optional[Dict[str, str]] = None,
         **kwargs: Any,
@@ -355,7 +355,7 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
         """
         Update a resource.
         """
-        url = self.baseurl / "api/v1" / resource / str(resource_id)
+        url = self.baseurl / "api/v1" / resource_name / str(resource_id)
         if query_args:
             url %= query_args
 
@@ -418,6 +418,18 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
         """
         return self.update_resource("dataset", dataset_id, **kwargs)
 
+    def get_chart(self, chart_id: int) -> Any:
+        """
+        Return a single chart.
+        """
+        return self.get_resource("chart", chart_id)
+
+    def get_charts(self, **kwargs: str) -> List[Any]:
+        """
+        Return charts, possibly filtered.
+        """
+        return self.get_resources("chart", **kwargs)
+
     def get_dashboard(self, dashboard_id: int) -> Any:
         """
         Return a single dashboard.
@@ -442,11 +454,11 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
         """
         return self.update_resource("dashboard", dashboard_id, **kwargs)
 
-    def export_zip(self, resource: str, ids: List[int]) -> BytesIO:
+    def export_zip(self, resource_name: str, ids: List[int]) -> BytesIO:
         """
         Export one or more of a resource.
         """
-        url = self.baseurl / "api/v1" / resource / "export/"
+        url = self.baseurl / "api/v1" / resource_name / "export/"
         params = {"q": prison.dumps(ids)}
 
         session = self.auth.get_session()
@@ -460,11 +472,16 @@ class SupersetClient:  # pylint: disable=too-few-public-methods
 
         return BytesIO(response.content)
 
-    def import_zip(self, resource: str, data: BytesIO, overwrite: bool = False) -> bool:
+    def import_zip(
+        self,
+        resource_name: str,
+        data: BytesIO,
+        overwrite: bool = False,
+    ) -> bool:
         """
         Import a ZIP bundle.
         """
-        url = self.baseurl / "api/v1" / resource / "import/"
+        url = self.baseurl / "api/v1" / resource_name / "import/"
 
         session = self.auth.get_session()
         headers = self.auth.get_headers()

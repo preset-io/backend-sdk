@@ -766,7 +766,7 @@ def test_update_resource(requests_mock: Mocker) -> None:
     client = SupersetClient("https://superset.example.org/", auth)
 
     response = client.update_resource(
-        resource="database",
+        resource_name="database",
         resource_id=1,
         database_name="my_other_db",
     )
@@ -792,7 +792,7 @@ def test_update_resource_with_query_args(requests_mock: Mocker) -> None:
     client = SupersetClient("https://superset.example.org/", auth)
 
     response = client.update_resource(
-        resource="database",
+        resource_name="database",
         resource_id=1,
         query_args={"override_columns": "true"},
         database_name="my_other_db",
@@ -917,6 +917,32 @@ def test_update_dataset(mocker: MockerFixture) -> None:
 
     client.update_dataset(1, dataset_name="my_other_db")
     update_resource.assert_called_with("dataset", 1, dataset_name="my_other_db")
+
+
+def test_get_chart(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_chart`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    get_resource = mocker.patch.object(client, "get_resource")
+
+    client.get_chart(1)
+    get_resource.assert_called_with("chart", 1)
+
+
+def test_get_charts(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_charts`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    get_resources = mocker.patch.object(client, "get_resources")
+
+    client.get_charts()
+    get_resources.assert_called_with("chart")
+    client.get_charts(chart_name="my_db")
+    get_resources.assert_called_with("chart", chart_name="my_db")
 
 
 def test_get_dashboard(mocker: MockerFixture) -> None:
