@@ -49,6 +49,13 @@ def load_user_modules(root: Path) -> Dict[str, ModuleType]:
     return modules
 
 
+def raise_helper(message: str, *args: Any) -> None:
+    """
+    Macro for Jinja2 so users can raise exceptions.
+    """
+    raise Exception(message % args)
+
+
 @click.command()
 @click.argument("directory", type=click.Path(exists=True, resolve_path=True))
 @click.option(
@@ -93,6 +100,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
     env = dict(pair.split("=", 1) for pair in option if "=" in pair)  # type: ignore
     env["instance"] = url
     env["functions"] = load_user_modules(root / "functions")
+    env["raise"] = raise_helper
 
     # read all the YAML files
     contents: Dict[str, str] = {}
