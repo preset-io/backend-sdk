@@ -12,6 +12,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 from freezegun import freeze_time
+from jinja2 import Template
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
@@ -20,6 +21,7 @@ from preset_cli.cli.superset.sync.native.command import (
     import_resource,
     load_user_modules,
     prompt_for_passwords,
+    raise_helper,
 )
 from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
 
@@ -285,3 +287,23 @@ def test_load_user_modules(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         ],
     )
     assert importlib.util.module_from_spec.call_count == 1
+
+
+def test_raise_helper() -> None:
+    """
+    Test the ``raise_helper`` macro.
+    """
+    template = Template(
+        """
+{% if i > 0  %}
+{{ i }}
+{% else %}
+{{ raise("Invalid number: %d", i) }}
+{% endif %}
+    """,
+    )
+
+    assert template.render(i=1, **{"raise": raise_helper}) == "\n\n1\n\n    "
+    with pytest.raises(Exception) as excinfo:
+        template.render(i=-1, **{"raise": raise_helper})
+    assert str(excinfo.value) == "Invalid number: -1"
