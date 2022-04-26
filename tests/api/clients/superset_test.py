@@ -20,7 +20,7 @@ from preset_cli.api.clients.superset import (
 )
 from preset_cli.api.operators import OneToMany
 from preset_cli.auth.main import Auth
-from preset_cli.exceptions import SupersetError
+from preset_cli.exceptions import ErrorLevel, SupersetError
 
 
 def test_run_query(requests_mock: Mocker) -> None:
@@ -100,6 +100,8 @@ def test_run_query_error(requests_mock: Mocker) -> None:
     requests_mock.post(
         "https://superset.example.org/superset/sql_json/",
         json={"errors": errors},
+        headers={"Content-Type": "application/json"},
+        status_code=400,
     )
 
     auth = Auth()
@@ -107,7 +109,21 @@ def test_run_query_error(requests_mock: Mocker) -> None:
 
     with pytest.raises(SupersetError) as excinfo:
         client.run_query(database_id=1, sql="SSELECT 1 AS value", limit=10)
-    assert excinfo.value.errors == errors
+    assert excinfo.value.errors == [
+        {
+            "message": "Only SELECT statements are allowed against this database.",
+            "error_type": "DML_NOT_ALLOWED_ERROR",
+            "level": ErrorLevel.ERROR,
+            "extra": {
+                "issue_codes": [
+                    {
+                        "code": 1022,
+                        "message": "Issue 1022 - Database does not allow data manipulation.",
+                    },
+                ],
+            },
+        },
+    ]
 
 
 def test_convert_to_adhoc_metric(mocker: MockerFixture) -> None:
@@ -586,35 +602,40 @@ def test_get_data_parameters(mocker: MockerFixture) -> None:
                     "Referer": "https://superset.example.org/",
                 },
             ),
+            mock.call().ok.__bool__(),
             mock.call().json(),
         ],
     )
 
 
-def test_get_data_time_column_error(mocker: MockerFixture) -> None:
+def test_get_data_time_column_error(requests_mock: Mocker) -> None:
     """
     Test when the time column is ambiguous in ``get_data``.
     """
-    auth = mocker.MagicMock()
-    session = auth.get_session()
-    session.get().json.return_value = {
-        "result": {
-            "columns": [
-                {"column_name": "event_time", "is_dttm": True},
-                {"column_name": "server_time", "is_dttm": True},
-            ],
-            "metrics": [],
-        },
-    }
-    session.post().json.return_value = {
-        "result": [
-            {
-                "data": [{"a": 1}],
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/27",
+        json={
+            "result": {
+                "columns": [
+                    {"column_name": "event_time", "is_dttm": True},
+                    {"column_name": "server_time", "is_dttm": True},
+                ],
+                "metrics": [],
             },
-        ],
-    }
-    mocker.patch("preset_cli.api.clients.superset.uuid4", return_value=1234)
+        },
+    )
+    requests_mock.post(
+        "https://superset.example.org/api/v1/chart/data",
+        json={
+            "result": [
+                {
+                    "data": [{"a": 1}],
+                },
+            ],
+        },
+    )
 
+    auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
     with pytest.raises(Exception) as excinfo:
         client.get_data(27, ["cnt"], ["name"])
@@ -624,24 +645,31 @@ def test_get_data_time_column_error(mocker: MockerFixture) -> None:
     )
 
 
-def test_get_data_error(mocker: MockerFixture) -> None:
+def test_get_data_error(requests_mock: Mocker) -> None:
     """
     Test ``get_data`` with a generic error.
     """
-    auth = mocker.MagicMock()
-    session = auth.get_session()
-    session.get().json.return_value = {
-        "result": {
-            "columns": [],
-            "metrics": [],
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/27",
+        json={
+            "result": {
+                "columns": [],
+                "metrics": [],
+            },
         },
-    }
-    session.post().json.return_value = {"errors": "An error occurred"}
+    )
+    requests_mock.post(
+        "https://superset.example.org/api/v1/chart/data",
+        json={"errors": [{"message": "An error occurred"}]},
+        headers={"Content-Type": "application/json"},
+        status_code=500,
+    )
 
+    auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
     with pytest.raises(SupersetError) as excinfo:
         client.get_data(27, ["cnt"], ["name"], time_column="ts")
-    assert excinfo.value.errors == "An error occurred"
+    assert excinfo.value.errors == [{"message": "An error occurred"}]
 
 
 def test_get_resource(requests_mock: Mocker) -> None:
@@ -1024,7 +1052,8 @@ def test_export_zip_error(requests_mock: Mocker) -> None:
     """
     requests_mock.get(
         "https://superset.example.org/api/v1/database/export/?q=%21%281%2C2%2C3%29",
-        json={"errors": "An error occurred"},
+        json={"errors": [{"message": "An error occurred"}]},
+        headers={"Content-Type": "application/json"},
         status_code=500,
     )
 
@@ -1033,7 +1062,7 @@ def test_export_zip_error(requests_mock: Mocker) -> None:
 
     with pytest.raises(SupersetError) as excinfo:
         client.export_zip("database", [1, 2, 3])
-    assert excinfo.value.errors == "An error occurred"
+    assert excinfo.value.errors == [{"message": "An error occurred"}]
     assert (
         requests_mock.last_request.headers["Referer"] == "https://superset.example.org/"
     )
@@ -1078,7 +1107,8 @@ def test_import_zip_error(requests_mock: Mocker) -> None:
     """
     requests_mock.post(
         "https://superset.example.org/api/v1/database/import/",
-        json={"errors": "An error occurred"},
+        json={"errors": [{"message": "An error occurred"}]},
+        headers={"Content-Type": "application/json"},
         status_code=500,
     )
 
@@ -1088,7 +1118,7 @@ def test_import_zip_error(requests_mock: Mocker) -> None:
     data = BytesIO("I'm a ZIP".encode("utf-8"))
     with pytest.raises(SupersetError) as excinfo:
         client.import_zip("database", data, overwrite=True)
-    assert excinfo.value.errors == "An error occurred"
+    assert excinfo.value.errors == [{"message": "An error occurred"}]
     assert (
         requests_mock.last_request.headers["Referer"] == "https://superset.example.org/"
     )
