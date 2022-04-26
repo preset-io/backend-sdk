@@ -6,12 +6,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import yaml
-from jinja2 import Template
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
-from preset_cli.cli.superset.sync.dbt.lib import build_sqlalchemy_params, env_var
+from preset_cli.cli.superset.sync.dbt.lib import build_sqlalchemy_params, load_profiles
 from preset_cli.exceptions import DatabaseNotFoundError
 
 _logger = logging.getLogger(__name__)
@@ -31,22 +29,9 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     """
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
-    with open(profiles_path, encoding="utf-8") as input_:
-        template = Template(input_.read())
-        content = template.render(env_var=env_var)
-        profiles = yaml.load(content, Loader=yaml.SafeLoader)
-
-    if project_name not in profiles:
-        raise Exception(f"Project {project_name} not found in {profiles_path}")
-
+    profiles = load_profiles(profiles_path, project_name, target_name)
     project = profiles[project_name]
     outputs = project["outputs"]
-
-    if target_name not in outputs:
-        raise Exception(
-            f"Target {target_name} not found in the outputs of {profiles_path}",
-        )
-
     target = outputs[target_name]
 
     # read additional metadata that should be applied to the DB
