@@ -4,11 +4,18 @@ Test for ``preset_cli.cli.superset.sync.dbt.lib``.
 # pylint: disable=invalid-name
 
 import json
+import math
+from pathlib import Path
 
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 
-from preset_cli.cli.superset.sync.dbt.lib import build_sqlalchemy_params, env_var
+from preset_cli.cli.superset.sync.dbt.lib import (
+    as_number,
+    build_sqlalchemy_params,
+    env_var,
+    load_profiles,
+)
 
 
 def test_build_sqlalchemy_params_postgres() -> None:
@@ -112,3 +119,71 @@ def test_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(Exception) as excinfo:
         env_var("YOUR_USER")
     assert str(excinfo.value) == "Env var required but not provided: 'YOUR_USER'"
+
+
+def test_as_number() -> None:
+    """
+    Test ``as_number`` macro.
+    """
+    assert as_number("1.0") == 1
+    assert as_number("1.1") == 1.1
+    assert as_number("2") == 2
+    assert math.isnan(as_number("nan"))
+    with pytest.raises(ValueError) as excinfo:
+        as_number("invalid")
+    assert str(excinfo.value) == "could not convert string to float: 'invalid'"
+
+
+def test_load_profiles(monkeypatch: pytest.MonkeyPatch, fs: FakeFilesystem) -> None:
+    """
+    Test ``load_profiles``.
+    """
+    monkeypatch.setenv("REDSHIFT_HOST", "127.0.0.1")
+    monkeypatch.setenv("REDSHIFT_PORT", "1234")
+    monkeypatch.setenv("REDSHIFT_USER", "username")
+    monkeypatch.setenv("REDSHIFT_PASSWORD", "password123")
+    monkeypatch.setenv("REDSHIFT_DATABASE", "db")
+    monkeypatch.setenv("THREADS", "3")
+
+    path = Path("/path/to/profiles.yml")
+    fs.create_file(
+        path,
+        contents="""
+jaffle_shop:
+  outputs:
+    dev:
+      host: "{{ env_var('REDSHIFT_HOST') | as_text }}"
+      port: "{{ env_var('REDSHIFT_PORT') | as_number }}"
+      user: "{{ env_var('REDSHIFT_USER') }}"
+      pass: "{{ env_var('REDSHIFT_PASSWORD') }}"
+      dbname: "{{ env_var('REDSHIFT_DATABASE') }}"
+      schema: public
+      threads: "{{ env_var('THREADS') | as_native }}"
+      type: postgres
+      enabled: "{{ (target.name == 'prod') | as_bool }}"
+      a_list: [1, 2, 3]
+      a_value: 10
+  target: dev
+    """,
+    )
+
+    assert load_profiles(path, "jaffle_shop", "dev") == {
+        "jaffle_shop": {
+            "outputs": {
+                "dev": {
+                    "host": "127.0.0.1",
+                    "port": 1234,
+                    "user": "username",
+                    "pass": "password123",
+                    "dbname": "db",
+                    "schema": "public",
+                    "threads": 3,
+                    "type": "postgres",
+                    "enabled": False,
+                    "a_list": [1, 2, 3],
+                    "a_value": 10,
+                },
+            },
+            "target": "dev",
+        },
+    }
