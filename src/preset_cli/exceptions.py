@@ -18,7 +18,7 @@ class ErrorLevel(str, Enum):
     ERROR = "error"
 
 
-class ErrorPayload(TypedDict):
+class ErrorPayload(TypedDict, total=False):
     """
     A SIP-40 error payload.
     """

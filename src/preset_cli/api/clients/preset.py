@@ -8,6 +8,7 @@ from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.auth.main import Auth
+from preset_cli.lib import validate_response
 
 
 class PresetClient:  # pylint: disable=too-few-public-methods
@@ -34,7 +35,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         session = self.auth.get_session()
         headers = self.auth.get_headers()
         response = session.get(self.baseurl / "api/v1/teams/", headers=headers)
-        response.raise_for_status()
+        validate_response(response)
 
         payload = response.json()
         teams = payload["payload"]
@@ -51,7 +52,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             self.baseurl / "api/v1/teams" / team_name / "workspaces/",
             headers=headers,
         )
-        response.raise_for_status()
+        validate_response(response)
 
         payload = response.json()
         workspaces = payload["payload"]

@@ -3,6 +3,7 @@ Main entry point for the CLI.
 """
 
 import getpass
+import logging
 import sys
 import webbrowser
 from pathlib import Path
@@ -17,8 +18,11 @@ from yarl import URL
 from preset_cli.api.clients.preset import PresetClient
 from preset_cli.auth.jwt import JWTAuth
 from preset_cli.cli.superset.main import superset
+from preset_cli.lib import setup_logging
 
 CREDENTIALS_FILE = "credentials.yaml"
+
+_logger = logging.getLogger(__name__)
 
 
 def split_comma(  # pylint: disable=unused-argument
@@ -126,6 +130,7 @@ def store_credentials(api_token: str, api_secret: str, credentials_path: Path) -
 @click.option("--api-secret", envvar="PRESET_API_SECRET")
 @click.option("--jwt-token", envvar="PRESET_JWT_TOKEN")
 @click.option("--workspaces", callback=split_comma)
+@click.option("--loglevel", default="INFO")
 @click.pass_context
 def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-arguments
     ctx: click.core.Context,
@@ -134,10 +139,13 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
     api_secret: Optional[str],
     jwt_token: Optional[str],
     workspaces: List[str],
+    loglevel: str,
 ) -> None:
     """
     A CLI for Preset.
     """
+    setup_logging(loglevel)
+
     ctx.ensure_object(dict)
 
     # store manager URL for other commands
@@ -154,7 +162,12 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                     api_token = credentials["api_token"]
                     api_secret = credentials["api_secret"]
                 except Exception:  # pylint: disable=broad-except
-                    click.echo("Couldn't read credentials")
+                    click.echo(
+                        click.style(
+                            "Couldn't read credentials",
+                            fg="bright_red",
+                        ),
+                    )
                     sys.exit(1)
             else:
                 click.echo(
@@ -186,7 +199,12 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                 i += 1
 
         if i == 0:
-            click.echo("No workspaces available")
+            click.echo(
+                click.style(
+                    "No workspaces available",
+                    fg="bright_red",
+                ),
+            )
             sys.exit(1)
         if i == 1:
             workspaces = hostnames
