@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
+from pytest_mock import MockerFixture
 
 from preset_cli.cli.superset.sync.dbt.lib import (
     as_number,
@@ -18,10 +19,11 @@ from preset_cli.cli.superset.sync.dbt.lib import (
 )
 
 
-def test_build_sqlalchemy_params_postgres() -> None:
+def test_build_sqlalchemy_params_postgres(mocker: MockerFixture) -> None:
     """
     Test ``build_sqlalchemy_params`` for PostgreSQL.
     """
+    _logger = mocker.patch("preset_cli.cli.superset.sync.dbt.lib._logger")
     config = {
         "type": "postgres",
         "user": "username",
@@ -33,6 +35,12 @@ def test_build_sqlalchemy_params_postgres() -> None:
     assert build_sqlalchemy_params(config) == {
         "sqlalchemy_uri": "postgresql+psycopg2://username:password123@localhost:5432/db",
     }
+    _logger.warning.assert_not_called()
+    config["search_path"] = "test_schema"
+    build_sqlalchemy_params(config)
+    _logger.warning.assert_called_with(
+        "Specifying a search path is not supported in Apache Superset",
+    )
 
 
 def test_build_sqlalchemy_params_bigquery(fs: FakeFilesystem) -> None:
