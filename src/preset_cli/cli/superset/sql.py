@@ -52,6 +52,9 @@ def sql(  # pylint: disable=too-many-arguments
         click.echo("No databases available")
         return None
 
+    if len(databases) == 1 and database_id is None:
+        database_id = databases[0]["id"]
+
     if database_id is None:
         click.echo("Choose the ID of a database to connect to:")
         for database in sorted(databases, key=itemgetter("id")):

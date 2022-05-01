@@ -370,3 +370,30 @@ def test_sql_choose_database(mocker: MockerFixture) -> None:
     )
     assert result.exit_code == 0
     run_query.assert_called_with(client, 1, "SELECT 1")
+
+
+def test_sql_single_database(mocker: MockerFixture) -> None:
+    """
+    Test the ``sql`` command when there's a single database available.
+    """
+    SupersetClient = mocker.patch("preset_cli.cli.superset.sql.SupersetClient")
+    client = SupersetClient()
+    client.get_databases.return_value = [
+        {"id": 1, "database_name": "GSheets"},
+    ]
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    run_query = mocker.patch("preset_cli.cli.superset.sql.run_query")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sql",
+            "-e",
+            "SELECT 1",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    run_query.assert_called_with(client, 1, "SELECT 1")
