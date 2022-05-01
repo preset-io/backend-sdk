@@ -149,7 +149,13 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         self.baseurl = URL(baseurl)
         self.auth = auth
 
-    def run_query(self, database_id: int, sql: str, limit: int = 1000) -> pd.DataFrame:
+    def run_query(
+        self,
+        database_id: int,
+        sql: str,
+        schema: Optional[str] = None,
+        limit: int = 1000,
+    ) -> pd.DataFrame:
         """
         Run a SQL query, returning a Pandas dataframe.
         """
@@ -159,7 +165,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             "database_id": database_id,
             "json": True,
             "runAsync": False,
-            "schema": None,
+            "schema": schema,
             "sql": sql,
             "sql_editor_id": "1",
             "tab": "Untitled Query 2",
