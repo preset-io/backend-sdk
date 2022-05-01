@@ -4,6 +4,7 @@ Helper functions.
 
 import ast
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional, TypedDict, Union
@@ -12,6 +13,8 @@ import yaml
 from jinja2 import Environment
 from sqlalchemy.engine.url import URL
 
+_logger = logging.getLogger(__name__)
+
 
 def build_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -19,7 +22,7 @@ def build_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
     """
     type_ = target.get("type")
 
-    if type_ == "postgres":
+    if type_ in {"postgres", "redshift"}:
         return build_postgres_sqlalchemy_params(target)
     if type_ == "bigquery":
         return build_bigquery_sqlalchemy_params(target)
@@ -35,11 +38,16 @@ def build_postgres_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build the SQLAlchemy URI for a Postgres target.
     """
+    if "search_path" in target:
+        _logger.warning("Specifying a search path is not supported in Apache Superset")
+
     username = target["user"]
     password = target["pass"] or None
     host = target["host"]
     port = target["port"]
     dbname = target["dbname"]
+
+    query = {"sslmode": target["sslmode"]} if "sslmode" in target else None
 
     return {
         "sqlalchemy_uri": str(
@@ -50,6 +58,7 @@ def build_postgres_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
                 host=host,
                 port=port,
                 database=dbname,
+                query=query,
             ),
         ),
     }

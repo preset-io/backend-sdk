@@ -183,7 +183,7 @@ def import_resource(
         existing = [
             key
             for error in ex.errors
-            for key, value in error["extra"].items()
+            for key, value in error.get("extra", {}).items()
             if "overwrite=true" in value
         ]
         if not existing:

@@ -49,7 +49,7 @@ from yarl import URL
 from preset_cli import __version__
 from preset_cli.api.operators import Equal, Operator
 from preset_cli.auth.main import Auth
-from preset_cli.exceptions import SupersetError
+from preset_cli.lib import validate_response
 
 
 class GenericDataType(IntEnum):
@@ -179,9 +179,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         session = self.auth.get_session()
         response = session.post(url, json=data, headers=headers)
+        validate_response(response)
+
         payload = response.json()
-        if payload.get("errors"):
-            raise SupersetError(errors=payload["errors"])
 
         return pd.DataFrame(payload["data"])
 
@@ -279,9 +279,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         session = self.auth.get_session()
         response = session.post(url, json=data, headers=headers)
+        validate_response(response)
+
         payload = response.json()
-        if payload.get("errors"):
-            raise SupersetError(errors=payload["errors"])
 
         return pd.DataFrame(payload["result"][0]["data"])
 
@@ -295,7 +295,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         headers = self.auth.get_headers()
         headers["Referer"] = str(self.baseurl)
         response = session.get(url, headers=headers)
-        response.raise_for_status()
+        validate_response(response)
 
         resource = response.json()
 
@@ -322,7 +322,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         headers = self.auth.get_headers()
         headers["Referer"] = str(self.baseurl)
         response = session.get(url, headers=headers)
-        response.raise_for_status()
+        validate_response(response)
 
         payload = response.json()
         resources = payload["result"]
@@ -339,7 +339,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         headers = self.auth.get_headers()
         headers["Referer"] = str(self.baseurl)
         response = session.post(url, json=kwargs, headers=headers)
-        response.raise_for_status()
+        validate_response(response)
 
         resource = response.json()
 
@@ -363,7 +363,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         headers = self.auth.get_headers()
         headers["Referer"] = str(self.baseurl)
         response = session.put(url, json=kwargs, headers=headers)
-        response.raise_for_status()
+        validate_response(response)
 
         resource = response.json()
 
@@ -465,10 +465,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         headers = self.auth.get_headers()
         headers["Referer"] = str(self.baseurl)
         response = session.get(url, params=params, headers=headers)
-
-        if not response.ok:
-            payload = response.json()
-            raise SupersetError(errors=payload["errors"])
+        validate_response(response)
 
         return BytesIO(response.content)
 
@@ -493,10 +490,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             data=dict(overwrite=json.dumps(overwrite)),
             headers=headers,
         )
+        validate_response(response)
 
         payload = response.json()
-
-        if payload.get("errors"):
-            raise SupersetError(errors=payload["errors"])
 
         return payload["message"] == "OK"
