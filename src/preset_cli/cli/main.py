@@ -6,21 +6,21 @@ import getpass
 import logging
 import sys
 import webbrowser
-from pathlib import Path
 from typing import List, Optional, cast
 
 import click
-import requests
 import yaml
-from appdirs import user_config_dir
 from yarl import URL
 
 from preset_cli.api.clients.preset import PresetClient
 from preset_cli.auth.jwt import JWTAuth
+from preset_cli.auth.lib import (
+    get_access_token,
+    get_credentials_path,
+    store_credentials,
+)
 from preset_cli.cli.superset.main import superset
 from preset_cli.lib import setup_logging
-
-CREDENTIALS_FILE = "credentials.yaml"
 
 _logger = logging.getLogger(__name__)
 
@@ -85,45 +85,6 @@ def parse_workspace_selection(selection: str, count: int) -> List[int]:
     return numbers
 
 
-def get_access_token(baseurl: URL, api_token: str, api_secret: str) -> str:
-    """
-    Fetch the JWT access token.
-    """
-    response = requests.post(
-        baseurl / "api/v1/auth/",
-        json={"name": api_token, "secret": api_secret},
-        headers={"Content-Type": "application/json"},
-    )
-    payload = response.json()
-    return payload["payload"]["access_token"]
-
-
-def get_credentials_path() -> Path:
-    """
-    Return the system-dependent location of the credentials.
-    """
-    config_dir = Path(user_config_dir("preset-cli", "Preset"))
-    return config_dir / CREDENTIALS_FILE
-
-
-def store_credentials(api_token: str, api_secret: str, credentials_path: Path) -> None:
-    """
-    Store credentials.
-    """
-    credentials_path.parent.mkdir(parents=True, exist_ok=True)
-
-    while True:
-        store = input(f"Store the credentials in {credentials_path}? [y/N] ")
-        if store.strip().lower() == "y":
-            with open(credentials_path, "w", encoding="utf-8") as output:
-                yaml.safe_dump(dict(api_token=api_token, api_secret=api_secret), output)
-            credentials_path.chmod(0o600)
-            break
-
-        if store.strip().lower() in ("n", ""):
-            break
-
-
 @click.group()
 @click.option("--baseurl", default="https://manage.app.preset.io/")
 @click.option("--api-token", envvar="PRESET_API_TOKEN")
@@ -176,7 +137,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                 webbrowser.open(str(manager_url / "app/user"))
                 api_token = input("API token: ")
                 api_secret = getpass.getpass("API secret: ")
-                store_credentials(api_token, api_secret, credentials_path)
+                store_credentials(api_token, api_secret, manager_url, credentials_path)
 
         api_token = cast(str, api_token)
         api_secret = cast(str, api_secret)
@@ -253,7 +214,7 @@ def auth(baseurl: str, overwrite: bool = False) -> None:
     api_token = input("API token: ")
     api_secret = getpass.getpass("API secret: ")
 
-    store_credentials(api_token, api_secret, credentials_path)
+    store_credentials(api_token, api_secret, manager_url, credentials_path)
     click.echo(f"Credentials stored in {credentials_path}")
 
 
