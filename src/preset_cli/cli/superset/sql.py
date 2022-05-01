@@ -33,11 +33,17 @@ style = style_from_pygments_cls(get_style_by_name("stata-dark"))
     help="Database ID (leave empty for options)",
     type=click.INT,
 )
+@click.option(
+    "--schema",
+    default=None,
+    help="Schema",
+)
 @click.option("-e", "--execute", default=None, help="Run query non-interactively")
 @click.pass_context
 def sql(  # pylint: disable=too-many-arguments
     ctx: click.core.Context,
     database_id: Optional[int],
+    schema: Optional[str] = None,
     execute: Optional[str] = None,
 ) -> None:
     """
@@ -76,17 +82,22 @@ def sql(  # pylint: disable=too-many-arguments
     ][0]
 
     if execute:
-        return run_query(client, database_id, execute)
+        return run_query(client, database_id, schema, execute)
 
-    return run_session(client, database_id, database_name, url)
+    return run_session(client, database_id, database_name, schema, url)
 
 
-def run_query(client: SupersetClient, database_id: int, query: str) -> None:
+def run_query(
+    client: SupersetClient,
+    database_id: int,
+    schema: Optional[str],
+    query: str,
+) -> None:
     """
     Run a query in a given database.
     """
     try:
-        results = client.run_query(database_id, query)
+        results = client.run_query(database_id, query, schema)
         click.echo(tabulate(results, headers=results.columns, showindex=False))
     except SupersetError as ex:
         click.echo(
@@ -103,6 +114,7 @@ def run_session(
     client: SupersetClient,
     database_id: int,
     database_name: str,
+    schema: Optional[str],
     url: URL,
 ) -> None:
     """
@@ -138,7 +150,7 @@ def run_session(
 
         is_terminated, quote_context = get_query_termination(query)
         if is_terminated:
-            run_query(client, database_id, query)
+            run_query(client, database_id, schema, query)
             lines = []
             quote_context = " "
 

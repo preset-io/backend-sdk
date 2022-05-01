@@ -25,8 +25,8 @@ def test_run_query(mocker: MockerFixture) -> None:
     client.run_query.return_value = pd.DataFrame([{"answer": 42}])
     click = mocker.patch("preset_cli.cli.superset.sql.click")
 
-    run_query(client=client, database_id=1, query="SELECT 42 AS answer")
-    client.run_query.assert_called_with(1, "SELECT 42 AS answer")
+    run_query(client=client, database_id=1, schema=None, query="SELECT 42 AS answer")
+    client.run_query.assert_called_with(1, "SELECT 42 AS answer", None)
     click.echo.assert_called_with("  answer\n--------\n      42")
 
 
@@ -54,7 +54,7 @@ def test_run_query_superset_error(mocker: MockerFixture) -> None:
     )
     click = mocker.patch("preset_cli.cli.superset.sql.click")
 
-    run_query(client=client, database_id=1, query="SSELECT 1")
+    run_query(client=client, database_id=1, schema=None, query="SSELECT 1")
     click.style.assert_called_with(
         "Only SELECT statements are allowed against this database.",
         fg="bright_red",
@@ -69,7 +69,7 @@ def test_run_query_exception(mocker: MockerFixture) -> None:
     client.run_query.side_effect = Exception("Unexpected error")
     traceback = mocker.patch("preset_cli.cli.superset.sql.traceback")
 
-    run_query(client=client, database_id=1, query="SSELECT 1")
+    run_query(client=client, database_id=1, schema=None, query="SSELECT 1")
     traceback.print_exc.assert_called_with()
 
 
@@ -93,6 +93,7 @@ def test_run_session(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client=client,
         database_id=1,
         database_name="GSheets",
+        schema=None,
         url=URL("https://superset.example.org/"),
     )
     result = stdout.getvalue()
@@ -137,6 +138,7 @@ def test_run_session_multiple_commands(
         client=client,
         database_id=1,
         database_name="GSheets",
+        schema=None,
         url=URL("https://superset.example.org/"),
     )
     result = stdout.getvalue()
@@ -177,6 +179,7 @@ def test_run_session_multiline(mocker: MockerFixture, fs: FakeFilesystem) -> Non
         client=client,
         database_id=1,
         database_name="GSheets",
+        schema=None,
         url=URL("https://superset.example.org/"),
     )
     result = stdout.getvalue()
@@ -212,6 +215,7 @@ def test_run_session_ctrl_c(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client=client,
         database_id=1,
         database_name="GSheets",
+        schema=None,
         url=URL("https://superset.example.org/"),
     )
     result = stdout.getvalue()
@@ -246,6 +250,7 @@ def test_run_session_history_exists(mocker: MockerFixture, fs: FakeFilesystem) -
         client=client,
         database_id=1,
         database_name="GSheets",
+        schema=None,
         url=URL("https://superset.example.org/"),
     )
     result = stdout.getvalue()
@@ -283,7 +288,7 @@ def test_sql_run_query(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    run_query.assert_called_with(client, 1, "SELECT 1")
+    run_query.assert_called_with(client, 1, None, "SELECT 1")
 
 
 def test_sql_run_session(mocker: MockerFixture) -> None:
@@ -312,6 +317,7 @@ def test_sql_run_session(mocker: MockerFixture) -> None:
         client,
         1,
         "GSheets",
+        None,
         URL("https://superset.example.org/"),
     )
 
@@ -369,7 +375,7 @@ def test_sql_choose_database(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    run_query.assert_called_with(client, 1, "SELECT 1")
+    run_query.assert_called_with(client, 1, None, "SELECT 1")
 
 
 def test_sql_single_database(mocker: MockerFixture) -> None:
@@ -396,4 +402,4 @@ def test_sql_single_database(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    run_query.assert_called_with(client, 1, "SELECT 1")
+    run_query.assert_called_with(client, 1, None, "SELECT 1")
