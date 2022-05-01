@@ -196,6 +196,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         dataset_id: int,
         metrics: List[str],
         columns: List[str],
+        order_by: Optional[List[str]] = None,
+        order_desc: bool = True,
         is_timeseries: bool = False,
         time_column: Optional[str] = None,
         start: Optional[datetime] = None,
@@ -245,6 +247,14 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             for column in columns
         ]
 
+        # and order bys
+        processed_orderbys = [
+            (orderby, not order_desc)
+            if orderby in metric_names
+            else (convert_to_adhoc_metric(orderby), not order_desc)
+            for orderby in (order_by or [])
+        ]
+
         url = self.baseurl / "api/v1/chart/data"
         data: Dict[str, Any] = {
             "datasource": {"id": dataset_id, "type": "table"},
@@ -260,8 +270,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     "filters": [],
                     "is_timeseries": is_timeseries,
                     "metrics": processed_metrics,
-                    "order_desc": True,
-                    "orderby": [],
+                    "order_desc": order_desc,
+                    "orderby": processed_orderbys,
                     "row_limit": row_limit,
                     "time_range": time_range,
                     "timeseries_limit": 0,
@@ -271,6 +281,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             "result_format": "json",
             "result_type": "full",
         }
+
         if is_timeseries:
             data["queries"][0]["granularity"] = time_column
             data["queries"][0]["extras"]["time_grain_sqla"] = granularity
