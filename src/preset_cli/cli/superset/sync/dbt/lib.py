@@ -145,9 +145,12 @@ def load_profiles(path: Path, project_name: str, target_name: str) -> Dict[str, 
     with open(path, encoding="utf-8") as input_:
         profiles = yaml.load(input_, Loader=yaml.SafeLoader)
 
-    if project_name not in profiles:
+    if project_name in profiles:
+        project = profiles[project_name]
+    elif "default" in profiles:
+        project = profiles["default"]
+    else:
         raise Exception(f"Project {project_name} not found in {path}")
-    project = profiles[project_name]
     outputs = project["outputs"]
     if target_name not in outputs:
         raise Exception(f"Target {target_name} not found in the outputs of {path}")
