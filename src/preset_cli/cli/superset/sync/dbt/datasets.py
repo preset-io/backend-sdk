@@ -70,12 +70,6 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
                     database=database["id"],
                     schema=config["schema"],
                     table_name=config["name"],
-                    # extra=json.dumps({
-                    #    "certification": {
-                    #        "certified_by": "Data Platform Team",
-                    #        "details": "This table is produced by dbt.",
-                    #    }
-                    # }),
                 )
             except Exception:  # pylint: disable=broad-except
                 # Superset can't add tables from different BigQuery projects
@@ -86,6 +80,11 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
             extra["depends_on"] = "source('{schema}', '{name}')".format(**config)
         else:  # config["resource_type"] == "model"
             extra["depends_on"] = "ref('{name}')".format(**config)
+
+        # certification info
+        extra["certification"] = {
+            "details": "This table is produced by dbt",
+        }
 
         dataset_metrics = []
         if config["resource_type"] == "model":
