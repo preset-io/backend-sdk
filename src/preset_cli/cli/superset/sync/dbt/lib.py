@@ -44,7 +44,7 @@ def build_postgres_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         _logger.warning("Specifying a search path is not supported in Apache Superset")
 
     username = target["user"]
-    password = target["password"] or None
+    password = target.get("password") or target.get("pass")
     host = target["host"]
     port = target["port"]
     dbname = target["dbname"]

@@ -509,11 +509,26 @@ def test_get_dashboard_depends_on(mocker: MockerFixture) -> None:
 
 def test_get_dashboard_depends_on_no_extra(mocker: MockerFixture) -> None:
     """
-    Test ``get_dashboard_depends_on``.
+    Test ``get_dashboard_depends_on`` without an extra payload.
     """
     client = mocker.MagicMock()
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = None  # type: ignore
+    client.get_dataset.return_value = modified_dataset_response
+    session = client.auth.get_session()
+    session.get().json.return_value = datasets_response
+
+    depends_on = get_dashboard_depends_on(client, dashboard_response["result"])
+    assert not depends_on
+
+
+def test_get_dashboard_depends_on_invalid_extra(mocker: MockerFixture) -> None:
+    """
+    Test ``get_dashboard_depends_on`` when the extra payload is not JSON.
+    """
+    client = mocker.MagicMock()
+    modified_dataset_response = copy.deepcopy(dataset_response)
+    modified_dataset_response["result"]["extra"] = "{[("  # type: ignore
     client.get_dataset.return_value = modified_dataset_response
     session = client.auth.get_session()
     session.get().json.return_value = datasets_response
@@ -535,7 +550,7 @@ def test_get_chart_depends_on(mocker: MockerFixture) -> None:
 
 def test_get_chart_depends_on_no_extra(mocker: MockerFixture) -> None:
     """
-    Test ``get_chart_depends_on``.
+    Test ``get_chart_depends_on`` without an extra payload.
     """
     client = mocker.MagicMock()
     modified_dataset_response = copy.deepcopy(dataset_response)

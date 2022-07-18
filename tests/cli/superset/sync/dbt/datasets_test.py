@@ -234,6 +234,7 @@ def test_sync_datasets_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                         "resource_type": "source",
                         "unique_id": "source.superset_examples.public.messages",
                         "depends_on": "source('public', 'messages')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
@@ -247,6 +248,7 @@ def test_sync_datasets_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                         "resource_type": "source",
                         "unique_id": "source.superset_examples.public.channels",
                         "depends_on": "source('public', 'channels')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
@@ -260,6 +262,7 @@ def test_sync_datasets_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                         "resource_type": "model",
                         "unique_id": "model.superset_examples.messages_channels",
                         "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
@@ -321,6 +324,7 @@ def test_sync_datasets_new_bq_error(mocker: MockerFixture, fs: FakeFilesystem) -
                         "resource_type": "source",
                         "unique_id": "source.superset_examples.public.channels",
                         "depends_on": "source('public', 'channels')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
@@ -334,6 +338,7 @@ def test_sync_datasets_new_bq_error(mocker: MockerFixture, fs: FakeFilesystem) -
                         "resource_type": "model",
                         "unique_id": "model.superset_examples.messages_channels",
                         "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
@@ -382,6 +387,7 @@ def test_sync_datasets_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
                         "resource_type": "source",
                         "unique_id": "source.superset_examples.public.messages",
                         "depends_on": "source('public', 'messages')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
@@ -395,6 +401,7 @@ def test_sync_datasets_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
                         "resource_type": "source",
                         "unique_id": "source.superset_examples.public.channels",
                         "depends_on": "source('public', 'channels')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
@@ -408,6 +415,7 @@ def test_sync_datasets_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
                         "resource_type": "model",
                         "unique_id": "model.superset_examples.messages_channels",
                         "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
@@ -479,13 +487,14 @@ def test_sync_datasets_external_url(mocker: MockerFixture, fs: FakeFilesystem) -
                         "resource_type": "source",
                         "unique_id": "source.superset_examples.public.messages",
                         "depends_on": "source('public', 'messages')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
                 metrics=[],
                 external_url=(
-                    "https://dbt.example.org/#!/source/"
-                    "source.superset_examples.public.messages"
+                    "https://dbt.example.org/#!"
+                    "/source/source.superset_examples.public.messages"
                 ),
             ),
             mock.call(
@@ -496,13 +505,14 @@ def test_sync_datasets_external_url(mocker: MockerFixture, fs: FakeFilesystem) -
                         "resource_type": "source",
                         "unique_id": "source.superset_examples.public.channels",
                         "depends_on": "source('public', 'channels')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
                 metrics=[],
                 external_url=(
-                    "https://dbt.example.org/#!/source/"
-                    "source.superset_examples.public.channels"
+                    "https://dbt.example.org/#!"
+                    "/source/source.superset_examples.public.channels"
                 ),
             ),
             mock.call(
@@ -513,13 +523,14 @@ def test_sync_datasets_external_url(mocker: MockerFixture, fs: FakeFilesystem) -
                         "resource_type": "model",
                         "unique_id": "model.superset_examples.messages_channels",
                         "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
                 is_managed_externally=False,
                 metrics=[],
                 external_url=(
-                    "https://dbt.example.org/#!/model/"
-                    "model.superset_examples.messages_channels"
+                    "https://dbt.example.org/#!"
+                    "/model/model.superset_examples.messages_channels"
                 ),
             ),
             mock.call(
