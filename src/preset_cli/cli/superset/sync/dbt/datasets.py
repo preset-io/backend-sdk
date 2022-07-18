@@ -53,7 +53,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
     for config in configs:
         filters = {
             "database": OneToMany(database["id"]),
-            "schema": config["schema"],
+            # "schema": config["schema"],
             "table_name": config["name"],
         }
         existing = client.get_datasets(**filters)
