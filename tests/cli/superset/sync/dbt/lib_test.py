@@ -27,7 +27,7 @@ def test_build_sqlalchemy_params_postgres(mocker: MockerFixture) -> None:
     config = {
         "type": "postgres",
         "user": "username",
-        "pass": "password123",
+        "password": "password123",
         "host": "localhost",
         "port": 5432,
         "dbname": "db",
@@ -100,6 +100,27 @@ def test_build_sqlalchemy_params_bigquery_no_keyfile() -> None:
         str(excinfo.value)
         == "Only service account auth is supported, you MUST pass `keyfile`."
     )
+
+
+def test_build_snowflake_sqlalchemy_params() -> None:
+    """
+    Test ``build_snowflake_sqlalchemy_params`` for Snowflake.
+    """
+    config = {
+        "type": "snowflake",
+        "account": "abc123.eu-west-1.aws",
+        "user": "jdoe",
+        "password": "secret",
+        "role": "admin",
+        "database": "default",
+        "warehouse": "dunder-mifflin",
+    }
+    assert build_sqlalchemy_params(config) == {
+        "sqlalchemy_uri": (
+            "snowflake://jdoe:secret@abc123.eu-west-1.aws/default?"
+            "role=admin&warehouse=dunder-mifflin"
+        ),
+    }
 
 
 def test_build_sqlalchemy_params_unsupported() -> None:

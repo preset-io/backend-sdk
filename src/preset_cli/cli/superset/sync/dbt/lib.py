@@ -26,6 +26,8 @@ def build_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         return build_postgres_sqlalchemy_params(target)
     if type_ == "bigquery":
         return build_bigquery_sqlalchemy_params(target)
+    if type_ == "snowflake":
+        return build_snowflake_sqlalchemy_params(target)
 
     raise Exception(
         f"Unable to build a SQLAlchemy URI for a target of type {type_}. Please file an "
@@ -42,7 +44,7 @@ def build_postgres_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         _logger.warning("Specifying a search path is not supported in Apache Superset")
 
     username = target["user"]
-    password = target["pass"] or None
+    password = target["password"] or None
     host = target["host"]
     port = target["port"]
     dbname = target["dbname"]
@@ -103,6 +105,30 @@ def build_bigquery_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return parameters
+
+
+def build_snowflake_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build the SQLAlchemy URI for a Snowflake target.
+    """
+    username = target["user"]
+    password = target["password"] or None
+    database = target["database"]
+    host = target["account"]
+    query = {"role": target["role"], "warehouse": target["warehouse"]}
+
+    return {
+        "sqlalchemy_uri": str(
+            URL(
+                drivername="snowflake",
+                username=username,
+                password=password,
+                host=host,
+                database=database,
+                query=query,
+            ),
+        ),
+    }
 
 
 def env_var(var: str, default: Optional[str] = None) -> str:
