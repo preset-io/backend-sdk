@@ -70,6 +70,12 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
                     database=database["id"],
                     schema=config["schema"],
                     table_name=config["name"],
+                    # extra=json.dumps({
+                    #    "certification": {
+                    #        "certified_by": "Data Platform Team",
+                    #        "details": "This table is produced by dbt.",
+                    #    }
+                    # }),
                 )
             except Exception:  # pylint: disable=broad-except
                 # Superset can't add tables from different BigQuery projects

@@ -44,7 +44,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
 
     database_name = meta.pop("database_name", f"{project_name}_{target_name}")
     databases = client.get_databases(
-        sqlalchemy_uri=connection_params["sqlalchemy_uri"],
+        # sqlalchemy_uri=connection_params["sqlalchemy_uri"],
         database_name=database_name,
     )
     if len(databases) > 1:
