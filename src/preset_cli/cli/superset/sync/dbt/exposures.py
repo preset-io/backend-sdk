@@ -45,7 +45,10 @@ def get_dashboard_depends_on(client: SupersetClient, dashboard: Any) -> List[str
     depends_on = []
     for dataset in payload["result"]:
         full_dataset = client.get_dataset(int(dataset["id"]))
-        extra = json.loads(full_dataset["result"]["extra"] or "{}")
+        try:
+            extra = json.loads(full_dataset["result"]["extra"] or "{}")
+        except json.decoder.JSONDecodeError:
+            extra = {}
         if "depends_on" in extra:
             depends_on.append(extra["depends_on"])
 
