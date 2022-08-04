@@ -272,10 +272,10 @@ def test_sync_datasets_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 3,
                 metrics=[
                     {
-                        "expression": "count(*)",
+                        "expression": "COUNT(*)",
                         "metric_name": "cnt",
                         "metric_type": "count",
-                        "verbose_name": "count(*)",
+                        "verbose_name": "cnt",
                         "description": "",
                     },
                 ],
@@ -348,10 +348,10 @@ def test_sync_datasets_new_bq_error(mocker: MockerFixture, fs: FakeFilesystem) -
                 3,
                 metrics=[
                     {
-                        "expression": "count(*)",
+                        "expression": "COUNT(*)",
                         "metric_name": "cnt",
                         "metric_type": "count",
-                        "verbose_name": "count(*)",
+                        "verbose_name": "cnt",
                         "description": "",
                     },
                 ],
@@ -425,10 +425,10 @@ def test_sync_datasets_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
                 3,
                 metrics=[
                     {
-                        "expression": "count(*)",
+                        "expression": "COUNT(*)",
                         "metric_name": "cnt",
                         "metric_type": "count",
-                        "verbose_name": "count(*)",
+                        "verbose_name": "cnt",
                         "description": "",
                     },
                 ],
@@ -537,10 +537,10 @@ def test_sync_datasets_external_url(mocker: MockerFixture, fs: FakeFilesystem) -
                 3,
                 metrics=[
                     {
-                        "expression": "count(*)",
+                        "expression": "COUNT(*)",
                         "metric_name": "cnt",
                         "metric_type": "count",
-                        "verbose_name": "count(*)",
+                        "verbose_name": "cnt",
                         "description": "",
                     },
                 ],

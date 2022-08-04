@@ -4,7 +4,7 @@ preset-cli
 
     A CLI to interact with Preset workspaces.
 
-This tool is a command line interface (CLI) to interact with your Preset workspaces. Currently it can be used to sync resources (databases, datasets, charts, dashboards) from source control, either in native format or from a `DBT <https://www.getdbt.com/>`_ project. It can also be used to run SQL against any database in any workspace. In the future, the CLI will also allow you to manage your workspaces and users.
+This tool is a command line interface (CLI) to interact with your Preset workspaces. Currently it can be used to sync resources (databases, datasets, charts, dashboards) from source control, either in native format or from a `dbt <https://www.getdbt.com/>`_ project. It can also be used to run SQL against any database in any workspace. In the future, the CLI will also allow you to manage your workspaces and users.
 
 Installation
 ============
@@ -110,7 +110,7 @@ The following commands are currently available:
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
 - ``preset-cli superset export``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
 - ``preset-cli superset sync native``: synchronize the workspace from a directory of templated configuration files.
-- ``preset-cli superset sync dbt``: synchronize the workspace from a DBT project.
+- ``preset-cli superset sync dbt``: synchronize the workspace from a dbt project.
 
 All the ``superset`` sub-commands can also be executed against a standalone Superset instance, using the ``superset-cli`` command. This means that if you are running an instance of Superset at https://superset.example.org/ you can export its resources with the command:
 
@@ -279,10 +279,10 @@ The function can then be called from any template the following way:
     params:
       ...
 
-Synchronizing to and from DBT
+Synchronizing to and from dbT
 -----------------------------
 
-The CLI also allows you to synchronize sources, models, and metrics from a `DBT <https://www.getdbt.com/>`_ project, together with databases from a profile. The full command is:
+The CLI also allows you to synchronize sources, models, and metrics from a `dbt <https://www.getdbt.com/>`_ project, together with databases from a profile. The full command is:
 
 .. code-block:: bash
 
@@ -295,13 +295,13 @@ The CLI also allows you to synchronize sources, models, and metrics from a `DBT 
 
 Running this command will:
 
-1. Read the DBT profile and create the ``$target`` database for the specified project in the Preset workspace.
+1. Read the dbt profile and create the ``$target`` database for the specified project in the Preset workspace.
 2. Every source in the project will be created as a dataset in the Preset workspace.
 3. Every model in the project will be created as a dataset in the Preset workspace.
 4. Any `metrics <https://docs.getdbt.com/docs/building-a-dbt-project/metrics>`_ will be added to the corresponding datasets.
-5. Every dashboard built on top of the DBT sources and/or models will be synchronized back to DBT as an `exposure <https://docs.getdbt.com/docs/building-a-dbt-project/exposures>`_.
+5. Every dashboard built on top of the dbt sources and/or models will be synchronized back to dbt as an `exposure <https://docs.getdbt.com/docs/building-a-dbt-project/exposures>`_.
 
-The ``--external-url-prefix`` should point to your DBT docs, so that the resources in the workspace can point to the source of truth where they are being managed. Similar to the native sync, the DBT sync also supports the ``--disallow-edits`` flag.
+The ``--external-url-prefix`` should point to your dbt docs, so that the resources in the workspace can point to the source of truth where they are being managed. Similar to the native sync, the dbt sync also supports the ``--disallow-edits`` flag.
 
 Exporting resources
 -------------------

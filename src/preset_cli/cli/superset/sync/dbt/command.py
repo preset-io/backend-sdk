@@ -1,5 +1,5 @@
 """
-A command to sync DBT models/metrics to Superset and dashboards back as exposures.
+A command to sync dbt models/metrics to Superset and dashboards back as exposures.
 """
 
 import os.path
@@ -18,7 +18,7 @@ from preset_cli.exceptions import DatabaseNotFoundError
 
 @click.command()
 @click.argument("manifest", type=click.Path(exists=True, resolve_path=True))
-@click.option("--project", help="Name of the DBT project", default="default")
+@click.option("--project", help="Name of the dbt project", default="default")
 @click.option("--target", help="Target name", default="dev")
 @click.option(
     "--profiles",
@@ -56,7 +56,7 @@ def dbt(  # pylint: disable=too-many-arguments
     external_url_prefix: str = "",
 ) -> None:
     """
-    Sync DBT models/metrics to Superset and dashboards to DBT exposures.
+    Sync dbt models/metrics to Superset and dashboards to dbt exposures.
     """
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
