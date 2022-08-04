@@ -8,14 +8,14 @@ import json
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.api.operators import OneToMany
-from preset_cli.cli.superset.sync.dbt.metrics import get_metric_expression
+from preset_cli.cli.superset.sync.dbt.metrics import MetricType, get_metric_expression
 
 _logger = logging.getLogger(__name__)
 
@@ -36,10 +36,10 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
         manifest = yaml.load(input_, Loader=yaml.SafeLoader)
 
     # extract metrics
-    metrics: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    metrics: Dict[str, List[MetricType]] = defaultdict(list)
     for metric in manifest["metrics"].values():
         for unique_id in metric["depends_on"]["nodes"]:
-            metrics[unique_id].append(metric)
+            metrics[unique_id].append(cast(MetricType, metric))
 
     # add datasets
     datasets = []
@@ -82,13 +82,16 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
 
         dataset_metrics = []
         if config["resource_type"] == "model":
-            for metric in metrics[config["unique_id"]]:
+            model_metrics = {
+                metric["name"]: metric for metric in metrics[config["unique_id"]]
+            }
+            for name, metric in model_metrics.items():
                 dataset_metrics.append(
                     {
-                        "expression": get_metric_expression(metric),
-                        "metric_name": metric["name"],
+                        "expression": get_metric_expression(name, model_metrics),
+                        "metric_name": name,
                         "metric_type": metric["type"],
-                        "verbose_name": metric["name"],
+                        "verbose_name": name,
                         "description": metric["description"],
                         **metric["meta"],
                     },
