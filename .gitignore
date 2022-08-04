@@ -52,3 +52,7 @@ MANIFEST
 .venv*/
 .conda*/
 .python-version
+
+.pyre/
+.pyre_configuration
+.watchmanconfig

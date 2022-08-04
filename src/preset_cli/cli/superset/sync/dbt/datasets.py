@@ -1,5 +1,5 @@
 """
-Sync DBT datasets/metrics to Superset.
+Sync dbt datasets/etrics to Superset.
 """
 
 # pylint: disable=consider-using-f-string
@@ -15,15 +15,9 @@ from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.api.operators import OneToMany
+from preset_cli.cli.superset.sync.dbt.metrics import get_metric_expression
 
 _logger = logging.getLogger(__name__)
-
-
-def get_metric_expression(metric: Dict[str, Any]) -> str:
-    """
-    Return a SQL expression for a given DBT metric.
-    """
-    return "{type}({sql})".format(**metric)
 
 
 def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
@@ -34,7 +28,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
     external_url_prefix: str,
 ) -> List[Any]:
     """
-    Read the DBT manifest and import models as datasets with metrics.
+    Read the dbt manifest and import models as datasets with metrics.
     """
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
@@ -94,7 +88,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
                         "expression": get_metric_expression(metric),
                         "metric_name": metric["name"],
                         "metric_type": metric["type"],
-                        "verbose_name": get_metric_expression(metric),
+                        "verbose_name": metric["name"],
                         "description": metric["description"],
                         **metric["meta"],
                     },

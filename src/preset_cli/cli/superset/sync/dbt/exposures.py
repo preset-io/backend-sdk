@@ -1,5 +1,5 @@
 """
-Sync Superset dashboards as DBT exposures.
+Sync Superset dashboards as dbt exposures.
 """
 
 import json
@@ -15,7 +15,7 @@ from preset_cli.api.clients.superset import SupersetClient
 
 def get_chart_depends_on(client: SupersetClient, chart: Any) -> List[str]:
     """
-    Get all the DBT dependencies for a given chart.
+    Get all the dbt dependencies for a given chart.
     """
 
     query_context = json.loads(chart["query_context"])
@@ -30,7 +30,7 @@ def get_chart_depends_on(client: SupersetClient, chart: Any) -> List[str]:
 
 def get_dashboard_depends_on(client: SupersetClient, dashboard: Any) -> List[str]:
     """
-    Get all the DBT dependencies for a given dashboard.
+    Get all the dbt dependencies for a given dashboard.
     """
 
     url = client.baseurl / "api/v1/dashboard" / str(dashboard["id"]) / "datasets"
@@ -61,7 +61,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
     datasets: List[Any],
 ) -> None:
     """
-    Write dashboards back to DBT as exposures.
+    Write dashboards back to dbt as exposures.
     """
     exposures = []
     charts_ids = set()

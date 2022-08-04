@@ -1,5 +1,5 @@
 """
-Tests for the DBT import command.
+Tests for the dbt import command.
 """
 # pylint: disable=invalid-name
 

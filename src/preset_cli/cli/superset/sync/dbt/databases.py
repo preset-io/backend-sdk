@@ -1,5 +1,5 @@
 """
-Sync DBT database to Superset.
+Sync dbt database to Superset.
 """
 
 import logging
@@ -25,7 +25,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     external_url_prefix: str,
 ) -> Any:
     """
-    Read target database from a DBT profiles.yml and sync to Superset.
+    Read target database from a dbt profiles.yml and sync to Superset.
     """
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
