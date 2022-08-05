@@ -37,7 +37,7 @@ def test_jwt_auth_from_stored_credentials(mocker: MockerFixture) -> None:
     get_access_token.return_value = "JWT_TOKEN"
 
     auth = JWTAuth.from_stored_credentials()
-    assert auth.jwt_token == "JWT_TOKEN"
+    assert auth.token == "JWT_TOKEN"
     get_access_token.assert_called_with(
         baseurl="https://manage.app.preset.io/",
         api_token="TOKEN",
@@ -46,7 +46,7 @@ def test_jwt_auth_from_stored_credentials(mocker: MockerFixture) -> None:
 
     # can also pass a URL
     auth = JWTAuth.from_stored_credentials()
-    assert auth.jwt_token == "JWT_TOKEN"
+    assert auth.token == "JWT_TOKEN"
 
     # test for error
     get_credentials_path().exists.return_value = False

@@ -43,14 +43,9 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         connection_params = build_sqlalchemy_params(target)
 
     database_name = meta.pop("database_name", f"{project_name}_{target_name}")
-    databases = client.get_databases(
-        # sqlalchemy_uri=connection_params["sqlalchemy_uri"],
-        database_name=database_name,
-    )
+    databases = client.get_databases(database_name=database_name)
     if len(databases) > 1:
-        raise Exception(
-            "More than one database with the same SQLAlchemy URI and name found",
-        )
+        raise Exception("More than one database with the same name found")
 
     if base_url and "external_url" not in meta:
         meta["external_url"] = str(base_url.with_fragment("!/overview"))
