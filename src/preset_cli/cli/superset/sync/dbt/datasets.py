@@ -104,6 +104,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches
             "is_managed_externally": disallow_edits,
             "metrics": [],
         }
+        update.update(config.get("meta", {}).get("superset", {}))
         if base_url:
             fragment = "!/{resource_type}/{unique_id}".format(**config)
             update["external_url"] = str(base_url.with_fragment(fragment))
