@@ -3,6 +3,7 @@ Tests for the dbt import command.
 """
 # pylint: disable=invalid-name
 
+import os
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -12,6 +13,10 @@ from pytest_mock import MockerFixture
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.exceptions import DatabaseNotFoundError
 
+dirname, _ = os.path.split(os.path.abspath(__file__))
+with open(os.path.join(dirname, "manifest.json"), encoding="utf-8") as fp:
+    manifest_contents = fp.read()
+
 
 def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
@@ -20,7 +25,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     root = Path("/path/to/root")
     fs.create_dir(root)
     manifest = root / "default/target/manifest.json"
-    fs.create_file(manifest)
+    fs.create_file(manifest, contents=manifest_contents)
     profiles = root / ".dbt/profiles.yml"
     fs.create_file(profiles)
     exposures = root / "models/exposures.yml"
@@ -66,7 +71,36 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         False,
         "",
     )
-    sync_datasets.assert_called_with(client, manifest, sync_database(), False, "")
+    models = [
+        {
+            "database": "examples_dev",
+            "description": "",
+            "meta": {},
+            "name": "messages_channels",
+            "schema": "public",
+            "unique_id": "model.superset_examples.messages_channels",
+        },
+    ]
+    metrics = [
+        {
+            "depends_on": ["model.superset_examples.messages_channels"],
+            "description": "",
+            "filters": [],
+            "label": "",
+            "meta": {},
+            "name": "cnt",
+            "sql": "*",
+            "type": "count",
+        },
+    ]
+    sync_datasets.assert_called_with(
+        client,
+        models,
+        metrics,
+        sync_database(),
+        False,
+        "",
+    )
     sync_exposures.assert_called_with(client, exposures, sync_datasets())
 
 
@@ -77,7 +111,7 @@ def test_dbt_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     root = Path("/path/to/root")
     fs.create_dir(root)
     manifest = root / "default/target/manifest.json"
-    fs.create_file(manifest)
+    fs.create_file(manifest, contents=manifest_contents)
     profiles = root / ".dbt/profiles.yml"
     fs.create_file(profiles)
 
@@ -113,7 +147,7 @@ def test_dbt_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     root = Path("/path/to/root")
     fs.create_dir(root)
     manifest = root / "default/target/manifest.json"
-    fs.create_file(manifest)
+    fs.create_file(manifest, contents=manifest_contents)
     profiles = root / ".dbt/profiles.yml"
     fs.create_file(profiles)
     exposures = root / "models/exposures.yml"
@@ -129,6 +163,7 @@ def test_dbt_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_datasets")
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_exposures")
+    # pylint: disable=redefined-outer-name
     os = mocker.patch("preset_cli.cli.superset.sync.dbt.command.os")
     os.path.expanduser.return_value = str(profiles)
 
@@ -164,7 +199,7 @@ def test_dbt_no_database(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     root = Path("/path/to/root")
     fs.create_dir(root)
     manifest = root / "default/target/manifest.json"
-    fs.create_file(manifest)
+    fs.create_file(manifest, contents=manifest_contents)
     profiles = root / ".dbt/profiles.yml"
     fs.create_file(profiles)
     exposures = root / "models/exposures.yml"

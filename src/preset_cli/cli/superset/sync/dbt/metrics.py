@@ -47,7 +47,8 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
         template = Template(sql)
         return template.render(metric=partial(get_metric_expression, metrics=metrics))
 
-    raise Exception(f"Unable to generate metric expression from: {metric}")
+    sorted_metric = dict(sorted(metric.items()))
+    raise Exception(f"Unable to generate metric expression from: {sorted_metric}")
 
 
 def apply_filters(sql: str, filters: List[FilterSchema]) -> str:

@@ -1,5 +1,5 @@
 """
-A command to sync dbt models/metrics to Superset and chats/dashboards back as exposures.
+A command to sync dbt models/metrics to Superset and charts/dashboards back as exposures.
 """
 
 import os.path

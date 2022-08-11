@@ -523,10 +523,10 @@ class ModelSchema(PostelSchema):
     """
 
     database = fields.String()
+    schema = fields.String()
     description = fields.String()
     meta = fields.Raw()
     name = fields.String()
-    schema = fields.String()
     unique_id = fields.String(data_key="uniqueId")
 
 
@@ -550,6 +550,7 @@ class MetricSchema(PostelSchema):
     filters = fields.List(fields.Nested(FilterSchema))
     meta = fields.Raw()
     name = fields.String()
+    label = fields.String()
     sql = fields.String()
     type = fields.String()
     unique_id = fields.String(data_key="uniqueId")
@@ -680,6 +681,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                 metrics(jobId: $jobId) {
                     uniqueId
                     name
+                    label
                     type
                     sql
                     filters {
