@@ -104,6 +104,68 @@ def test_auth(mocker: MockerFixture) -> None:
     )
 
 
+def test_auth_show(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``auth --show`` command.
+    """
+    credentials_path = Path("/path/to/config/credentials.yaml")
+    fs.create_file(
+        credentials_path,
+        contents=yaml.dump(
+            {
+                "baseurl": "https://manage.app.preset.io/",
+                "api_secret": "XXX",
+                "api_token": "abc",
+            },
+        ),
+    )
+    mocker.patch(
+        "preset_cli.cli.main.get_credentials_path",
+        return_value=credentials_path,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token", "JWT_TOKEN", "auth", "--show"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert (
+        result.output
+        == """/path/to/config/credentials.yaml
+================================
+api_secret: XXX
+api_token: abc
+baseurl: https://manage.app.preset.io/
+
+"""
+    )
+
+
+def test_auth_show_no_credentials(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``auth --show`` command when there are no credentials.
+    """
+    credentials_path = Path("/path/to/config/credentials.yaml")
+    mocker.patch(
+        "preset_cli.cli.main.get_credentials_path",
+        return_value=credentials_path,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token", "JWT_TOKEN", "auth", "--show"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    assert result.output == (
+        "The file /path/to/config/credentials.yaml doesn't exist. "
+        "Run ``preset-cli auth`` to create it.\n"
+    )
+
+
 def test_auth_overwrite(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``auth`` command when credentials already exist.

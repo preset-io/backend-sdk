@@ -189,11 +189,38 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
     default=False,
     help="Overwrite existing credentials",
 )
-def auth(baseurl: str, overwrite: bool = False) -> None:
+@click.option(
+    "--show",
+    is_flag=True,
+    default=False,
+    help="Show existing credentials",
+)
+def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
     """
     Store credentials for auth.
     """
     credentials_path = get_credentials_path()
+
+    if show:
+        if not credentials_path.exists():
+            click.echo(
+                click.style(
+                    (
+                        f"The file {credentials_path} doesn't exist. "
+                        "Run ``preset-cli auth`` to create it."
+                    ),
+                    fg="bright_red",
+                ),
+            )
+            sys.exit(1)
+
+        ruler = "=" * len(str(credentials_path))
+        with open(credentials_path, encoding="utf-8") as input_:
+            credentials = yaml.load(input_, Loader=yaml.SafeLoader)
+            contents = yaml.dump(credentials)
+        click.echo(f"{credentials_path}\n{ruler}\n{contents}")
+        sys.exit(0)
+
     if credentials_path.exists() and not overwrite:
         click.echo(
             click.style(

@@ -291,7 +291,7 @@ The function can then be called from any template the following way:
 Synchronizing to and from dbt
 -----------------------------
 
-The CLI also allows you to synchronize models, and metrics from a `dbt <https://www.getdbt.com/>`_ project. 
+The CLI also allows you to synchronize models, and metrics from a `dbt <https://www.getdbt.com/>`_ project.
 
 If you're using dbt Core you can point the CLI to your compiled manifest and your profiles file, so that all the database is automatically created, together with all the models and metrics. The full command is:
 
@@ -318,10 +318,10 @@ If you're using dbt Cloud you can instead pass a job ID and a `service account a
 
 .. code-block:: bash
 
-    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \ 
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
     > superset sync dbt-cloud \
     > $TOKEN $JOB_ID \
-    > --external-url-prefix=http://localhost:8080/ 
+    > --external-url-prefix=http://localhost:8080/
 
 The token only needs access to the "Metadata only" permission set for your project. You can see the job ID by going to the project URL in dbt Cloud and looking at the last ID in the URL. For example, if the URL is https://cloud.getdbt.com/#/accounts/12345/projects/567890/jobs/ the job ID is 567890.
 
