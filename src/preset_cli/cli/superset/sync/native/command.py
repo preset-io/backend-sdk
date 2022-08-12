@@ -4,6 +4,7 @@ A command to sync Superset exports into a Superset instance.
 
 import getpass
 import importlib.util
+import os
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -77,6 +78,13 @@ def raise_helper(message: str, *args: Any) -> None:
     help="Mark resources as manged externally to prevent edits",
 )
 @click.option("--external-url-prefix", default="", help="Base URL for resources")
+@click.option(
+    "--load-env",
+    "-e",
+    is_flag=True,
+    default=False,
+    help="Load environment variables to ``env[]`` template helper",
+)
 @click.pass_context
 def native(  # pylint: disable=too-many-locals, too-many-arguments
     ctx: click.core.Context,
@@ -85,6 +93,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
     overwrite: bool = False,
     disallow_edits: bool = True,  # pylint: disable=unused-argument
     external_url_prefix: str = "",
+    load_env: bool = False,
 ) -> None:
     """
     Sync exported DBs/datasets/charts/dashboards to Superset.
@@ -101,6 +110,8 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
     env["instance"] = url
     env["functions"] = load_user_modules(root / "functions")
     env["raise"] = raise_helper
+    if load_env:
+        env["env"] = os.environ
 
     # read all the YAML files
     contents: Dict[str, str] = {}

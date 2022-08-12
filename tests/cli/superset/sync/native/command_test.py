@@ -196,6 +196,70 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
 
+def test_native_load_env(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Test the ``native`` command with the ``--load-env`` option.
+    """
+    monkeypatch.setenv("SQLALCHEMY_URI", "postgres://host1")
+
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "Postgres",
+        "sqlalchemy_uri": '{{ env["SQLALCHEMY_URI"] }}',
+        "is_managed_externally": False,
+    }
+    fs.create_file(
+        root / "databases/postgres.yaml",
+        contents=yaml.dump(database_config),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    import_resource = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resource",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "-e",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    contents = {
+        "bundle/databases/postgres.yaml": yaml.dump(
+            {
+                "database_name": "Postgres",
+                "sqlalchemy_uri": "postgres://host1",
+                "is_managed_externally": False,
+            },
+        ),
+    }
+    print(import_resource.mock_calls)
+    import_resource.assert_has_calls(
+        [
+            mock.call("database", contents, client, False),
+            mock.call("dataset", contents, client, False),
+            mock.call("chart", contents, client, False),
+            mock.call("dashboard", contents, client, False),
+        ],
+    )
+
+
 def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``native`` command with an external URL.
