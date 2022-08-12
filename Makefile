@@ -22,6 +22,7 @@ spellcheck:
 requirements.txt: .python-version
 	pip install --upgrade pip
 	pip-compile --no-annotate
+	pip-compile dev-requirements.in --no-annotate
 
 check:
 	pre-commit run --all-files
