@@ -257,6 +257,14 @@ Templates also have access to the workspace name through the ``instance`` variab
           sqlExpression: warehouse_id = 3
           {% endif %}
 
+You can also load variables from the environment by passing the ``--load-env`` (or ``-e``) flag:
+
+.. code-block:: yaml
+
+    database_name: Postgres
+    sqlalchemy_uri: postgres://{{ env["POSTGRES_HOSTNAME"] }}
+
+
 Finally, as shown in the next section, templates can leverage user-defined functions.
 
 User defined functions
