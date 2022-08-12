@@ -1,11 +1,1 @@
--r requirements.in
-setuptools
-freezegun
-pytest
-pytest-cov
-pytest-mock
-pyfakefs
-requests-mock
-codespell
-pre-commit
-pip-tools>=6.6.0
+-e file:.[testing]

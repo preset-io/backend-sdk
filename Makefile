@@ -23,7 +23,7 @@ requirements.txt: .python-version requirements.in
 	pip install --upgrade pip
 	pip-compile --no-annotate
 
-dev-requirements.txt: dev-requirements.in requirements.in
+dev-requirements.txt: dev-requirements.in
 	pip-compile dev-requirements.in --no-annotate
 
 check:
