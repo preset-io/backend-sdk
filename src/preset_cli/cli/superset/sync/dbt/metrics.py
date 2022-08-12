@@ -7,47 +7,14 @@ This module is used to convert dbt metrics into Superset metrics.
 # pylint: disable=consider-using-f-string
 
 from functools import partial
-from typing import Any, Dict, List, TypedDict
+from typing import Dict, List
 
 from jinja2 import Template
 
-
-class FilterType(TypedDict):
-    """
-    A type for filters.
-
-    See https://docs.getdbt.com/docs/building-a-dbt-project/metrics#filters.
-    """
-
-    field: str
-    operator: str
-    value: str
+from preset_cli.api.clients.dbt import FilterSchema, MetricSchema
 
 
-class MetricType(TypedDict, total=False):
-    """
-    A type for a metric.
-
-    See https://docs.getdbt.com/docs/building-a-dbt-project/metrics#available-properties.
-    """
-
-    # required
-    name: str
-    model: str
-    type: str
-    sql: str
-    timestamp: str
-    time_grains: List[str]
-
-    # optional
-    label: str
-    description: str
-    dimensions: List[str]
-    filters: List[FilterType]
-    meta: Dict[str, Any]
-
-
-def get_metric_expression(metric_name: str, metrics: Dict[str, MetricType]) -> str:
+def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) -> str:
     """
     Return a SQL expression for a given dbt metric.
     """
@@ -80,10 +47,11 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricType]) -> s
         template = Template(sql)
         return template.render(metric=partial(get_metric_expression, metrics=metrics))
 
-    raise Exception(f"Unable to generate metric expression from: {metric}")
+    sorted_metric = dict(sorted(metric.items()))
+    raise Exception(f"Unable to generate metric expression from: {sorted_metric}")
 
 
-def apply_filters(sql: str, filters: List[FilterType]) -> str:
+def apply_filters(sql: str, filters: List[FilterSchema]) -> str:
     """
     Apply filters to SQL expression.
     """

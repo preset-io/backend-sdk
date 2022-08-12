@@ -2,25 +2,16 @@
 JWT auth.
 """
 
-from typing import Dict
-
 import yaml
 
 from preset_cli.auth.lib import get_access_token, get_credentials_path
-from preset_cli.auth.main import Auth
+from preset_cli.auth.token import TokenAuth
 
 
-class JWTAuth(Auth):  # pylint: disable=too-few-public-methods
+class JWTAuth(TokenAuth):  # pylint: disable=too-few-public-methods
     """
     Auth via JWT.
     """
-
-    def __init__(self, jwt_token: str):
-        super().__init__()
-        self.jwt_token = jwt_token
-
-    def get_headers(self) -> Dict[str, str]:
-        return {"Authorization": f"Bearer {self.jwt_token}"}
 
     @classmethod
     def from_stored_credentials(cls) -> "JWTAuth":
@@ -34,6 +25,6 @@ class JWTAuth(Auth):  # pylint: disable=too-few-public-methods
         with open(credentials_path, encoding="utf-8") as input_:
             credentials = yaml.load(input_, Loader=yaml.SafeLoader)
 
-        jwt_token = get_access_token(**credentials)
+        token = get_access_token(**credentials)
 
-        return JWTAuth(jwt_token)
+        return JWTAuth(token)

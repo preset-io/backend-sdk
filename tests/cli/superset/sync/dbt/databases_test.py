@@ -240,10 +240,7 @@ def test_sync_database_multiple_databases(
             disallow_edits=False,
             external_url_prefix="",
         )
-    assert (
-        str(excinfo.value)
-        == "More than one database with the same SQLAlchemy URI and name found"
-    )
+    assert str(excinfo.value) == "More than one database with the same name found"
 
 
 def test_sync_database_external_url_prefix(

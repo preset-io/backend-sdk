@@ -1,0 +1,307 @@
+{
+  "metrics": {
+    "metric.superset_examples.cnt": {
+      "fqn": [
+        "superset_examples",
+        "slack",
+        "cnt"
+      ],
+      "unique_id": "metric.superset_examples.cnt",
+      "package_name": "superset_examples",
+      "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+      "path": "slack/schema.yml",
+      "original_file_path": "models/slack/schema.yml",
+      "model": "ref('messages_channels')",
+      "name": "cnt",
+      "description": "",
+      "label": "",
+      "type": "count",
+      "sql": "*",
+      "timestamp": null,
+      "filters": [],
+      "time_grains": [],
+      "dimensions": [],
+      "resource_type": "metric",
+      "meta": {},
+      "tags": [],
+      "sources": [],
+      "depends_on": {
+        "macros": [],
+        "nodes": [
+          "model.superset_examples.messages_channels"
+        ]
+      },
+      "refs": [
+        [
+          "messages_channels"
+        ]
+      ],
+      "created_at": 1642630986.1942852
+    }
+  },
+  "sources": {
+    "source.superset_examples.public.messages": {
+      "fqn": [
+        "superset_examples",
+        "slack",
+        "public",
+        "messages"
+      ],
+      "database": "examples_dev",
+      "schema": "public",
+      "unique_id": "source.superset_examples.public.messages",
+      "package_name": "superset_examples",
+      "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+      "path": "models/slack/schema.yml",
+      "original_file_path": "models/slack/schema.yml",
+      "name": "messages",
+      "source_name": "public",
+      "source_description": "",
+      "loader": "",
+      "identifier": "messages",
+      "resource_type": "source",
+      "quoting": {
+        "database": null,
+        "schema": null,
+        "identifier": null,
+        "column": null
+      },
+      "loaded_at_field": null,
+      "freshness": {
+        "warn_after": {
+          "count": null,
+          "period": null
+        },
+        "error_after": {
+          "count": null,
+          "period": null
+        },
+        "filter": null
+      },
+      "external": null,
+      "description": "Messages in the Slack channel",
+      "columns": {},
+      "meta": {},
+      "source_meta": {},
+      "tags": [],
+      "config": {
+        "enabled": true
+      },
+      "patch_path": null,
+      "unrendered_config": {},
+      "relation_name": "\"examples_dev\".\"public\".\"messages\"",
+      "created_at": 1642628933.0432189
+    },
+    "source.superset_examples.public.channels": {
+      "fqn": [
+        "superset_examples",
+        "slack",
+        "public",
+        "channels"
+      ],
+      "database": "examples_dev",
+      "schema": "public",
+      "unique_id": "source.superset_examples.public.channels",
+      "package_name": "superset_examples",
+      "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+      "path": "models/slack/schema.yml",
+      "original_file_path": "models/slack/schema.yml",
+      "name": "channels",
+      "source_name": "public",
+      "source_description": "",
+      "loader": "",
+      "identifier": "channels",
+      "resource_type": "source",
+      "quoting": {
+        "database": null,
+        "schema": null,
+        "identifier": null,
+        "column": null
+      },
+      "loaded_at_field": null,
+      "freshness": {
+        "warn_after": {
+          "count": null,
+          "period": null
+        },
+        "error_after": {
+          "count": null,
+          "period": null
+        },
+        "filter": null
+      },
+      "external": null,
+      "description": "Information about Slack channels",
+      "columns": {},
+      "meta": {},
+      "source_meta": {},
+      "tags": [],
+      "config": {
+        "enabled": true
+      },
+      "patch_path": null,
+      "unrendered_config": {},
+      "relation_name": "\"examples_dev\".\"public\".\"channels\"",
+      "created_at": 1642628933.043388
+    }
+  },
+  "nodes": {
+    "model.superset_examples.messages_channels": {
+      "raw_sql": "SELECT messages.ts, channels.name, messages.text FROM {{ source ('public', 'messages') }} messages JOIN {{ source ('public', 'channels') }} channels ON messages.channel_id = channels.id",
+      "compiled": true,
+      "resource_type": "model",
+      "depends_on": {
+        "macros": [],
+        "nodes": [
+          "source.superset_examples.public.channels",
+          "source.superset_examples.public.messages"
+        ]
+      },
+      "config": {
+        "enabled": true,
+        "alias": null,
+        "schema": null,
+        "database": null,
+        "tags": [],
+        "meta": {},
+        "materialized": "view",
+        "persist_docs": {},
+        "quoting": {},
+        "column_types": {},
+        "full_refresh": null,
+        "on_schema_change": "ignore",
+        "post-hook": [],
+        "pre-hook": []
+      },
+      "database": "examples_dev",
+      "schema": "public",
+      "fqn": [
+        "superset_examples",
+        "slack",
+        "messages_channels"
+      ],
+      "unique_id": "model.superset_examples.messages_channels",
+      "package_name": "superset_examples",
+      "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+      "path": "slack/messages_channels.sql",
+      "original_file_path": "models/slack/messages_channels.sql",
+      "name": "messages_channels",
+      "alias": "messages_channels",
+      "checksum": {
+        "name": "sha256",
+        "checksum": "b4ce232b28280daa522b37e12c36b67911e2a98456b8a3b99440075ec5564609"
+      },
+      "tags": [],
+      "refs": [],
+      "sources": [
+        [
+          "public",
+          "channels"
+        ],
+        [
+          "public",
+          "messages"
+        ]
+      ],
+      "description": "",
+      "columns": {},
+      "meta": {},
+      "docs": {
+        "show": true
+      },
+      "patch_path": null,
+      "compiled_path": "target/compiled/superset_examples/models/slack/messages_channels.sql",
+      "build_path": null,
+      "deferred": false,
+      "unrendered_config": {
+        "materialized": "view"
+      },
+      "created_at": 1642628933.004452,
+      "compiled_sql": "SELECT messages.ts, channels.name, messages.text FROM \"examples_dev\".\"public\".\"messages\" messages JOIN \"examples_dev\".\"public\".\"channels\" channels ON messages.channel_id = channels.id",
+      "extra_ctes_injected": true,
+      "extra_ctes": [],
+      "relation_name": "\"examples_dev\".\"public\".\"messages_channels\""
+    },
+    "test.jaffle_shop.unique_stg_customers_customer_id.c7614daada": {
+      "raw_sql": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+      "test_metadata": {
+        "name": "unique",
+        "kwargs": {
+          "column_name": "customer_id",
+          "model": "{{ get_where_subquery(ref('stg_customers')) }}"
+        },
+        "namespace": null
+      },
+      "compiled": true,
+      "resource_type": "test",
+      "depends_on": {
+        "macros": [
+          "macro.dbt.test_unique",
+          "macro.dbt.get_where_subquery"
+        ],
+        "nodes": [
+          "model.jaffle_shop.stg_customers"
+        ]
+      },
+      "config": {
+        "enabled": true,
+        "alias": null,
+        "schema": "dbt_test__audit",
+        "database": null,
+        "tags": [],
+        "meta": {},
+        "materialized": "test",
+        "severity": "ERROR",
+        "store_failures": null,
+        "where": null,
+        "limit": null,
+        "fail_calc": "count(*)",
+        "warn_if": "!= 0",
+        "error_if": "!= 0"
+      },
+      "database": "dbt-tutorial-347100",
+      "schema": "dbt_beto_dbt_test__audit",
+      "fqn": [
+        "jaffle_shop",
+        "unique_stg_customers_customer_id"
+      ],
+      "unique_id": "test.jaffle_shop.unique_stg_customers_customer_id.c7614daada",
+      "package_name": "jaffle_shop",
+      "root_path": ".",
+      "path": "unique_stg_customers_customer_id.sql",
+      "original_file_path": "models/schema.yml",
+      "name": "unique_stg_customers_customer_id",
+      "alias": "unique_stg_customers_customer_id",
+      "checksum": {
+        "name": "none",
+        "checksum": ""
+      },
+      "tags": [],
+      "refs": [
+        [
+          "stg_customers"
+        ]
+      ],
+      "sources": [],
+      "metrics": [],
+      "description": "",
+      "columns": {},
+      "meta": {},
+      "docs": {
+        "show": true
+      },
+      "patch_path": null,
+      "compiled_path": "target/compiled/jaffle_shop/models/schema.yml/unique_stg_customers_customer_id.sql",
+      "build_path": null,
+      "deferred": false,
+      "unrendered_config": {},
+      "created_at": 1657295698.2953868,
+      "compiled_sql": "\\n    \\n    \\n\\nwith dbt_test__target as (\\n  \\n  select customer_id as unique_field\\n  from `dbt-tutorial-347100`.`dbt_beto`.`stg_customers`\\n  where customer_id is not null\\n  \\n)\\n\\nselect\\n    unique_field,\\n    count(*) as n_records\\n\\nfrom dbt_test__target\\ngroup by unique_field\\nhaving count(*) > 1\\n\\n\\n",
+      "extra_ctes_injected": true,
+      "extra_ctes": [],
+      "relation_name": null,
+      "column_name": "customer_id",
+      "file_key_name": "models.stg_customers"
+    }
+  }
+}
