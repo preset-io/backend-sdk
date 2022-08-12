@@ -124,6 +124,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     help="Mark resources as managed externally to prevent edits",
 )
 @click.option("--external-url-prefix", default="", help="Base URL for resources")
+@click.pass_context
 def dbt_cloud(
     ctx: click.core.Context,
     token: str,

@@ -97,6 +97,46 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
     )
 
 
+def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` when no datasets exist yet.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=[],
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="messages_channels"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+        ],
+    )
+
+
 def test_sync_datasets_new_bq_error(mocker: MockerFixture) -> None:
     """
     Test ``sync_datasets`` when one of the sources is in a different BQ project.
