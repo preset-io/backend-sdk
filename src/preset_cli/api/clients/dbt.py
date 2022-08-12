@@ -11,9 +11,9 @@ References:
 # pylint: disable=invalid-name, too-few-public-methods
 
 from enum import Enum
-from typing import Any, Dict, List, Type, TypedDict, Union
+from typing import Any, Dict, List, Type, TypedDict
 
-from marshmallow import INCLUDE, Schema, ValidationError, fields
+from marshmallow import INCLUDE, Schema, fields
 from python_graphql_client import GraphqlClient
 from yarl import URL
 
@@ -591,7 +591,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             headers=self.auth.get_headers(),
         )
 
-    def get_accounts(self) -> List[Union[AccountSchema, UserSchema]]:
+    def get_accounts(self) -> List[AccountSchema]:
         """
         List all accounts.
         """
@@ -601,20 +601,8 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         payload = response.json()
 
-        # the API docs say that an account should be returned, but when testing I got a
-        # user object instead
-        # https://docs.getdbt.com/dbt-cloud/api-v2#tag/Accounts/operation/listAccounts
         account_schema = AccountSchema()
-        user_schema = UserSchema()
-        accounts: List[Union[AccountSchema, UserSchema]] = []
-        for row in payload["data"]:
-            try:
-                obj = account_schema.load(row)
-            except ValidationError:
-                obj = user_schema.load(row)
-            accounts.append(obj)
-
-        return accounts
+        return [account_schema.load(row) for row in payload["data"]]
 
     def get_projects(self, account_id: int) -> List[ProjectSchema]:
         """
@@ -628,6 +616,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         )
 
         payload = response.json()
+
         project_schema = ProjectSchema()
         projects = [project_schema.load(project) for project in payload["data"]]
 
@@ -645,6 +634,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         )
 
         payload = response.json()
+
         job_schema = JobSchema()
         jobs = [job_schema.load(job) for job in payload["data"]]
 
@@ -667,6 +657,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             }
         """
         payload = self.execute(query, jobId=job_id)
+
         model_schema = ModelSchema()
         models = [model_schema.load(model) for model in payload["data"]["models"]]
 
@@ -696,6 +687,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             }
         """
         payload = self.execute(query, jobId=job_id)
+
         metric_schema = MetricSchema()
         metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
 
@@ -709,10 +701,10 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         only one database associated with them.
         """
         models = self.get_models(job_id)
-        databases = {model["database"] for model in models}
+        if not models:
+            raise Exception("No models found, can't determine database name")
 
-        if not databases:
-            raise Exception("No databases found, this should not happen")
+        databases = {model["database"] for model in models}
         if len(databases) > 1:
             raise Exception("Multiple databases found")
 

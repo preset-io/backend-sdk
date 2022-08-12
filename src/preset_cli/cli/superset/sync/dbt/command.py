@@ -116,7 +116,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
 
 @click.command()
 @click.argument("token")
-@click.argument("job_id")
+@click.argument("job_id", type=click.INT)
 @click.option(
     "--disallow-edits",
     is_flag=True,
