@@ -19,6 +19,7 @@ from preset_cli.auth.lib import (
     get_credentials_path,
     store_credentials,
 )
+from preset_cli.auth.main import Auth
 from preset_cli.cli.superset.main import superset
 from preset_cli.lib import setup_logging
 
@@ -141,10 +142,13 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
 
         api_token = cast(str, api_token)
         api_secret = cast(str, api_secret)
-        jwt_token = get_access_token(manager_url, api_token, api_secret)
+        try:
+            jwt_token = get_access_token(manager_url, api_token, api_secret)
+        except Exception:  # pylint: disable=broad-except
+            jwt_token = None
 
     # store auth in context so it's used by the Superset SDK
-    ctx.obj["AUTH"] = JWTAuth(jwt_token)
+    ctx.obj["AUTH"] = JWTAuth(jwt_token) if jwt_token else Auth()
 
     if not workspaces and ctx.invoked_subcommand == "superset":
         client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
