@@ -199,6 +199,47 @@ def test_auth_overwrite(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     assert result.exit_code == 0
 
 
+def test_auth_overwrite_expired_credentials(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``auth`` command when overwriting expired credentials.
+    """
+    credentials_path = Path("/path/to/config/credentials.yaml")
+    fs.create_file(
+        credentials_path,
+        contents=yaml.dump({"api_secret": "API_SECRET", "api_token": "API_TOKEN"}),
+    )
+    mocker.patch(
+        "preset_cli.cli.main.get_credentials_path",
+        return_value=credentials_path,
+    )
+    get_access_token = mocker.patch(
+        "preset_cli.cli.main.get_access_token",
+        side_effect=Exception("Unable to get access token"),
+    )
+
+    runner = CliRunner()
+
+    mocker.patch("preset_cli.cli.main.webbrowser")
+    mocker.patch("preset_cli.cli.main.input", return_value="API_TOKEN")
+    getpass = mocker.patch("preset_cli.cli.main.getpass")
+    getpass.getpass.return_value = "API_SECRET"
+    mocker.patch("preset_cli.cli.main.store_credentials")
+    result = runner.invoke(
+        preset_cli,
+        ["auth", "--overwrite"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    get_access_token.assert_called_with(
+        URL("https://manage.app.preset.io/"),
+        "API_TOKEN",
+        "API_SECRET",
+    )
+
+
 def test_jwt_token_credentials_exist(
     mocker: MockerFixture,
     fs: FakeFilesystem,
