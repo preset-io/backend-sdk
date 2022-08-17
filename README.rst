@@ -359,3 +359,25 @@ Finally, to import in a standalone Superset instance:
 .. code-block:: bash
 
     % superset-cli https://superset.example.org/ sync native /path/to/directory
+
+Note that any existing Jinja2 template markers present will be escaped. For example, if you have a virtual dataset defined as:
+
+.. code-block:: sql
+
+    SELECT action, count(*) as times
+    FROM logs
+    WHERE
+        action in {{ filter_values('action_type')|where_in }}
+    GROUP BY action
+
+The resulting YAML file will have the query defined as:
+
+.. code-block:: sql
+
+    SELECT action, count(*) as times
+    FROM logs
+    WHERE
+        action in {{ '{{' }} filter_values('action_type')|where_in }} '}}' }}
+    GROUP BY action
+
+So that when processed by ``preset-cli superset sync native`` the original Jinja2 is reconstructed correctly.

@@ -9,6 +9,7 @@ from unittest import mock
 from zipfile import ZipFile
 
 import pytest
+import yaml
 from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
@@ -19,13 +20,29 @@ from preset_cli.cli.superset.main import superset_cli
 
 
 @pytest.fixture
-def database_export() -> BytesIO:
+def dataset_export() -> BytesIO:
     """
     Fixture for the contents of a simple database export.
     """
     contents = {
         "dashboard_export/metadata.yaml": "Metadata",
-        "dashboard_export/databases/gsheets.yaml": "GSheets",
+        "dashboard_export/databases/gsheets.yaml": yaml.dump(
+            {
+                "database_name": "GSheets",
+                "sqlalchemy_uri": "gsheets://",
+            },
+        ),
+        "dashboard_export/datasets/gsheets/test.yaml": yaml.dump(
+            {
+                "table_name": "test",
+                "sql": """
+SELECT action, count(*) as times
+FROM logs
+WHERE
+    action in {{ filter_values('action_type')|where_in }}
+GROUP BY action""",
+            },
+        ),
     }
 
     buf = BytesIO()
@@ -40,7 +57,7 @@ def database_export() -> BytesIO:
 def test_export_resource(
     mocker: MockerFixture,
     fs: FakeFilesystem,
-    database_export: BytesIO,
+    dataset_export: BytesIO,
 ) -> None:
     """
     Test ``export_resource``.
@@ -49,13 +66,24 @@ def test_export_resource(
     fs.create_dir(root)
 
     client = mocker.MagicMock()
-    client.export_zip.return_value = database_export
+    client.export_zip.return_value = dataset_export
 
     export_resource(resource="database", root=root, client=client, overwrite=False)
-
-    # check that the database was written to the directory
     with open(root / "databases/gsheets.yaml", encoding="utf-8") as input_:
-        assert input_.read() == "GSheets"
+        assert input_.read() == "database_name: GSheets\nsqlalchemy_uri: gsheets://\n"
+
+    # check that Jinja2 was escaped
+    export_resource(resource="dataset", root=root, client=client, overwrite=False)
+    with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
+        assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
+            "table_name": "test",
+            "sql": """
+SELECT action, count(*) as times
+FROM logs
+WHERE
+    action in {{ '{{' }} filter_values('action_type')|where_in {{ '}}' }}
+GROUP BY action""",
+        }
 
     # metadata file should be ignored
     assert not (root / "metadata.yaml").exists()
@@ -64,7 +92,7 @@ def test_export_resource(
 def test_export_resource_overwrite(
     mocker: MockerFixture,
     fs: FakeFilesystem,
-    database_export: BytesIO,
+    dataset_export: BytesIO,
 ) -> None:
     """
     Test that we need to confirm overwrites.
@@ -73,7 +101,7 @@ def test_export_resource_overwrite(
     fs.create_dir(root)
 
     client = mocker.MagicMock()
-    client.export_zip.return_value = database_export
+    client.export_zip.return_value = dataset_export
 
     export_resource(resource="database", root=root, client=client, overwrite=False)
     with pytest.raises(Exception) as excinfo:
