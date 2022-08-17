@@ -11,6 +11,10 @@ from yarl import URL
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.lib import remove_root
 
+JINJA2_OPEN_MARKER = "__JINJA2_OPEN__"
+JINJA2_CLOSE_MARKER = "__JINJA2_CLOSE__"
+assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
+
 
 @click.command()
 @click.argument("directory", type=click.Path(exists=True, resolve_path=True))
@@ -69,5 +73,18 @@ def export_resource(
             )
         if not target.parent.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
+
+        # escape any pre-existing Jinja2 templates
+        file_contents = file_contents.replace(
+            "{{",
+            f"{JINJA2_OPEN_MARKER} '{{{{' {JINJA2_CLOSE_MARKER}",
+        )
+        file_contents = file_contents.replace(
+            "}}",
+            f"{JINJA2_OPEN_MARKER} '}}}}' {JINJA2_CLOSE_MARKER}",
+        )
+        file_contents = file_contents.replace(JINJA2_OPEN_MARKER, "{{")
+        file_contents = file_contents.replace(JINJA2_CLOSE_MARKER, "}}")
+
         with open(target, "w", encoding="utf-8") as output:
             output.write(file_contents)
