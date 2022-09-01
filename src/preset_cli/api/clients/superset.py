@@ -313,7 +313,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         }
 
         # paginate endpoint until no results are returned
-        page = 1
+        page = 0
         while True:
             query = prison.dumps(
                 {

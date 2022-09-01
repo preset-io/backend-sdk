@@ -700,19 +700,19 @@ def test_get_resources(requests_mock: Mocker) -> None:
     requests_mock.get(
         "https://superset.example.org/api/v1/database/?q="
         "(filters:!(),order_column:changed_on_delta_humanized,"
-        "order_direction:desc,page:1,page_size:100)",
+        "order_direction:desc,page:0,page_size:100)",
         json={"result": [1]},
     )
     requests_mock.get(
         "https://superset.example.org/api/v1/database/?q="
         "(filters:!(),order_column:changed_on_delta_humanized,"
-        "order_direction:desc,page:2,page_size:100)",
+        "order_direction:desc,page:1,page_size:100)",
         json={"result": [2]},
     )
     requests_mock.get(
         "https://superset.example.org/api/v1/database/?q="
         "(filters:!(),order_column:changed_on_delta_humanized,"
-        "order_direction:desc,page:3,page_size:100)",
+        "order_direction:desc,page:2,page_size:100)",
         json={"result": []},
     )
 
@@ -735,14 +735,14 @@ def test_get_resources_filtered_equal(requests_mock: Mocker) -> None:
         "https://superset.example.org/api/v1/database/?q="
         "(filters:!((col:database_name,opr:eq,value:my_db)),"
         "order_column:changed_on_delta_humanized,"
-        "order_direction:desc,page:1,page_size:100)",
+        "order_direction:desc,page:0,page_size:100)",
         json={"result": [{"Hello": "world"}]},
     )
     requests_mock.get(
         "https://superset.example.org/api/v1/database/?q="
         "(filters:!((col:database_name,opr:eq,value:my_db)),"
         "order_column:changed_on_delta_humanized,"
-        "order_direction:desc,page:2,page_size:100)",
+        "order_direction:desc,page:1,page_size:100)",
         json={"result": []},
     )
 
@@ -765,14 +765,14 @@ def test_get_resources_filtered_one_to_many(requests_mock: Mocker) -> None:
         "https://superset.example.org/api/v1/database/?q="
         "(filters:!((col:database,opr:rel_o_m,value:1)),"
         "order_column:changed_on_delta_humanized,"
-        "order_direction:desc,page:1,page_size:100)",
+        "order_direction:desc,page:0,page_size:100)",
         json={"result": [{"Hello": "world"}]},
     )
     requests_mock.get(
         "https://superset.example.org/api/v1/database/?q="
         "(filters:!((col:database,opr:rel_o_m,value:1)),"
         "order_column:changed_on_delta_humanized,"
-        "order_direction:desc,page:2,page_size:100)",
+        "order_direction:desc,page:1,page_size:100)",
         json={"result": []},
     )
 
