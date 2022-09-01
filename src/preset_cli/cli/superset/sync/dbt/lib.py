@@ -6,12 +6,15 @@ import ast
 import json
 import logging
 import os
+import re
 from pathlib import Path
-from typing import Any, Dict, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
 
 import yaml
 from jinja2 import Environment
 from sqlalchemy.engine.url import URL
+
+from preset_cli.api.clients.dbt import ModelSchema
 
 _logger = logging.getLogger(__name__)
 
@@ -29,7 +32,7 @@ def build_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
     if type_ == "snowflake":
         return build_snowflake_sqlalchemy_params(target)
 
-    raise Exception(
+    raise NotImplementedError(
         f"Unable to build a SQLAlchemy URI for a target of type {type_}. Please file an "
         "issue at https://github.com/preset-io/backend-sdk/issues/new?labels=enhancement&"
         f"title=Backend+for+{type_}.",
@@ -207,3 +210,145 @@ def load_profiles(path: Path, project_name: str, target_name: str) -> Dict[str, 
         return config
 
     return apply_templating(profiles)
+
+
+def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema]:
+    """
+    Filter a list of dbt models given a select condition.
+
+    Currently only a subset of the syntax is supported.
+
+    See https://docs.getdbt.com/reference/node-selection/syntax.
+    """
+    # match by tag
+    if condition.startswith("tag:"):
+        tag = condition.split(":", 1)[1]
+        return [model for model in models if tag in model["tags"]]
+
+    # simple match by name
+    model_names = {model["name"]: model for model in models}
+    if condition in model_names:
+        return [model_names[condition]]
+
+    # plus and n-plus operators
+    if "+" in condition:
+        return filter_plus_operator(models, condition)
+
+    # at operator -- from the docs it seems that it can only be used before the model name
+    # (https://docs.getdbt.com/reference/node-selection/graph-operators#the-at-operator)
+    if condition.startswith("@"):
+        return filter_at_operator(models, condition)
+
+    raise NotImplementedError(
+        f"Unable to parse the selection {condition}. Please file an issue at "
+        "https://github.com/preset-io/backend-sdk/issues/new?labels=enhancement&"
+        f"title=dbt+select+{condition}.",
+    )
+
+
+def filter_plus_operator(
+    models: List[ModelSchema],
+    condition: str,
+) -> List[ModelSchema]:
+    """
+    Filter a list of models using the plus or n-plus operators.
+    """
+    model_ids = {model["unique_id"]: model for model in models}
+    model_names = {model["name"]: model for model in models}
+
+    match = re.match(r"^(\d*\+)?(.*?)(\+\d*)?$", condition)
+    # pylint: disable=invalid-name
+    up, name, down = match.groups()  # type: ignore
+    base_model = model_names[name]
+    selected_models: Dict[str, ModelSchema] = {}
+
+    if up:
+        degrees = None if len(up) == 1 else int(up[:-1])
+        queue = [(base_model, 0)]
+        while queue:
+            model, degree = queue.pop(0)
+            id_ = model["unique_id"]
+            if id_ not in selected_models:
+                selected_models[id_] = model
+                if degrees is None or degree < degrees:
+                    queue.extend(
+                        (model_ids[parent_id], degree + 1)
+                        for parent_id in model["depends_on"]
+                        if parent_id in model_ids
+                    )
+
+    if down:
+        degrees = None if len(down) == 1 else int(down[1:])
+        queue = [(base_model, 0)]
+        while queue:
+            model, degree = queue.pop(0)
+            id_ = model["unique_id"]
+            if id_ not in selected_models:
+                selected_models[id_] = model
+                if degrees is None or degree < degrees:
+                    queue.extend(
+                        (model_ids[child_id], degree + 1)
+                        for child_id in model["children"]
+                        if child_id in model_ids
+                    )
+
+    return list(selected_models.values())
+
+
+def filter_at_operator(models: List[ModelSchema], condition: str) -> List[ModelSchema]:
+    """
+    filter a list of models using the at operator.
+    """
+    model_ids = {model["unique_id"]: model for model in models}
+    model_names = {model["name"]: model for model in models}
+
+    base_model = model_names[condition[1:]]
+    selected_models: Dict[str, ModelSchema] = {}
+
+    queue = [base_model]
+    while queue:
+        model = queue.pop(0)
+        id_ = model["unique_id"]
+        if id_ not in selected_models:
+            selected_models[id_] = model
+
+            # add children
+            queue.extend(
+                model_ids[child_id]
+                for child_id in model["children"]
+                if child_id in model_ids
+            )
+
+            # add parents of the children of the selected model
+            if model != base_model:
+                queue.extend(
+                    model_ids[parent_id]
+                    for parent_id in model["depends_on"]
+                    if parent_id in model_ids
+                )
+
+    return list(selected_models.values())
+
+
+def apply_select(
+    models: List[ModelSchema],
+    select: Tuple[str, ...],
+) -> List[ModelSchema]:
+    """
+    Apply dbt node selection (https://docs.getdbt.com/reference/node-selection/syntax).
+    """
+    if not select:
+        return models
+
+    model_ids = {model["unique_id"]: model for model in models}
+    selected: Dict[str, ModelSchema] = {}
+    for selection in select:
+        ids = set.intersection(
+            *[
+                {model["unique_id"] for model in filter_models(models, condition)}
+                for condition in selection.split(",")
+            ]
+        )
+        selected.update({id_: model_ids[id_] for id_ in ids})
+
+    return list(selected.values())

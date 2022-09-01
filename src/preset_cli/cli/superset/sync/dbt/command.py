@@ -4,7 +4,7 @@ A command to sync dbt models/metrics to Superset and charts/dashboards back as e
 
 import os.path
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 import yaml
@@ -17,6 +17,7 @@ from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import sync_exposures
+from preset_cli.cli.superset.sync.dbt.lib import apply_select
 from preset_cli.exceptions import DatabaseNotFoundError
 
 
@@ -47,12 +48,19 @@ from preset_cli.exceptions import DatabaseNotFoundError
     help="Mark resources as managed externally to prevent edits",
 )
 @click.option("--external-url-prefix", default="", help="Base URL for resources")
+@click.option(
+    "--select",
+    "-s",
+    help="Node selection (same syntax as dbt)",
+    multiple=True,
+)
 @click.pass_context
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
     manifest: str,
     project: str,
     target: str,
+    select: Tuple[str, ...],
     profiles: Optional[str] = None,
     exposures: Optional[str] = None,
     import_db: bool = False,
@@ -93,6 +101,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             # conform to the same schema that dbt Cloud uses for models
             config["uniqueId"] = config["unique_id"]
             models.append(model_schema.load(config, unknown=EXCLUDE))
+    models = apply_select(models, select)
+
     metrics = []
     metric_schema = MetricSchema()
     for config in configs["metrics"].values():
@@ -124,11 +134,18 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     help="Mark resources as managed externally to prevent edits",
 )
 @click.option("--external-url-prefix", default="", help="Base URL for resources")
+@click.option(
+    "--select",
+    "-s",
+    help="Node selection (same syntax as dbt)",
+    multiple=True,
+)
 @click.pass_context
-def dbt_cloud(
+def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
     token: str,
     job_id: int,
+    select: Tuple[str, ...],
     disallow_edits: bool = True,
     external_url_prefix: str = "",
 ) -> None:
@@ -153,6 +170,7 @@ def dbt_cloud(
 
     database = databases[0]
     models = dbt_client.get_models(job_id)
+    models = apply_select(models, select)
     metrics = dbt_client.get_metrics(job_id)
 
     sync_datasets(

@@ -6,15 +6,19 @@ Test for ``preset_cli.cli.superset.sync.dbt.lib``.
 import json
 import math
 from pathlib import Path
+from typing import List
 
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
+from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.cli.superset.sync.dbt.lib import (
+    apply_select,
     as_number,
     build_sqlalchemy_params,
     env_var,
+    filter_models,
     load_profiles,
 )
 
@@ -216,3 +220,118 @@ jaffle_shop:
             "target": "dev",
         },
     }
+
+
+def test_filter_models() -> None:
+    """
+    Test ``filter_models``.
+    """
+    one = {
+        "name": "one",
+        "tags": ["test"],
+        "unique_id": "model.one",
+        "depends_on": ["source.zero"],
+        "children": ["model.two"],
+    }
+    two = {
+        "name": "two",
+        "tags": [],
+        "unique_id": "model.two",
+        "depends_on": ["model.one", "model.three"],
+        "children": [],
+    }
+    three = {
+        "name": "three",
+        "tags": [],
+        "unique_id": "model.three",
+        "depends_on": ["source.zero"],
+        "children": ["model.two"],
+    }
+    models: List[ModelSchema] = [one, two, three]  # type: ignore
+
+    assert filter_models(models, "one") == [one]
+    assert filter_models(models, "one+") == [one, two]
+    assert filter_models(models, "+two") == [two, one, three]
+    assert filter_models(models, "tag:test") == [one]
+    assert filter_models(models, "@one") == [one, two, three]
+
+    with pytest.raises(NotImplementedError) as excinfo:
+        filter_models(models, "invalid")
+    assert str(excinfo.value) == (
+        "Unable to parse the selection invalid. Please file an issue at "
+        "https://github.com/preset-io/backend-sdk/issues/new?"
+        "labels=enhancement&title=dbt+select+invalid."
+    )
+
+
+def test_filter_models_seen() -> None:
+    """
+    Test that ``filter_models`` dedupes models.
+    """
+    one = {
+        "name": "one",
+        "tags": [],
+        "unique_id": "model.one",
+        "depends_on": ["source.zero"],
+        "children": ["model.two", "model.three"],
+    }
+    two = {
+        "name": "two",
+        "tags": [],
+        "unique_id": "model.two",
+        "depends_on": ["model.one"],
+        "children": ["model.four"],
+    }
+    three = {
+        "name": "three",
+        "tags": [],
+        "unique_id": "model.three",
+        "depends_on": ["model.one"],
+        "children": ["model.four"],
+    }
+    four = {
+        "name": "four",
+        "tags": [],
+        "unique_id": "model.four",
+        "depends_on": ["model.two", "model.three"],
+        "children": [],
+    }
+    models: List[ModelSchema] = [one, two, three, four]  # type: ignore
+
+    assert filter_models(models, "+four") == [four, two, three, one]
+    assert filter_models(models, "one+") == [one, two, three, four]
+    assert filter_models(models, "1+four") == [four, two, three]
+    assert filter_models(models, "one+1") == [one, two, three]
+
+
+def test_apply_select() -> None:
+    """
+    Test ``apply_select``.
+    """
+    one = {
+        "name": "one",
+        "tags": ["test"],
+        "unique_id": "model.one",
+        "depends_on": ["source.zero"],
+        "children": ["model.two"],
+    }
+    two = {
+        "name": "two",
+        "tags": [],
+        "unique_id": "model.two",
+        "depends_on": ["model.one", "model.three"],
+        "children": [],
+    }
+    three = {
+        "name": "three",
+        "tags": [],
+        "unique_id": "model.three",
+        "depends_on": ["source.zero"],
+        "children": ["model.two"],
+    }
+    models: List[ModelSchema] = [one, two, three]  # type: ignore
+
+    assert apply_select(models, ("one", "two")) == [one, two]
+    assert apply_select(models, ("+two+",)) == [one, two, three]
+    assert apply_select(models, ("+two+,tag:test",)) == [one]
+    assert apply_select(models, ("tag:test,+two+",)) == [one]

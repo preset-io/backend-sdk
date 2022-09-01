@@ -80,6 +80,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             "name": "messages_channels",
             "schema": "public",
             "unique_id": "model.superset_examples.messages_channels",
+            "tags": [],
         },
     ]
     metrics = [
@@ -169,6 +170,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             "name": "messages_channels",
             "schema": "public",
             "unique_id": "model.superset_examples.messages_channels",
+            "tags": [],
         },
     ]
     metrics = [
