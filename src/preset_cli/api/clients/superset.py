@@ -1,22 +1,5 @@
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-
 """
-A simple client for running SQL queries against Superset:
+A simple client for running SQL queries (and more) against Superset:
 
     >>> from yarl import URL
     >>> from preset_cli.api.clients.superset import SupersetClient
@@ -50,6 +33,8 @@ from preset_cli import __version__
 from preset_cli.api.operators import Equal, Operator
 from preset_cli.auth.main import Auth
 from preset_cli.lib import validate_response
+
+MAX_PAGE_SIZE = 100
 
 
 class GenericDataType(IntEnum):
@@ -322,27 +307,41 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return one or more of a resource, possibly filtered.
         """
+        resources = []
         operations = {
             k: v if isinstance(v, Operator) else Equal(v) for k, v in kwargs.items()
         }
-        query = prison.dumps(
-            {
-                "filters": [
-                    dict(col=col, opr=value.operator, value=value.value)
-                    for col, value in operations.items()
-                ],
-            },
-        )
-        url = self.baseurl / "api/v1" / resource_name / "" % {"q": query}
 
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-        response = session.get(url, headers=headers)
-        validate_response(response)
+        # paginate endpoint until no results are returned
+        page = 0
+        while True:
+            query = prison.dumps(
+                {
+                    "filters": [
+                        dict(col=col, opr=value.operator, value=value.value)
+                        for col, value in operations.items()
+                    ],
+                    "order_column": "changed_on_delta_humanized",
+                    "order_direction": "desc",
+                    "page": page,
+                    "page_size": MAX_PAGE_SIZE,
+                },
+            )
+            url = self.baseurl / "api/v1" / resource_name / "" % {"q": query}
 
-        payload = response.json()
-        resources = payload["result"]
+            session = self.auth.get_session()
+            headers = self.auth.get_headers()
+            headers["Referer"] = str(self.baseurl)
+            response = session.get(url, headers=headers)
+            validate_response(response)
+
+            payload = response.json()
+
+            if not payload["result"]:
+                break
+
+            resources.extend(payload["result"])
+            page += 1
 
         return resources
 
