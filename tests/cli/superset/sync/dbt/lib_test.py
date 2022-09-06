@@ -249,11 +249,22 @@ def test_filter_models() -> None:
     }
     models: List[ModelSchema] = [one, two, three]  # type: ignore
 
-    assert filter_models(models, "one") == [one]
-    assert filter_models(models, "one+") == [one, two]
-    assert filter_models(models, "+two") == [two, one, three]
-    assert filter_models(models, "tag:test") == [one]
-    assert filter_models(models, "@one") == [one, two, three]
+    assert {model["name"] for model in filter_models(models, "one")} == {"one"}
+    assert {model["name"] for model in filter_models(models, "one+")} == {
+        "one",
+        "two",
+    }
+    assert {model["name"] for model in filter_models(models, "+two")} == {
+        "one",
+        "two",
+        "three",
+    }
+    assert {model["name"] for model in filter_models(models, "tag:test")} == {"one"}
+    assert {model["name"] for model in filter_models(models, "@one")} == {
+        "one",
+        "two",
+        "three",
+    }
 
     with pytest.raises(NotImplementedError) as excinfo:
         filter_models(models, "invalid")
@@ -298,10 +309,28 @@ def test_filter_models_seen() -> None:
     }
     models: List[ModelSchema] = [one, two, three, four]  # type: ignore
 
-    assert filter_models(models, "+four") == [four, two, three, one]
-    assert filter_models(models, "one+") == [one, two, three, four]
-    assert filter_models(models, "1+four") == [four, two, three]
-    assert filter_models(models, "one+1") == [one, two, three]
+    assert {model["name"] for model in filter_models(models, "+four")} == {
+        "one",
+        "two",
+        "three",
+        "four",
+    }
+    assert {model["name"] for model in filter_models(models, "one+")} == {
+        "one",
+        "two",
+        "three",
+        "four",
+    }
+    assert {model["name"] for model in filter_models(models, "1+four")} == {
+        "two",
+        "three",
+        "four",
+    }
+    assert {model["name"] for model in filter_models(models, "one+1")} == {
+        "one",
+        "two",
+        "three",
+    }
 
 
 def test_apply_select() -> None:
@@ -331,7 +360,18 @@ def test_apply_select() -> None:
     }
     models: List[ModelSchema] = [one, two, three]  # type: ignore
 
-    assert apply_select(models, ("one", "two")) == [one, two]
-    assert apply_select(models, ("+two+",)) == [one, two, three]
-    assert apply_select(models, ("+two+,tag:test",)) == [one]
-    assert apply_select(models, ("tag:test,+two+",)) == [one]
+    assert {model["name"] for model in apply_select(models, ("one", "two"))} == {
+        "one",
+        "two",
+    }
+    assert {model["name"] for model in apply_select(models, ("+two+",))} == {
+        "one",
+        "two",
+        "three",
+    }
+    assert {model["name"] for model in apply_select(models, ("+two+,tag:test",))} == {
+        "one",
+    }
+    assert {model["name"] for model in apply_select(models, ("tag:test,+two+",))} == {
+        "one",
+    }
