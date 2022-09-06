@@ -522,12 +522,15 @@ class ModelSchema(PostelSchema):
     Schema for a model.
     """
 
+    depends_on = fields.List(fields.String(), data_key="dependsOn")
+    children = fields.List(fields.String(), data_key="childrenL1")
     database = fields.String()
     schema = fields.String()
     description = fields.String()
     meta = fields.Raw()
     name = fields.String()
     unique_id = fields.String(data_key="uniqueId")
+    tags = fields.List(fields.String())
 
 
 class FilterSchema(PostelSchema):
@@ -648,11 +651,14 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             query ($jobId: Int!) {
                 models(jobId: $jobId) {
                     uniqueId
+                    dependsOn
+                    childrenL1
                     name
                     database
                     schema
                     description
                     meta
+                    tags
                 }
             }
         """
