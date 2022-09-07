@@ -360,18 +360,30 @@ def test_apply_select() -> None:
     }
     models: List[ModelSchema] = [one, two, three]  # type: ignore
 
-    assert {model["name"] for model in apply_select(models, ("one", "two"))} == {
+    assert {model["name"] for model in apply_select(models, ("one", "two"), ())} == {
         "one",
         "two",
     }
-    assert {model["name"] for model in apply_select(models, ("+two+",))} == {
+    assert {model["name"] for model in apply_select(models, ("+two+",), ())} == {
         "one",
         "two",
         "three",
     }
-    assert {model["name"] for model in apply_select(models, ("+two+,tag:test",))} == {
+    assert {
+        model["name"] for model in apply_select(models, ("+two+,tag:test",), ())
+    } == {
         "one",
     }
-    assert {model["name"] for model in apply_select(models, ("tag:test,+two+",))} == {
+    assert {
+        model["name"] for model in apply_select(models, ("tag:test,+two+",), ())
+    } == {
         "one",
+    }
+
+    # test exclude
+    assert {
+        model["name"]
+        for model in apply_select(models, ("+two+",), ("three", "tag:test"))
+    } == {
+        "two",
     }

@@ -333,6 +333,7 @@ def filter_at_operator(models: List[ModelSchema], condition: str) -> List[ModelS
 def apply_select(
     models: List[ModelSchema],
     select: Tuple[str, ...],
+    exclude: Tuple[str, ...],
 ) -> List[ModelSchema]:
     """
     Apply dbt node selection (https://docs.getdbt.com/reference/node-selection/syntax).
@@ -341,6 +342,7 @@ def apply_select(
         return models
 
     model_ids = {model["unique_id"]: model for model in models}
+
     selected: Dict[str, ModelSchema] = {}
     for selection in select:
         ids = set.intersection(
@@ -350,5 +352,14 @@ def apply_select(
             ]
         )
         selected.update({id_: model_ids[id_] for id_ in ids})
+
+    for selection in exclude:
+        for id_ in set.intersection(
+            *[
+                {model["unique_id"] for model in filter_models(models, condition)}
+                for condition in selection.split(",")
+            ]
+        ):
+            del selected[id_]
 
     return list(selected.values())
