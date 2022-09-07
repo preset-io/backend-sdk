@@ -6,6 +6,7 @@ Tests for ``preset_cli.api.clients.superset``.
 import json
 from io import BytesIO
 from unittest import mock
+from zipfile import is_zipfile, ZipFile
 
 import pytest
 from pytest_mock import MockerFixture
@@ -1063,16 +1064,66 @@ def test_export_zip(requests_mock: Mocker) -> None:
     """
     Test the ``export_zip`` method.
     """
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        with bundle.open("test.txt", "w") as fp:  # pylint: disable=invalid-name
+            fp.write(b"Hello!")
+    buf.seek(0)
+
     requests_mock.get(
         "https://superset.example.org/api/v1/database/export/?q=%21%281%2C2%2C3%29",
-        content="I'm a ZIP".encode("utf-8"),
+        content=buf.getvalue(),
     )
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
 
     response = client.export_zip("database", [1, 2, 3])
-    assert response.getvalue() == "I'm a ZIP".encode("utf-8")
+    assert is_zipfile(response)
+    with ZipFile(response) as bundle:
+        assert bundle.namelist() == ["test.txt"]
+        assert bundle.read("test.txt") == b"Hello!"
+
+    assert (
+        requests_mock.last_request.headers["Referer"] == "https://superset.example.org/"
+    )
+
+
+def test_export_zip_pagination(mocker: MockerFixture, requests_mock: Mocker) -> None:
+    """
+    Test the ``export_zip`` method with pagination.
+    """
+    page1 = BytesIO()
+    with ZipFile(page1, "w") as bundle:
+        with bundle.open("test1.txt", "w") as fp:  # pylint: disable=invalid-name
+            fp.write(b"Hello!")
+    page1.seek(0)
+
+    page2 = BytesIO()
+    with ZipFile(page2, "w") as bundle:
+        with bundle.open("test2.txt", "w") as fp:  # pylint: disable=invalid-name
+            fp.write(b"Bye!")
+    page2.seek(0)
+
+    requests_mock.get(
+        "https://superset.example.org/api/v1/database/export/?q=%21%281%2C2%29",
+        content=page1.getvalue(),
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/database/export/?q=%21%283%29",
+        content=page2.getvalue(),
+    )
+
+    mocker.patch("preset_cli.api.clients.superset.MAX_IDS_IN_EXPORT", new=2)
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    response = client.export_zip("database", [1, 2, 3])
+    assert is_zipfile(response)
+    with ZipFile(response) as bundle:
+        assert bundle.namelist() == ["test1.txt", "test2.txt"]
+
     assert (
         requests_mock.last_request.headers["Referer"] == "https://superset.example.org/"
     )

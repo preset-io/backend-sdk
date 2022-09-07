@@ -24,6 +24,7 @@ from enum import IntEnum
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
 from uuid import uuid4
+from zipfile import ZipFile
 
 import pandas as pd
 import prison
@@ -35,6 +36,7 @@ from preset_cli.auth.main import Auth
 from preset_cli.lib import validate_response
 
 MAX_PAGE_SIZE = 100
+MAX_IDS_IN_EXPORT = 100
 
 
 class GenericDataType(IntEnum):
@@ -474,16 +476,27 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Export one or more of a resource.
         """
-        url = self.baseurl / "api/v1" / resource_name / "export/"
-        params = {"q": prison.dumps(ids)}
-
         session = self.auth.get_session()
         headers = self.auth.get_headers()
         headers["Referer"] = str(self.baseurl)
-        response = session.get(url, params=params, headers=headers)
-        validate_response(response)
+        url = self.baseurl / "api/v1" / resource_name / "export/"
 
-        return BytesIO(response.content)
+        buf = BytesIO()
+        with ZipFile(buf, "w") as bundle:
+            while ids:
+                page, ids = ids[:MAX_IDS_IN_EXPORT], ids[MAX_IDS_IN_EXPORT:]
+                params = {"q": prison.dumps(page)}
+                response = session.get(url, params=params, headers=headers)
+                validate_response(response)
+
+                # write files from response to main ZIP bundle
+                with ZipFile(BytesIO(response.content)) as subset:
+                    for name in subset.namelist():
+                        bundle.writestr(name, subset.read(name))
+
+        buf.seek(0)
+
+        return buf
 
     def import_zip(
         self,
