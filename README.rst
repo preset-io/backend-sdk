@@ -327,6 +327,41 @@ The token only needs access to the "Metadata only" permission set for your proje
 
 Before running the command you need to have a database already created in the Preset workspace, and the database should have the same name as the dbt Cloud database. You can run the command before creating the database to see what the name should be.
 
+Selecting models
+~~~~~~~~~~~~~~~~
+
+By default all the models will be synchronized to the workspace. The CLI supports a subset of the syntax used by the ``dbt`` command line to select which models should be synchronized. Models that should be synchronized can be specified via the ``--select`` flag:
+
+.. code-block:: bash
+
+    % preset-cli ... --select my_model    # sync only "my_model"
+    % preset-cli ... --select my_model+   # sync "my_model" and its children
+    % preset-cli ... --select my_model+2  # sync "my_model" and its children up to 2 degrees
+    % preset-cli ... --select +my_model   # sync "my_model" and its parents
+    % preset-cli ... --select +my_model+  # sync "my_model" with parents and children
+
+Multiple selectors can be passed by repeating the ``--select`` flag (note that this is slightly different from dbt, which doesn't require repeating the flag):
+
+.. code-block:: bash
+
+    % preset-cli ... --select my_model --select my_other_model
+
+The CLI also support the intersection operator:
+
+.. code-block:: bash
+
+    % preset-cli ... --select my_model+,tag:test
+
+The command above will synchronize ``my_model`` and its children, as long as the models have the "test" tag.
+
+Finally, the CLI also supports the ``--exclude`` flag in a similar way:
+
+.. code-block:: bash
+
+    % preset-cli --select my_model+ --exclude tag:test
+
+The command above synchronizes "my_model" and its children, as long as the models don't have the "test" tag.
+
 Exporting resources
 -------------------
 
