@@ -109,6 +109,7 @@ The following commands are currently available:
 - ``preset-cli auth``: store authentication credentials.
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
 - ``preset-cli superset export-assets``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
+- ``preset-cli superset export-ownership``: export resource ownership (UUID -> email) into a YAML file.
 - ``preset-cli superset export-rls``: export RLS rules into a YAML file.
 - ``preset-cli superset export-users``: export users (name, username, email, roles) into a YAML file.
 - ``preset-cli superset sync native``: synchronize the workspace from a directory of templated configuration files.
@@ -428,3 +429,8 @@ Exporting RLS rules
 ~~~~~~~~~~~~~~~~~~~
 
 The ``preset-cli superset export-rls`` command can be used to export a list of RLS rules. Currently there's no way to import this into a workspace, but work is in progress.
+
+Exporting ownership
+~~~~~~~~~~~~~~~~~~~
+
+The ``preset-cli superset export-ownership`` command generates a YAML file with information about ownership of different resources. The file maps resource UUIDs to user email address, and in the future will be used to recreate ownership on a different instance of Superset.

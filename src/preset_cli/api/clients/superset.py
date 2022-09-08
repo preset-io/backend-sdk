@@ -35,18 +35,19 @@ from typing import (
     Union,
     cast,
 )
-from uuid import uuid4
+from uuid import UUID, uuid4
 from zipfile import ZipFile
 
 import pandas as pd
 import prison
+import yaml
 from bs4 import BeautifulSoup
 from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.api.operators import Equal, Operator
 from preset_cli.auth.main import Auth
-from preset_cli.lib import validate_response
+from preset_cli.lib import remove_root, validate_response
 
 MAX_PAGE_SIZE = 100
 MAX_IDS_IN_EXPORT = 100
@@ -138,11 +139,19 @@ def shortid() -> str:
     return str(uuid.uuid4())[-12:]
 
 
+def parse_html_array(value: str) -> List[str]:
+    """
+    Parse an array scraped from the HTML CRUD view.
+    """
+    return value[1:-1].split(", ")
+
+
 class UserType(TypedDict):
     """
     Schema for a user.
     """
 
+    id: int
     username: str
     role: List[str]
     first_name: str
@@ -162,6 +171,16 @@ class RuleType(TypedDict):
     roles: List[str]
     group_key: str
     clause: str
+
+
+class OwnershipType(TypedDict):
+    """
+    Schema for resource ownership.
+    """
+
+    name: str
+    uuid: UUID
+    owners: List[str]
 
 
 class SupersetClient:  # pylint: disable=too-many-public-methods
@@ -537,6 +556,33 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return buf
 
+    def get_uuids(self, resource_name: str) -> Dict[int, UUID]:
+        """
+        Get UUID of a list of resources.
+
+        Still method is very inneficient, but it's the only way to get the mapping
+        between IDs and UUIDs in older versions of Superset.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+        headers["Referer"] = str(self.baseurl)
+        url = self.baseurl / "api/v1" / resource_name / "export/"
+
+        uuids: Dict[int, UUID] = {}
+        for resource in self.get_resources(resource_name):
+            id_ = resource["id"]
+            params = {"q": prison.dumps([id_])}
+            response = session.get(url, params=params, headers=headers)
+
+            with ZipFile(BytesIO(response.content)) as export:
+                for name in export.namelist():
+                    config = yaml.load(export.read(name), Loader=yaml.SafeLoader)
+                    name = remove_root(name)
+                    if name.startswith(resource_name):
+                        uuids[id_] = UUID(config["uuid"])
+
+        return uuids
+
     def import_zip(
         self,
         resource_name: str,
@@ -593,6 +639,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             for tr in trs[1:]:  # pylint: disable=invalid-name
                 tds = tr.find_all("td")
                 yield {
+                    "id": int(tds[0].find("a").attrs["href"].split("/")[-1]),
                     "first_name": tds[1].text,
                     "last_name": tds[2].text,
                     "username": tds[3].text,
@@ -656,9 +703,21 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     },
                 )
 
+    def export_ownership(self, resource_name: str) -> Iterator[OwnershipType]:
+        """
+        Return information about resource ownership.
+        """
+        emails = {user["id"]: user["email"] for user in self.export_users()}
+        uuids = self.get_uuids(resource_name)
+        name_key = {
+            "dataset": "table_name",
+            "chart": "slice_name",
+            "dashboard": "dashboard_title",
+        }[resource_name]
 
-def parse_html_array(value: str) -> List[str]:
-    """
-    Parse an array scraped from the HTML CRUD view.
-    """
-    return value[1:-1].split(", ")
+        for resource in self.get_resources(resource_name):
+            yield {
+                "name": resource[name_key],
+                "uuid": uuids[resource["id"]],
+                "owners": [emails[owner["id"]] for owner in resource.get("owners", [])],
+            }
