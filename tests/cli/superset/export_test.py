@@ -6,6 +6,7 @@ Tests for the export command.
 from io import BytesIO
 from pathlib import Path
 from unittest import mock
+from uuid import UUID
 from zipfile import ZipFile
 
 import pytest
@@ -68,12 +69,12 @@ def test_export_resource(
     client = mocker.MagicMock()
     client.export_zip.return_value = dataset_export
 
-    export_resource(resource="database", root=root, client=client, overwrite=False)
+    export_resource(resource_name="database", root=root, client=client, overwrite=False)
     with open(root / "databases/gsheets.yaml", encoding="utf-8") as input_:
         assert input_.read() == "database_name: GSheets\nsqlalchemy_uri: gsheets://\n"
 
     # check that Jinja2 was escaped
-    export_resource(resource="dataset", root=root, client=client, overwrite=False)
+    export_resource(resource_name="dataset", root=root, client=client, overwrite=False)
     with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
         assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
             "table_name": "test",
@@ -103,15 +104,20 @@ def test_export_resource_overwrite(
     client = mocker.MagicMock()
     client.export_zip.return_value = dataset_export
 
-    export_resource(resource="database", root=root, client=client, overwrite=False)
+    export_resource(resource_name="database", root=root, client=client, overwrite=False)
     with pytest.raises(Exception) as excinfo:
-        export_resource(resource="database", root=root, client=client, overwrite=False)
+        export_resource(
+            resource_name="database",
+            root=root,
+            client=client,
+            overwrite=False,
+        )
     assert str(excinfo.value) == (
         "File already exists and --overwrite was not specified: "
         "/path/to/root/databases/gsheets.yaml"
     )
 
-    export_resource(resource="database", root=root, client=client, overwrite=True)
+    export_resource(resource_name="database", root=root, client=client, overwrite=True)
 
 
 def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -201,6 +207,7 @@ def test_export_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     with open("users.yaml", encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    print(contents)
     assert contents == [
         {
             "first_name": "admin",
@@ -252,3 +259,43 @@ def test_export_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             "tables": ["main.test_table"],
         },
     ]
+
+
+def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``export_ownership`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_ownership.side_effect = [
+        [],
+        [
+            {
+                "name": "My chart",
+                "uuid": UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+                "owners": ["adoe@example.com", "bdoe@example.com"],
+            },
+        ],
+        [],
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "export-ownership"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "chart": [
+            {
+                "name": "My chart",
+                "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
+                "owners": ["adoe@example.com", "bdoe@example.com"],
+            },
+        ],
+    }

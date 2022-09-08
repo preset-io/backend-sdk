@@ -114,6 +114,7 @@ Options:
 Commands:
   export
   export-assets
+  export-ownership
   export-rls
   export-users
   sql

@@ -2,6 +2,7 @@
 A command to export Superset resources into a directory.
 """
 
+from collections import defaultdict
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -39,12 +40,12 @@ def export_assets(  # pylint: disable=too-many-locals
     client = SupersetClient(url, auth)
     root = Path(directory)
 
-    for resource in ["database", "dataset", "chart", "dashboard"]:
-        export_resource(resource, root, client, overwrite)
+    for resource_name in ["database", "dataset", "chart", "dashboard"]:
+        export_resource(resource_name, root, client, overwrite)
 
 
 def export_resource(
-    resource: str,
+    resource_name: str,
     root: Path,
     client: SupersetClient,
     overwrite: bool,
@@ -52,9 +53,9 @@ def export_resource(
     """
     Export a given resource and unzip it in a directory.
     """
-    resources = client.get_resources(resource)
+    resources = client.get_resources(resource_name)
     ids = [resource["id"] for resource in resources]
-    buf = client.export_zip(resource, ids)
+    buf = client.export_zip(resource_name, ids)
 
     with ZipFile(buf) as bundle:
         contents = {
@@ -64,7 +65,7 @@ def export_resource(
 
     for file_name, file_contents in contents.items():
         # skip related files
-        if not file_name.startswith(resource):
+        if not file_name.startswith(resource_name):
             continue
 
         target = root / file_name
@@ -106,8 +107,12 @@ def export_users(ctx: click.core.Context, path: str) -> None:
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
+    users = [
+        {k: v for k, v in user.items() if k != "id"} for user in client.export_users()
+    ]
+
     with open(path, "w", encoding="utf-8") as output:
-        yaml.dump(list(client.export_users()), output)
+        yaml.dump(users, output)
 
 
 @click.command()
@@ -127,3 +132,33 @@ def export_rls(ctx: click.core.Context, path: str) -> None:
 
     with open(path, "w", encoding="utf-8") as output:
         yaml.dump(list(client.export_rls()), output)
+
+
+@click.command()
+@click.argument(
+    "path",
+    type=click.Path(resolve_path=True),
+    default="ownership.yaml",
+)
+@click.pass_context
+def export_ownership(ctx: click.core.Context, path: str) -> None:
+    """
+    Export DBs/datasets/charts/dashboards ownership to a YAML file.
+    """
+    auth = ctx.obj["AUTH"]
+    url = URL(ctx.obj["INSTANCE"])
+    client = SupersetClient(url, auth)
+
+    ownership = defaultdict(list)
+    for resource_name in ["dataset", "chart", "dashboard"]:
+        for resource in client.export_ownership(resource_name):
+            ownership[resource_name].append(
+                {
+                    "name": resource["name"],
+                    "uuid": str(resource["uuid"]),
+                    "owners": resource["owners"],
+                },
+            )
+
+    with open(path, "w", encoding="utf-8") as output:
+        yaml.dump(dict(ownership), output)

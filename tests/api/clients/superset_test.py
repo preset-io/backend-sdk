@@ -6,9 +6,11 @@ Tests for ``preset_cli.api.clients.superset``.
 import json
 from io import BytesIO
 from unittest import mock
+from uuid import UUID
 from zipfile import ZipFile, is_zipfile
 
 import pytest
+import yaml
 from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
 from yarl import URL
@@ -1066,8 +1068,8 @@ def test_export_zip(requests_mock: Mocker) -> None:
     """
     buf = BytesIO()
     with ZipFile(buf, "w") as bundle:
-        with bundle.open("test.txt", "w") as fp:  # pylint: disable=invalid-name
-            fp.write(b"Hello!")
+        with bundle.open("test.txt", "w") as output:
+            output.write(b"Hello!")
     buf.seek(0)
 
     requests_mock.get(
@@ -1095,14 +1097,14 @@ def test_export_zip_pagination(mocker: MockerFixture, requests_mock: Mocker) -> 
     """
     page1 = BytesIO()
     with ZipFile(page1, "w") as bundle:
-        with bundle.open("test1.txt", "w") as fp:  # pylint: disable=invalid-name
-            fp.write(b"Hello!")
+        with bundle.open("test1.txt", "w") as output:
+            output.write(b"Hello!")
     page1.seek(0)
 
     page2 = BytesIO()
     with ZipFile(page2, "w") as bundle:
-        with bundle.open("test2.txt", "w") as fp:  # pylint: disable=invalid-name
-            fp.write(b"Bye!")
+        with bundle.open("test2.txt", "w") as output:
+            output.write(b"Bye!")
     page2.seek(0)
 
     requests_mock.get(
@@ -1232,7 +1234,7 @@ def test_export_users(requests_mock: Mocker) -> None:
         <th>Role</th>
       </tr>
       <tr>
-        <td></td>
+        <td><a href="/users/edit/1">Edit</a></td>
         <td>Alice</td>
         <td>Doe</td>
         <td>adoe</td>
@@ -1241,7 +1243,7 @@ def test_export_users(requests_mock: Mocker) -> None:
         <td>[Admin]</td>
       </tr>
       <tr>
-        <td></td>
+        <td><a href="/users/edit/2">Edit</a></td>
         <td>Bob</td>
         <td>Doe</td>
         <td>bdoe</td>
@@ -1284,6 +1286,7 @@ def test_export_users(requests_mock: Mocker) -> None:
     client = SupersetClient("https://superset.example.org/", auth)
     assert list(client.export_users()) == [
         {
+            "id": 1,
             "first_name": "Alice",
             "last_name": "Doe",
             "username": "adoe",
@@ -1291,6 +1294,7 @@ def test_export_users(requests_mock: Mocker) -> None:
             "role": ["Admin"],
         },
         {
+            "id": 2,
             "first_name": "Bob",
             "last_name": "Doe",
             "username": "bdoe",
@@ -1409,3 +1413,93 @@ def test_export_rls(requests_mock: Mocker) -> None:
             "clause": "client_id = 9",
         },
     ]
+
+
+def test_export_ownership(mocker: MockerFixture) -> None:
+    """
+    Test ``export_ownership``.
+    """
+    mocker.patch.object(
+        SupersetClient,
+        "export_users",
+        return_value=[
+            {"id": 1, "email": "admin@example.com"},
+            {"id": 2, "email": "adoe@example.com"},
+        ],
+    )
+    mocker.patch.object(
+        SupersetClient,
+        "get_uuids",
+        return_value={
+            1: UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+        },
+    )
+    mocker.patch.object(
+        SupersetClient,
+        "get_resources",
+        return_value=[
+            {
+                "slice_name": "My chart",
+                "id": 1,
+                "owners": [{"id": 1}, {"id": 2}],
+            },
+        ],
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_ownership("chart")) == [
+        {
+            "name": "My chart",
+            "owners": ["admin@example.com", "adoe@example.com"],
+            "uuid": UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+        },
+    ]
+
+
+def test_get_uuids(requests_mock: Mocker) -> None:
+    """
+    Test the ``get_uuids`` method.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/chart/?q="
+        "(filters:!(),order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}, {"id": 2}, {"id": 3}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/chart/?q="
+        "(filters:!(),order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+
+    uuids = [
+        "c9d100b8-4fa5-4b7a-8a71-9803b5343674",
+        "2826c33b-7d13-4830-865e-d62630b20dee",
+        "0ac7464e-14e7-4c54-ab22-7cbd4536fccc",
+    ]
+    for i in range(3):
+        name = f"chart_export/chart/chart{i+1}.yaml"
+        uuid = uuids[i]
+        buf = BytesIO()
+        with ZipFile(buf, "w") as bundle:
+            with bundle.open("metadata.yaml", "w") as output:
+                output.write(b"Hello!")
+            with bundle.open(name, "w") as output:
+                output.write(yaml.dump({"uuid": uuid}).encode())
+        buf.seek(0)
+
+        requests_mock.get(
+            f"https://superset.example.org/api/v1/chart/export/?q=%21%28{i+1}%29",
+            content=buf.getvalue(),
+        )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    assert client.get_uuids("chart") == {
+        1: UUID("c9d100b8-4fa5-4b7a-8a71-9803b5343674"),
+        2: UUID("2826c33b-7d13-4830-865e-d62630b20dee"),
+        3: UUID("0ac7464e-14e7-4c54-ab22-7cbd4536fccc"),
+    }
