@@ -22,12 +22,13 @@ import uuid
 from datetime import datetime
 from enum import IntEnum
 from io import BytesIO
-from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
+from typing import Any, Dict, Iterator, List, Literal, Optional, TypedDict, Union
 from uuid import uuid4
 from zipfile import ZipFile
 
 import pandas as pd
 import prison
+from bs4 import BeautifulSoup
 from yarl import URL
 
 from preset_cli import __version__
@@ -123,6 +124,18 @@ def shortid() -> str:
     Generate a short ID suited for a SQL Lab client ID.
     """
     return str(uuid.uuid4())[-12:]
+
+
+class UserType(TypedDict):
+    """
+    Schema for a user.
+    """
+
+    username: str
+    role: List[str]
+    first_name: str
+    last_name: str
+    email: str
 
 
 class SupersetClient:  # pylint: disable=too-many-public-methods
@@ -524,3 +537,39 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         payload = response.json()
 
         return payload["message"] == "OK"
+
+    def export_users(self) -> Iterator[UserType]:
+        """
+        Return all users.
+
+        Since this is not exposed via an API we need to crawl the CRUD page.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+        headers["Referer"] = str(self.baseurl)
+
+        page = 0
+        while True:
+            params = {
+                "psize_UserDBModelView": MAX_PAGE_SIZE,
+                "page_UserDBModelView": page,
+            }
+            url = (self.baseurl / "users/list/") % params
+            page += 1
+
+            response = session.get(url)
+            soup = BeautifulSoup(response.text, features="html.parser")
+            table = soup.find_all("table")[1]
+            trs = table.find_all("tr")
+            if len(trs) == 1:
+                break
+
+            for tr in trs[1:]:  # pylint: disable=invalid-name
+                tds = tr.find_all("td")
+                yield {
+                    "first_name": tds[1].text,
+                    "last_name": tds[2].text,
+                    "username": tds[3].text,
+                    "email": tds[4].text,
+                    "role": tds[6].text[1:-1].split(", "),
+                }

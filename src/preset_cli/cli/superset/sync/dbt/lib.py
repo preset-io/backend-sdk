@@ -205,7 +205,7 @@ def load_profiles(path: Path, project_name: str, target_name: str) -> Dict[str, 
             config = [apply_templating(el) for el in config]
         elif isinstance(config, str):
             template = env.from_string(config)
-            config = yaml.safe_load(template.render(**context))
+            config = yaml.load(template.render(**context), Loader=yaml.SafeLoader)
 
         return config
 
