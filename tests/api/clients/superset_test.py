@@ -6,7 +6,7 @@ Tests for ``preset_cli.api.clients.superset``.
 import json
 from io import BytesIO
 from unittest import mock
-from zipfile import is_zipfile, ZipFile
+from zipfile import ZipFile, is_zipfile
 
 import pytest
 from pytest_mock import MockerFixture
@@ -1205,3 +1205,96 @@ def test_import_zip_error(requests_mock: Mocker) -> None:
     assert (
         requests_mock.last_request.headers["Referer"] == "https://superset.example.org/"
     )
+
+
+def test_export_users(requests_mock: Mocker) -> None:
+    """
+    Test ``export_users``.
+    """
+    requests_mock.get(
+        "https://superset.example.org/users/list/?psize_UserDBModelView=100&page_UserDBModelView=0",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>First Name</th>
+        <th>Last Name</th>
+        <th>User Name</th>
+        <th>Email</th>
+        <th>Is Active?</th>
+        <th>Role</th>
+      </tr>
+      <tr>
+        <td></td>
+        <td>Alice</td>
+        <td>Doe</td>
+        <td>adoe</td>
+        <td>adoe@example.com</td>
+        <td>True</td>
+        <td>[Admin]</td>
+      </tr>
+      <tr>
+        <td></td>
+        <td>Bob</td>
+        <td>Doe</td>
+        <td>bdoe</td>
+        <td>bdoe@example.com</td>
+        <td>True</td>
+        <td>[Alpha]</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/users/list/?psize_UserDBModelView=100&page_UserDBModelView=1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>First Name</th>
+        <th>Last Name</th>
+        <th>User Name</th>
+        <th>Email</th>
+        <th>Is Active?</th>
+        <th>Role</th>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_users()) == [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "username": "adoe",
+            "email": "adoe@example.com",
+            "role": ["Admin"],
+        },
+        {
+            "first_name": "Bob",
+            "last_name": "Doe",
+            "username": "bdoe",
+            "email": "bdoe@example.com",
+            "role": ["Alpha"],
+        },
+    ]

@@ -108,7 +108,8 @@ The following commands are currently available:
 
 - ``preset-cli auth``: store authentication credentials.
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
-- ``preset-cli superset export``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
+- ``preset-cli superset export-assets``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
+- ``preset-cli superset export-users``: export users (name, username, email, roles) into a YAML file.
 - ``preset-cli superset sync native``: synchronize the workspace from a directory of templated configuration files.
 - ``preset-cli superset sync dbt-core``: synchronize the workspace from a dbt Core project.
 - ``preset-cli superset sync dbt-cloud``: synchronize the workspace from a dbt Cloud project.
@@ -117,7 +118,7 @@ All the ``superset`` sub-commands can also be executed against a standalone Supe
 
 .. code-block:: bash
 
-    % superset-cli https://superset.example.org/ export /path/to/directory
+    % superset-cli https://superset.example.org/ export-assets /path/to/directory
 
 And then import everything to a Preset workspace with:
 

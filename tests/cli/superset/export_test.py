@@ -1,7 +1,7 @@
 """
 Tests for the export command.
 """
-# pylint: disable=redefined-outer-name, invalid-name
+# pylint: disable=redefined-outer-name, invalid-name, unused-argument
 
 from io import BytesIO
 from pathlib import Path
@@ -114,9 +114,9 @@ def test_export_resource_overwrite(
     export_resource(resource="database", root=root, client=client, overwrite=True)
 
 
-def test_export(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
-    Test the ``export`` command.
+    Test the ``export_assets`` command.
     """
     # root must exist for command to succeed
     root = Path("/path/to/root")
@@ -172,3 +172,41 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
             mock.call("dashboard", Path("/path/to/root"), client, False),
         ],
     )
+
+
+def test_export_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``export_users`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {
+            "first_name": "admin",
+            "last_name": "admin",
+            "username": "admin",
+            "email": "admin@example.com",
+            "role": ["Admin"],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "export-users", "users.yaml"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    with open("users.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == [
+        {
+            "first_name": "admin",
+            "last_name": "admin",
+            "username": "admin",
+            "email": "admin@example.com",
+            "role": ["Admin"],
+        },
+    ]

@@ -113,6 +113,8 @@ Options:
 
 Commands:
   export
+  export-assets
+  export-users
   sql
   sync
 """

@@ -6,6 +6,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import click
+import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
@@ -25,7 +26,7 @@ assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
     help="Overwrite existing resources",
 )
 @click.pass_context
-def export(  # pylint: disable=too-many-locals
+def export_assets(  # pylint: disable=too-many-locals
     ctx: click.core.Context,
     directory: str,
     overwrite: bool = False,
@@ -88,3 +89,22 @@ def export_resource(
 
         with open(target, "w", encoding="utf-8") as output:
             output.write(file_contents)
+
+
+@click.command()
+@click.argument(
+    "path",
+    type=click.Path(resolve_path=True),
+    default="users.yaml",
+)
+@click.pass_context
+def export_users(ctx: click.core.Context, path: str) -> None:
+    """
+    Export users and their roles to a YAML file.
+    """
+    auth = ctx.obj["AUTH"]
+    url = URL(ctx.obj["INSTANCE"])
+    client = SupersetClient(url, auth)
+
+    with open(path, "w", encoding="utf-8") as output:
+        yaml.dump(list(client.export_users()), output)

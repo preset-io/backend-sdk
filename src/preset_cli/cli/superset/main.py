@@ -7,7 +7,7 @@ import click
 from yarl import URL
 
 from preset_cli.auth.main import UsernamePasswordAuth
-from preset_cli.cli.superset.export import export
+from preset_cli.cli.superset.export import export_assets, export_users
 from preset_cli.cli.superset.sql import sql
 from preset_cli.cli.superset.sync.main import sync
 
@@ -45,7 +45,9 @@ def superset_cli(
 
 superset_cli.add_command(sql)
 superset_cli.add_command(sync)
-superset_cli.add_command(export)
+superset_cli.add_command(export_assets)
+superset_cli.add_command(export_assets, name="export")  # for backwards compatibility
+superset_cli.add_command(export_users)
 
 
 @click.group()
