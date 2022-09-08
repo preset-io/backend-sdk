@@ -210,3 +210,45 @@ def test_export_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             "role": ["Admin"],
         },
     ]
+
+
+def test_export_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``export_users`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_rls.return_value = [
+        {
+            "clause": "client_id = 9",
+            "description": "This is a rule. There are many others like it, but this one is mine.",
+            "filter_type": "Regular",
+            "group_key": "department",
+            "name": "My rule",
+            "roles": ["Gamma"],
+            "tables": ["main.test_table"],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "export-rls", "rls.yaml"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    with open("rls.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == [
+        {
+            "clause": "client_id = 9",
+            "description": "This is a rule. There are many others like it, but this one is mine.",
+            "filter_type": "Regular",
+            "group_key": "department",
+            "name": "My rule",
+            "roles": ["Gamma"],
+            "tables": ["main.test_table"],
+        },
+    ]

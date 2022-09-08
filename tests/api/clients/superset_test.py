@@ -1298,3 +1298,114 @@ def test_export_users(requests_mock: Mocker) -> None:
             "role": ["Alpha"],
         },
     ]
+
+
+def test_export_rls(requests_mock: Mocker) -> None:
+    """
+    Test ``export_rls``.
+    """
+    requests_mock.get(
+        (
+            "https://superset.example.org/rowlevelsecurityfiltersmodelview/list/?"
+            "psize_RowLevelSecurityFiltersModelView=100&"
+            "page_RowLevelSecurityFiltersModelView=0"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+        <th>Filter Type</th>
+        <th>Tables</th>
+        <th>Roles</th>
+        <th>Clause</th>
+        <th>Creator</th>
+        <th>Modified</th>
+      </tr>
+      <tr>
+        <td><input id="1" /></td>
+        <td>My rule</td>
+        <td>Regular</td>
+        <td>[main.test_table]</td>
+        <td>client_id = 9</td>
+        <td>admin admin</td>
+        <td>35 minutes ago</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        (
+            "https://superset.example.org/rowlevelsecurityfiltersmodelview/list/?"
+            "psize_RowLevelSecurityFiltersModelView=100&"
+            "page_RowLevelSecurityFiltersModelView=1"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+        <th>Filter Type</th>
+        <th>Tables</th>
+        <th>Roles</th>
+        <th>Clause</th>
+        <th>Creator</th>
+        <th>Modified</th>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/rowlevelsecurityfiltersmodelview/show/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table>
+      <tr><th>Name</th><td>My Rule</td></tr>
+      <tr><th>Description</th><td>This is a rule. There are many others like it, but this one is mine.</td></tr>
+      <tr><th>Filter Type</th><td>Regular</td></tr>
+      <tr><th>Tables</th><td>[main.test_table]</td></tr>
+      <tr><th>Roles</th><td>[Gamma]</td></tr>
+      <tr><th>Group Key</th><td>department</td></tr>
+      <tr><th>Clause</th><td>client_id = 9</td></tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_rls()) == [
+        {
+            "name": "My Rule",
+            "description": "This is a rule. There are many others like it, but this one is mine.",
+            "filter_type": "Regular",
+            "tables": ["main.test_table"],
+            "roles": ["Gamma"],
+            "group_key": "department",
+            "clause": "client_id = 9",
+        },
+    ]
