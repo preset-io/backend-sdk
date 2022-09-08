@@ -143,7 +143,7 @@ def parse_html_array(value: str) -> List[str]:
     """
     Parse an array scraped from the HTML CRUD view.
     """
-    return value[1:-1].split(", ")
+    return [part for part in value[1:-1].split(", ") if part]
 
 
 class UserType(TypedDict):
