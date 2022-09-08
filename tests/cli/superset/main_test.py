@@ -114,6 +114,7 @@ Options:
 Commands:
   export
   export-assets
+  export-rls
   export-users
   sql
   sync

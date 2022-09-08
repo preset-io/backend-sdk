@@ -22,7 +22,19 @@ import uuid
 from datetime import datetime
 from enum import IntEnum
 from io import BytesIO
-from typing import Any, Dict, Iterator, List, Literal, Optional, TypedDict, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypedDict,
+    Union,
+    cast,
+)
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -136,6 +148,20 @@ class UserType(TypedDict):
     first_name: str
     last_name: str
     email: str
+
+
+class RuleType(TypedDict):
+    """
+    Schema for an RLS rule.
+    """
+
+    name: str
+    description: Optional[str]
+    filter_type: str
+    table: List[str]
+    roles: List[str]
+    group_key: str
+    clause: str
 
 
 class SupersetClient:  # pylint: disable=too-many-public-methods
@@ -571,5 +597,68 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     "last_name": tds[2].text,
                     "username": tds[3].text,
                     "email": tds[4].text,
-                    "role": tds[6].text[1:-1].split(", "),
+                    "role": parse_html_array(tds[6].text),
                 }
+
+    def export_rls(self) -> Iterator[RuleType]:
+        """
+        Return all RLS rules.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+        headers["Referer"] = str(self.baseurl)
+
+        page = 0
+        while True:
+            params = {
+                "psize_RowLevelSecurityFiltersModelView": MAX_PAGE_SIZE,
+                "page_RowLevelSecurityFiltersModelView": page,
+            }
+            url = (self.baseurl / "rowlevelsecurityfiltersmodelview/list/") % params
+            page += 1
+
+            response = session.get(url)
+            soup = BeautifulSoup(response.text, features="html.parser")
+            table = soup.find_all("table")[1]
+            trs = table.find_all("tr")
+            if len(trs) == 1:
+                break
+
+            for tr in trs[1:]:  # pylint: disable=invalid-name
+                tds = tr.find_all("td")
+
+                # extract the ID to fetch each RLS in a separate request, since the list
+                # view doesn't have all the columns we need
+                rule_id = int(tds[0].find("input").attrs["id"])
+                rule_url = (
+                    self.baseurl
+                    / "rowlevelsecurityfiltersmodelview/show"
+                    / str(rule_id)
+                )
+
+                response = session.get(rule_url)
+                soup = BeautifulSoup(response.text, features="html.parser")
+                table = soup.find("table")
+                keys: List[Tuple[str, Callable[[Any], Any]]] = [
+                    ("name", str),
+                    ("description", str),
+                    ("filter_type", str),
+                    ("tables", parse_html_array),
+                    ("roles", parse_html_array),
+                    ("group_key", str),
+                    ("clause", str),
+                ]
+                yield cast(
+                    RuleType,
+                    {
+                        key: parse(tr.find("td").text.strip())
+                        for (key, parse), tr in zip(keys, table.find_all("tr"))
+                    },
+                )
+
+
+def parse_html_array(value: str) -> List[str]:
+    """
+    Parse an array scraped from the HTML CRUD view.
+    """
+    return value[1:-1].split(", ")

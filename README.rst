@@ -109,6 +109,7 @@ The following commands are currently available:
 - ``preset-cli auth``: store authentication credentials.
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
 - ``preset-cli superset export-assets``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
+- ``preset-cli superset export-rls``: export RLS rules into a YAML file.
 - ``preset-cli superset export-users``: export users (name, username, email, roles) into a YAML file.
 - ``preset-cli superset sync native``: synchronize the workspace from a directory of templated configuration files.
 - ``preset-cli superset sync dbt-core``: synchronize the workspace from a dbt Core project.
@@ -417,3 +418,13 @@ The resulting YAML file will have the query defined as:
     GROUP BY action
 
 So that when processed by ``preset-cli superset sync native`` the original Jinja2 is reconstructed correctly.
+
+Exporting users
+~~~~~~~~~~~~~~~
+
+The ``preset-cli superset export-users`` command can be used to export a list of users. Currently there's no way to import this into a workspace, but work is in progress.
+
+Exporting RLS rules
+~~~~~~~~~~~~~~~~~~~
+
+The ``preset-cli superset export-rls`` command can be used to export a list of RLS rules. Currently there's no way to import this into a workspace, but work is in progress.
