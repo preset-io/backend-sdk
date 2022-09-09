@@ -1,7 +1,7 @@
 """
 Tests for ``preset_cli.api.clients.superset``.
 """
-# pylint: disable=too-many-lines
+# pylint: disable=too-many-lines, trailing-whitespace
 
 import json
 from io import BytesIO
@@ -20,6 +20,7 @@ from preset_cli.api.clients.superset import (
     SupersetClient,
     convert_to_adhoc_column,
     convert_to_adhoc_metric,
+    parse_html_array,
 )
 from preset_cli.api.operators import OneToMany
 from preset_cli.auth.main import Auth
@@ -1503,3 +1504,32 @@ def test_get_uuids(requests_mock: Mocker) -> None:
         2: UUID("2826c33b-7d13-4830-865e-d62630b20dee"),
         3: UUID("0ac7464e-14e7-4c54-ab22-7cbd4536fccc"),
     }
+
+
+def test_parse_html_array() -> None:
+    """
+    Test ``parse_html_array``.
+    """
+    assert (
+        parse_html_array(
+            """
+                    
+                      [main.test_table]
+                    
+                    """,
+        )
+        == ["main.test_table"]
+    )
+    assert (
+        parse_html_array(
+            """
+                
+                    
+                        
+                            main.sales
+                        
+                            public.FCC 2018 Survey
+""",
+        )
+        == ["main.sales", "public.FCC 2018 Survey"]
+    )
