@@ -4,7 +4,6 @@ repos:
 - repo: git://github.com/pre-commit/pre-commit-hooks
   rev: v3.4.0
   hooks:
-  - id: trailing-whitespace
   - id: check-added-large-files
   - id: check-ast
   - id: check-json

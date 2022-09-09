@@ -143,7 +143,14 @@ def parse_html_array(value: str) -> List[str]:
     """
     Parse an array scraped from the HTML CRUD view.
     """
-    return [part for part in value[1:-1].split(", ") if part]
+    value = value.strip()
+
+    if value.startswith("[") and value.endswith("]"):
+        parts = [part.strip() for part in value[1:-1].split(",")]
+    else:
+        parts = [part.strip() for part in value.split("\n")]
+
+    return [part for part in parts if part.strip()]
 
 
 class UserType(TypedDict):
@@ -644,7 +651,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     "last_name": tds[2].text,
                     "username": tds[3].text,
                     "email": tds[4].text,
-                    "role": parse_html_array(tds[6].text),
+                    "role": parse_html_array(tds[6].text.strip()),
                 }
 
     def export_rls(self) -> Iterator[RuleType]:
