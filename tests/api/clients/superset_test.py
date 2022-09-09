@@ -1949,3 +1949,39 @@ def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
         "group_key=department&"
         "clause=client_id+%3D+9"
     )
+
+
+def test_import_ownership(mocker: MockerFixture, requests_mock: Mocker) -> None:
+    """
+    Test the ``import_ownership`` method.
+    """
+    requests_mock.put("https://superset.example.org/api/v1/dataset/1", json={})
+    mocker.patch.object(
+        SupersetClient,
+        "export_users",
+        return_value=[
+            {"id": 1, "email": "admin@example.com"},
+            {"id": 2, "email": "adoe@example.com"},
+        ],
+    )
+    mocker.patch.object(
+        SupersetClient,
+        "get_uuids",
+        return_value={
+            1: UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+        },
+    )
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_ownership(
+        "dataset",
+        [
+            {
+                "name": "test_table",
+                "owners": ["admin@example.com", "adoe@example.com"],
+                "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
+            },
+        ],
+    )
+
+    assert requests_mock.last_request.json() == {"owners": [1, 2]}
