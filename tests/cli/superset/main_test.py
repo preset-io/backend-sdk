@@ -118,6 +118,7 @@ Commands:
   export-rls
   export-users
   import-assets
+  import-ownership
   import-rls
   sql
   sync

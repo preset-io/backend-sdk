@@ -41,3 +41,32 @@ def test_import_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     assert result.exit_code == 0
 
     client.import_rls.assert_called_with(rls[0])
+
+
+def test_import_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``import_ownership`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
+    client = SupersetClient()
+    ownership = {
+        "dataset": [
+            {
+                "name": "test_table",
+                "owners": ["admin@example.com"],
+                "uuid": "e4e6a14b-c3e8-4fdf-a850-183ba6ce15e0",
+            },
+        ],
+    }
+    fs.create_file("ownership.yaml", contents=yaml.dump(ownership))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "import-ownership"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.import_ownership.assert_called_with("dataset", ownership["dataset"])

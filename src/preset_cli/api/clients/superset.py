@@ -785,3 +785,19 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 "uuid": uuids[resource["id"]],
                 "owners": [emails[owner["id"]] for owner in resource.get("owners", [])],
             }
+
+    def import_ownership(
+        self,
+        resource_name: str,
+        ownership: List[Dict[str, Any]],
+    ) -> None:
+        """
+        Import ownership on resources.
+        """
+        user_ids = {user["email"]: user["id"] for user in self.export_users()}
+        resource_ids = {str(v): k for k, v in self.get_uuids(resource_name).items()}
+
+        for item in ownership:
+            resource_id = resource_ids[item["uuid"]]
+            owner_ids = [user_ids[email] for email in item["owners"]]
+            self.update_resource(resource_name, resource_id, owners=owner_ids)
