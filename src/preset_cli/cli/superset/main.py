@@ -13,8 +13,10 @@ from preset_cli.cli.superset.export import (
     export_rls,
     export_users,
 )
+from preset_cli.cli.superset.import_ import import_rls
 from preset_cli.cli.superset.sql import sql
 from preset_cli.cli.superset.sync.main import sync
+from preset_cli.cli.superset.sync.native.command import native
 
 
 @click.group()
@@ -55,6 +57,8 @@ superset_cli.add_command(export_assets, name="export")  # for backwards compatib
 superset_cli.add_command(export_users)
 superset_cli.add_command(export_rls)
 superset_cli.add_command(export_ownership)
+superset_cli.add_command(import_rls)
+superset_cli.add_command(native, name="import-assets")
 
 
 @click.group()

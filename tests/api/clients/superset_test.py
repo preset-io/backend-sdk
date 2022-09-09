@@ -17,6 +17,7 @@ from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.api.clients.superset import (
+    RuleType,
     SupersetClient,
     convert_to_adhoc_column,
     convert_to_adhoc_metric,
@@ -1532,4 +1533,419 @@ def test_parse_html_array() -> None:
 """,
         )
         == ["main.sales", "public.FCC 2018 Survey"]
+    )
+
+
+def test_import_rls(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <td></td>
+        <td>Name</td>
+      </tr>
+      <tr>
+        <td><input id="1" /></td>
+        <td>Gamma</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.post(
+        "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
+    )
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["main.test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_rls(rls)
+
+    assert requests_mock.last_request.text == (
+        "name=Rule+name&"
+        "description=Rule+description&"
+        "filter_type=Regular&"
+        "tables=1&"
+        "roles=1&"
+        "group_key=department&"
+        "clause=client_id+%3D+9"
+    )
+
+
+def test_import_rls_no_schema(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method when the table has no schema.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <td></td>
+        <td>Name</td>
+      </tr>
+      <tr>
+        <td><input id="1" /></td>
+        <td>Gamma</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.post(
+        "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
+    )
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_rls(rls)
+
+    assert requests_mock.last_request.text == (
+        "name=Rule+name&"
+        "description=Rule+description&"
+        "filter_type=Regular&"
+        "tables=1&"
+        "roles=1&"
+        "group_key=department&"
+        "clause=client_id+%3D+9"
+    )
+
+
+def test_import_rls_no_table(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method when no tables are found.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["main.test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    with pytest.raises(Exception) as excinfo:
+        client.import_rls(rls)
+    assert str(excinfo.value) == "Cannot find table: main.test_table"
+
+
+def test_import_rls_multiple_tables(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method when multiple tables are found.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}, {"id": 2}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["main.test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    with pytest.raises(Exception) as excinfo:
+        client.import_rls(rls)
+    assert str(excinfo.value) == "More than one table found: main.test_table"
+
+
+def test_import_rls_no_role(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method when no role is found.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <td></td>
+        <td>Name</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["main.test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    with pytest.raises(Exception) as excinfo:
+        client.import_rls(rls)
+    assert str(excinfo.value) == "Cannot find role: Gamma"
+
+
+def test_import_rls_multiple_roles(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method when multiple roles are found.
+
+    Should not happen.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <td></td>
+        <td>Name</td>
+      </tr>
+      <tr>
+        <td><input id="1" /></td>
+        <td>Gamma</td>
+      </tr>
+      <tr>
+        <td><input id="2" /></td>
+        <td>Gamma</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["main.test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    with pytest.raises(Exception) as excinfo:
+        client.import_rls(rls)
+    assert str(excinfo.value) == "More than one role found: Gamma"
+
+
+def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method when the role ID is in an anchor tag.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <td></td>
+        <td>Name</td>
+      </tr>
+      <tr>
+        <td><a href="/roles/edit/1">Edit</a></td>
+        <td>Gamma</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.post(
+        "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
+    )
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["main.test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_rls(rls)
+
+    assert requests_mock.last_request.text == (
+        "name=Rule+name&"
+        "description=Rule+description&"
+        "filter_type=Regular&"
+        "tables=1&"
+        "roles=1&"
+        "group_key=department&"
+        "clause=client_id+%3D+9"
     )

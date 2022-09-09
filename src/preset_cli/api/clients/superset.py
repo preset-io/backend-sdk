@@ -174,7 +174,7 @@ class RuleType(TypedDict):
     name: str
     description: Optional[str]
     filter_type: str
-    table: List[str]
+    tables: List[str]
     roles: List[str]
     group_key: str
     clause: str
@@ -633,10 +633,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 "psize_UserDBModelView": MAX_PAGE_SIZE,
                 "page_UserDBModelView": page,
             }
-            url = (self.baseurl / "users/list/") % params
+            url = self.baseurl / "users/list/"
             page += 1
 
-            response = session.get(url)
+            response = session.get(url, params=params, headers=headers)
             soup = BeautifulSoup(response.text, features="html.parser")
             table = soup.find_all("table")[1]
             trs = table.find_all("tr")
@@ -668,10 +668,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 "psize_RowLevelSecurityFiltersModelView": MAX_PAGE_SIZE,
                 "page_RowLevelSecurityFiltersModelView": page,
             }
-            url = (self.baseurl / "rowlevelsecurityfiltersmodelview/list/") % params
+            url = self.baseurl / "rowlevelsecurityfiltersmodelview/list/"
             page += 1
 
-            response = session.get(url)
+            response = session.get(url, params=params, headers=headers)
             soup = BeautifulSoup(response.text, features="html.parser")
             table = soup.find_all("table")[1]
             trs = table.find_all("tr")
@@ -690,7 +690,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     / str(rule_id)
                 )
 
-                response = session.get(rule_url)
+                response = session.get(rule_url, headers=headers)
                 soup = BeautifulSoup(response.text, features="html.parser")
                 table = soup.find("table")
                 keys: List[Tuple[str, Callable[[Any], Any]]] = [
@@ -709,6 +709,63 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                         for (key, parse), tr in zip(keys, table.find_all("tr"))
                     },
                 )
+
+    def import_rls(self, rls: RuleType) -> None:  # pylint: disable=too-many-locals
+        """
+        Import a given RLS rule.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+        headers["Referer"] = str(self.baseurl)
+
+        table_ids: List[int] = []
+        for table in rls["tables"]:
+            if "." in table:
+                schema, table_name = table.split(".", 1)
+                datasets = self.get_datasets(schema=schema, table_name=table_name)
+            else:
+                datasets = self.get_datasets(table_name=table)
+
+            if not datasets:
+                raise Exception(f"Cannot find table: {table}")
+            if len(datasets) > 1:
+                raise Exception(f"More than one table found: {table}")
+            table_ids.append(datasets[0]["id"])
+
+        role_ids: List[int] = []
+        for role in rls["roles"]:
+            params = {"_flt_0_name": role}
+            url = self.baseurl / "roles/list/"
+            response = session.get(url, params=params, headers=headers)
+            soup = BeautifulSoup(response.text, features="html.parser")
+            trs = soup.find_all("table")[1].find_all("tr")
+            if len(trs) == 1:
+                raise Exception(f"Cannot find role: {role}")
+            if len(trs) > 2:
+                raise Exception(f"More than one role found: {role}")
+            td = trs[1].find("td")  # pylint: disable=invalid-name
+            if td.find("a"):
+                id_ = int(td.find("a").attrs["href"].split("/")[-1])
+            else:
+                id_ = int(td.find("input").attrs["id"])
+            role_ids.append(id_)
+
+        url = self.baseurl / "rowlevelsecurityfiltersmodelview/add"
+        response = session.post(
+            url,
+            data={
+                # "csrf_token": "needed?",
+                "name": rls["name"],
+                "description": rls["description"],
+                "filter_type": rls["filter_type"],
+                "tables": table_ids,
+                "roles": role_ids,
+                "group_key": rls["group_key"],
+                "clause": rls["clause"],
+            },
+            headers=headers,
+        )
+        validate_response(response)
 
     def export_ownership(self, resource_name: str) -> Iterator[OwnershipType]:
         """

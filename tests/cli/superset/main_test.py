@@ -117,6 +117,8 @@ Commands:
   export-ownership
   export-rls
   export-users
+  import-assets
+  import-rls
   sql
   sync
 """
