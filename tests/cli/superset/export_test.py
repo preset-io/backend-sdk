@@ -1,5 +1,5 @@
 """
-Tests for the export command.
+Tests for the export commands.
 """
 # pylint: disable=redefined-outer-name, invalid-name, unused-argument
 
