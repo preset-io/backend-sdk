@@ -371,3 +371,56 @@ def test_raise_helper() -> None:
     with pytest.raises(Exception) as excinfo:
         template.render(i=-1, **{"raise": raise_helper})
     assert str(excinfo.value) == "Invalid number: -1"
+
+
+def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test that the underlying template is passed to the Jinja renderer.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "test": "{{ filepath }}",
+    }
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    import_resource = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resource",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(root)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    contents = {
+        "bundle/databases/gsheets.yaml": yaml.dump(
+            {
+                "database_name": "GSheets",
+                "is_managed_externally": False,
+                "sqlalchemy_uri": "gsheets://",
+                "test": "/path/to/root/databases/gsheets.yaml",
+            },
+        ),
+    }
+    print(import_resource.mock_calls)
+    import_resource.assert_has_calls(
+        [
+            mock.call("database", contents, client, False),
+            mock.call("dataset", contents, client, False),
+            mock.call("chart", contents, client, False),
+            mock.call("dashboard", contents, client, False),
+        ],
+    )

@@ -122,6 +122,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
             queue.extend(path_name.glob("*"))
         elif path_name.suffix.lower() in YAML_EXTENSIONS:
             with open(path_name, encoding="utf-8") as input_:
+                env["filepath"] = path_name
                 template = Template(input_.read())
                 content = template.render(**env)
                 relative_path = path_name.relative_to(root)
