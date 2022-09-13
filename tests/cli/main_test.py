@@ -15,7 +15,7 @@ from yarl import URL
 
 from preset_cli.cli.main import (
     get_status_icon,
-    parse_workspace_selection,
+    parse_selection,
     preset_cli,
     split_comma,
 )
@@ -56,19 +56,19 @@ def test_get_status_icon() -> None:
     assert get_status_icon("INVALID") == "❓"
 
 
-def test_parse_workspace_selection() -> None:
+def test_parse_selection() -> None:
     """
-    Test ``parse_workspace_selection``.
+    Test ``parse_selection``.
     """
-    assert parse_workspace_selection("1-4,7", 10) == [1, 2, 3, 4, 7]
-    assert parse_workspace_selection("-4", 10) == [1, 2, 3, 4]
-    assert parse_workspace_selection("4-", 10) == [4, 5, 6, 7, 8, 9, 10]
+    assert parse_selection("1-4,7", 10) == [1, 2, 3, 4, 7]
+    assert parse_selection("-4", 10) == [1, 2, 3, 4]
+    assert parse_selection("4-", 10) == [4, 5, 6, 7, 8, 9, 10]
 
     with pytest.raises(Exception) as excinfo:
-        parse_workspace_selection("1-20", 10)
+        parse_selection("1-20", 10)
     assert str(excinfo.value) == "End 20 is greater than 10"
     with pytest.raises(Exception) as excinfo:
-        parse_workspace_selection("20", 10)
+        parse_selection("20", 10)
     assert str(excinfo.value) == "Number 20 is greater than 10"
 
 
@@ -359,7 +359,7 @@ def test_workspaces(mocker: MockerFixture) -> None:
     assert obj["WORKSPACES"] == ["https://ws1", "https://ws2"]
 
 
-def test_workspaces_since_workspace(mocker: MockerFixture) -> None:
+def test_workspaces_single_workspace(mocker: MockerFixture) -> None:
     """
     Test that we don't prompt user for their workspaces if they have only one.
     """
@@ -369,8 +369,8 @@ def test_workspaces_since_workspace(mocker: MockerFixture) -> None:
     client.get_workspaces.return_value = [
         {"workspace_status": "READY", "title": "My Workspace", "hostname": "ws1"},
     ]
-    parse_workspace_selection = mocker.patch(
-        "preset_cli.cli.main.parse_workspace_selection",
+    parse_selection = mocker.patch(
+        "preset_cli.cli.main.parse_selection",
     )
 
     runner = CliRunner()
@@ -383,7 +383,7 @@ def test_workspaces_since_workspace(mocker: MockerFixture) -> None:
     )
     assert result.exit_code == 0
     assert obj["WORKSPACES"] == ["https://ws1"]
-    parse_workspace_selection.assert_not_called()
+    parse_selection.assert_not_called()
 
 
 def test_workspaces_no_workspaces(mocker: MockerFixture) -> None:
@@ -405,3 +405,109 @@ def test_workspaces_no_workspaces(mocker: MockerFixture) -> None:
         obj=obj,
     )
     assert result.exit_code == 1
+
+
+def test_invite_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``invite_users`` command.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    users = [
+        {"email": "adoe@example.com"},
+        {"email": "bdoe@example.com"},
+    ]
+    fs.create_file("users.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "invite-users", "--teams=team1"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.invite_users.assert_called_with(
+        ["team1"], ["adoe@example.com", "bdoe@example.com"],
+    )
+
+
+def test_invite_users_choose_teams(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``invite_users`` command when no teams are passed.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [
+        {"name": "botafogo", "title": "Alvinegro"},
+        {"name": "flamengo", "title": "Rubro-Negro"},
+    ]
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+    users = [
+        {"email": "adoe@example.com"},
+        {"email": "bdoe@example.com"},
+    ]
+    fs.create_file("users.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "invite-users"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.invite_users.assert_called_with(
+        ["botafogo", "flamengo"], ["adoe@example.com", "bdoe@example.com"],
+    )
+
+
+def test_invite_users_no_teams(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``invite_users`` command when no teams are available.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = []
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "invite-users"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+
+
+def test_invite_users_single_team(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``invite_users`` command doesn't prompt for teams when only one is available.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [
+        {"name": "botafogo", "title": "Alvinegro"},
+    ]
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+    parse_selection = mocker.patch(
+        "preset_cli.cli.main.parse_selection",
+    )
+    users = [
+        {"email": "adoe@example.com"},
+        {"email": "bdoe@example.com"},
+    ]
+    fs.create_file("users.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "invite-users"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.invite_users.assert_called_with(
+        ["botafogo"], ["adoe@example.com", "bdoe@example.com"],
+    )
+    parse_selection.assert_not_called()

@@ -58,11 +58,11 @@ def get_status_icon(status: str) -> str:
     return icons.get(status, "❓")
 
 
-def parse_workspace_selection(selection: str, count: int) -> List[int]:
+def parse_selection(selection: str, count: int) -> List[int]:
     """
     Parse a range of numbers.
 
-        >>> parse_workspace_selection("1-4,7", 10)
+        >>> parse_selection("1-4,7", 10)
         [1, 2, 3, 4, 7]
 
     """
@@ -176,7 +176,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
 
         while not workspaces:
             try:
-                choices = parse_workspace_selection(input("> "), i)
+                choices = parse_selection(input("> "), i)
                 workspaces = [hostnames[choice - 1] for choice in choices]
             except Exception:  # pylint: disable=broad-except
                 click.echo("Invalid choice")
@@ -249,5 +249,53 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
     click.echo(f"Credentials stored in {credentials_path}")
 
 
+@click.command()
+@click.option("--teams", callback=split_comma)
+@click.argument(
+    "path",
+    type=click.Path(resolve_path=True),
+    default="users.yaml",
+)
+@click.pass_context
+def invite_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
+    """
+    Invite users to join Preset teams.
+    """
+    client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
+
+    if not teams:
+        click.echo("Choose one or more teams (eg: 1-3,5,8-):")
+        i = 0
+        all_teams = []
+        for team in client.get_teams():
+            click.echo(f'({i+1}) {team["title"]}')
+            all_teams.append(team["name"])
+            i += 1
+
+        if i == 0:
+            click.echo(
+                click.style(
+                    "No teams available",
+                    fg="bright_red",
+                ),
+            )
+            sys.exit(1)
+        if i == 1:
+            teams = all_teams
+
+        while not teams:
+            try:
+                choices = parse_selection(input("> "), i)
+                teams = [all_teams[choice - 1] for choice in choices]
+            except Exception:  # pylint: disable=broad-except
+                click.echo("Invalid choice")
+
+    with open(path, encoding="utf-8") as input_:
+        config = yaml.load(input_, Loader=yaml.SafeLoader)
+        emails = [user["email"] for user in config]
+        client.invite_users(teams, emails)
+
+
 preset_cli.add_command(auth)
+preset_cli.add_command(invite_users)
 preset_cli.add_command(superset)

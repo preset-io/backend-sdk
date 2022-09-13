@@ -2,6 +2,7 @@
 A simple client for interacting with the Preset API.
 """
 
+from enum import Enum
 from typing import Any, List, Union
 
 from yarl import URL
@@ -9,6 +10,15 @@ from yarl import URL
 from preset_cli import __version__
 from preset_cli.auth.main import Auth
 from preset_cli.lib import validate_response
+
+
+class Role(int, Enum):
+    """
+    Roles for users.
+    """
+
+    ADMIN = 1
+    USER = 2
 
 
 class PresetClient:  # pylint: disable=too-few-public-methods
@@ -58,3 +68,27 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         workspaces = payload["payload"]
 
         return workspaces
+
+    def invite_users(
+        self,
+        teams: List[str],
+        emails: List[str],
+        role_id=Role.USER,
+    ) -> None:
+        """
+        Invite users to teams.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+
+        for team in teams:
+            response = session.post(
+                self.baseurl / "api/v1/teams" / team / "invites/many",
+                headers=headers,
+                json={
+                    "invites": [
+                        {"team_role_id": role_id, "email": email} for email in emails
+                    ],
+                },
+            )
+            validate_response(response)

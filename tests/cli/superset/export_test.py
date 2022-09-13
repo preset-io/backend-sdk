@@ -207,7 +207,6 @@ def test_export_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     with open("users.yaml", encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
-    print(contents)
     assert contents == [
         {
             "first_name": "admin",
