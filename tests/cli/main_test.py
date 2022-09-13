@@ -428,7 +428,8 @@ def test_invite_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     assert result.exit_code == 0
 
     client.invite_users.assert_called_with(
-        ["team1"], ["adoe@example.com", "bdoe@example.com"],
+        ["team1"],
+        ["adoe@example.com", "bdoe@example.com"],
     )
 
 
@@ -458,7 +459,8 @@ def test_invite_users_choose_teams(mocker: MockerFixture, fs: FakeFilesystem) ->
     assert result.exit_code == 0
 
     client.invite_users.assert_called_with(
-        ["botafogo", "flamengo"], ["adoe@example.com", "bdoe@example.com"],
+        ["botafogo", "flamengo"],
+        ["adoe@example.com", "bdoe@example.com"],
     )
 
 
@@ -508,6 +510,7 @@ def test_invite_users_single_team(mocker: MockerFixture, fs: FakeFilesystem) -> 
     assert result.exit_code == 0
 
     client.invite_users.assert_called_with(
-        ["botafogo"], ["adoe@example.com", "bdoe@example.com"],
+        ["botafogo"],
+        ["adoe@example.com", "bdoe@example.com"],
     )
     parse_selection.assert_not_called()
