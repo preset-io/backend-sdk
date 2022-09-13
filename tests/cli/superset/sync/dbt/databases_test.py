@@ -310,6 +310,8 @@ def test_sync_database_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
         database_id=1,
         database_name="my_project_dev",
         is_managed_externally=False,
+        masked_encrypted_extra=None,
+        sqlalchemy_uri="dummy://",
     )
 
 
