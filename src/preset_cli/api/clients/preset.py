@@ -95,6 +95,40 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             )
             validate_response(response)
 
+    def accept_invites(
+        self,
+        teams: List[str],
+        emails: List[str],
+        role_id=Role.USER,
+    ) -> None:
+        """
+        Invite users to teams.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+
+        team_ids = {team["name"]: team["id"] for team in self.get_teams()}
+
+        for team in teams:
+            # grab user IDs based on email
+            url = self.baseurl / "api/v1/teams" / team / "memberships"
+            response = session.get(url, headers=headers)
+            payload = response.json()
+            user_ids = [user["user"]["id"] for user in payload["payload"]]
+
+            for user_id in user_ids:
+                response = session.post(
+                    self.baseurl
+                    / "api-internal/v2/users"
+                    / str(user_id)
+                    / "memberships"
+                    / str(team_ids[team])
+                    / "",
+                    headers=headers,
+                    json={"team_role_name": "User"},
+                )
+                validate_response(response)
+
     # pylint: disable=too-many-locals
     def export_users(self, workspace_url: URL) -> Iterator[UserType]:
         """
