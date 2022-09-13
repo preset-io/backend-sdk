@@ -33,3 +33,30 @@ def test_preset_client_get_workspaces(requests_mock: Mocker) -> None:
     client = PresetClient("https://ws.preset.io/", auth)
     teams = client.get_workspaces("botafogo")
     assert teams == [1, 2, 3]
+
+
+def test_preset_client_invite_users(requests_mock: Mocker) -> None:
+    """
+    Test the ``invite_users`` method.
+    """
+    auth = Auth()
+    mock1 = requests_mock.post(
+        "https://ws.preset.io/api/v1/teams/team1/invites/many",
+    )
+    mock2 = requests_mock.post(
+        "https://ws.preset.io/api/v1/teams/team2/invites/many",
+    )
+
+    client = PresetClient("https://ws.preset.io/", auth)
+    client.invite_users(["team1", "team2"], ["adoe@example.com", "bdoe@example.com"])
+
+    assert (
+        mock1.last_request.json()
+        == mock2.last_request.json()
+        == {
+            "invites": [
+                {"email": "adoe@example.com", "team_role_id": 2},
+                {"email": "bdoe@example.com", "team_role_id": 2},
+            ],
+        }
+    )

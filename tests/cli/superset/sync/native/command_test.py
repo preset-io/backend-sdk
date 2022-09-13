@@ -249,7 +249,6 @@ def test_native_load_env(
             },
         ),
     }
-    print(import_resource.mock_calls)
     import_resource.assert_has_calls(
         [
             mock.call("database", contents, client, False),
@@ -415,7 +414,6 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
             },
         ),
     }
-    print(import_resource.mock_calls)
     import_resource.assert_has_calls(
         [
             mock.call("database", contents, client, False),
