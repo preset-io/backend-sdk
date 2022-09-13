@@ -53,10 +53,13 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     if databases:
         _logger.info("Found an existing database, updating it")
         database = databases[0]
+
         database = client.update_database(
             database_id=database["id"],
             database_name=database_name,
             is_managed_externally=disallow_edits,
+            masked_encrypted_extra=connection_params.get("encrypted_extra"),
+            sqlalchemy_uri=connection_params["sqlalchemy_uri"],
             **meta,
         )
     elif not import_db:

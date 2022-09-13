@@ -922,12 +922,7 @@ def test_update_database(mocker: MockerFixture) -> None:
     update_resource = mocker.patch.object(client, "update_resource")
 
     client.update_database(1, database_name="my_other_db")
-    update_resource.assert_called_with(
-        "database",
-        1,
-        {"override_columns": "true"},
-        database_name="my_other_db",
-    )
+    update_resource.assert_called_with("database", 1, database_name="my_other_db")
 
 
 def test_get_dataset(mocker: MockerFixture) -> None:
@@ -981,7 +976,9 @@ def test_update_dataset(mocker: MockerFixture) -> None:
     update_resource = mocker.patch.object(client, "update_resource")
 
     client.update_dataset(1, dataset_name="my_other_db")
-    update_resource.assert_called_with("dataset", 1, dataset_name="my_other_db")
+    update_resource.assert_called_with(
+        "dataset", 1, {"override_columns": "true"}, dataset_name="my_other_db",
+    )
 
 
 def test_get_chart(mocker: MockerFixture) -> None:
