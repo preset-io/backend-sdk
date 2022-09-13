@@ -273,7 +273,7 @@ def filter_plus_operator(
                 if degrees is None or degree < degrees:
                     queue.extend(
                         (model_ids[parent_id], degree + 1)
-                        for parent_id in model["depends_on"]
+                        for parent_id in model.get("depends_on", [])
                         if parent_id in model_ids
                     )
 
@@ -288,7 +288,7 @@ def filter_plus_operator(
                 if degrees is None or degree < degrees:
                     queue.extend(
                         (model_ids[child_id], degree + 1)
-                        for child_id in model["children"]
+                        for child_id in model.get("children", [])
                         if child_id in model_ids
                     )
 
@@ -315,7 +315,7 @@ def filter_at_operator(models: List[ModelSchema], condition: str) -> List[ModelS
             # add children
             queue.extend(
                 model_ids[child_id]
-                for child_id in model["children"]
+                for child_id in model.get("children", [])
                 if child_id in model_ids
             )
 
@@ -323,7 +323,7 @@ def filter_at_operator(models: List[ModelSchema], condition: str) -> List[ModelS
             if model != base_model:
                 queue.extend(
                     model_ids[parent_id]
-                    for parent_id in model["depends_on"]
+                    for parent_id in model.get("depends_on", [])
                     if parent_id in model_ids
                 )
 

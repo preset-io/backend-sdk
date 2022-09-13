@@ -238,7 +238,6 @@ def test_filter_models() -> None:
         "tags": [],
         "unique_id": "model.two",
         "depends_on": ["model.one", "model.three"],
-        "children": [],
     }
     three = {
         "name": "three",
