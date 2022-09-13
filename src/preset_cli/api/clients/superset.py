@@ -40,14 +40,17 @@ from zipfile import ZipFile
 
 import pandas as pd
 import prison
+import requests
 import yaml
 from bs4 import BeautifulSoup
 from yarl import URL
 
 from preset_cli import __version__
+from preset_cli.api.clients.preset import PresetClient
 from preset_cli.api.operators import Equal, Operator
 from preset_cli.auth.main import Auth
 from preset_cli.lib import remove_root, validate_response
+from preset_cli.typing import UserType
 
 MAX_PAGE_SIZE = 100
 MAX_IDS_IN_EXPORT = 100
@@ -151,19 +154,6 @@ def parse_html_array(value: str) -> List[str]:
         parts = [part.strip() for part in value.split("\n")]
 
     return [part for part in parts if part.strip()]
-
-
-class UserType(TypedDict):
-    """
-    Schema for a user.
-    """
-
-    id: int
-    username: str
-    role: List[str]
-    first_name: str
-    last_name: str
-    email: str
 
 
 class RuleType(TypedDict):
@@ -620,6 +610,34 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
     def export_users(self) -> Iterator[UserType]:
         """
         Return all users.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+        headers["Referer"] = str(self.baseurl)
+
+        # For on-premise OSS Superset we can fetch the list of users by crawling the
+        # ``/users/list/`` page. For a Preset workspace we need custom logic to talk
+        # to Manager.
+        response = session.get(self.baseurl / "users/list/", headers=headers)
+        if response.ok:
+            return self._export_users_superset(session, headers)
+        return self._export_users_preset()
+
+    def _export_users_preset(self) -> Iterator[UserType]:
+        """
+        Return all users from a Preset workspace.
+        """
+        # TODO (beto): remove hardcoded Manager URL
+        client = PresetClient("https://manage.app.preset.io/", self.auth)
+        return client.export_users(self.baseurl)
+
+    def _export_users_superset(
+        self,
+        session: requests.Session,
+        headers: Dict[str, str],
+    ) -> Iterator[UserType]:
+        """
+        Return all users from a standalone Superset instance.
 
         Since this is not exposed via an API we need to crawl the CRUD page.
         """

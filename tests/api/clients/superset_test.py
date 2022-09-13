@@ -1215,6 +1215,7 @@ def test_export_users(requests_mock: Mocker) -> None:
     """
     Test ``export_users``.
     """
+    requests_mock.get("https://superset.example.org/users/list/")
     requests_mock.get(
         "https://superset.example.org/users/list/?psize_UserDBModelView=100&page_UserDBModelView=0",
         text="""
@@ -1302,6 +1303,78 @@ def test_export_users(requests_mock: Mocker) -> None:
             "username": "bdoe",
             "email": "bdoe@example.com",
             "role": ["Alpha"],
+        },
+    ]
+
+
+def test_export_users_preset(requests_mock: Mocker) -> None:
+    """
+    Test ``export_users``.
+    """
+    requests_mock.get("https://superset.example.org/users/list/", status_code=404)
+    requests_mock.get(
+        "https://manage.app.preset.io/api/v1/teams/",
+        json={
+            "payload": [{"name": "team1"}],
+        },
+    )
+    requests_mock.get(
+        "https://manage.app.preset.io/api/v1/teams/team1/workspaces/",
+        json={
+            "payload": [{"id": 1, "hostname": "superset.example.org"}],
+        },
+    )
+    requests_mock.get(
+        "https://manage.app.preset.io/api/v1/teams/team1/workspaces/1/memberships",
+        json={
+            "payload": [
+                {
+                    "user": {
+                        "username": "adoe",
+                        "first_name": "Alice",
+                        "last_name": "Doe",
+                        "email": "adoe@example.com",
+                    },
+                },
+                {
+                    "user": {
+                        "username": "bdoe",
+                        "first_name": "Bob",
+                        "last_name": "Doe",
+                        "email": "bdoe@example.com",
+                    },
+                },
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/add",
+        text="""
+<select id="user">
+    <option value="1">Alice Doe</option>
+    <option value="2">Bob Doe</option>
+</select>
+    """,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_users()) == [
+        {
+            "id": 1,
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "username": "adoe",
+            "email": "adoe@example.com",
+            "role": [],
+        },
+        {
+            "id": 2,
+            "first_name": "Bob",
+            "last_name": "Doe",
+            "username": "bdoe",
+            "email": "bdoe@example.com",
+            "role": [],
         },
     ]
 

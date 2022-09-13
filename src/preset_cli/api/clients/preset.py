@@ -3,13 +3,15 @@ A simple client for interacting with the Preset API.
 """
 
 from enum import Enum
-from typing import Any, List, Union
+from typing import Any, Iterator, List, Optional, Union
 
+from bs4 import BeautifulSoup
 from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.auth.main import Auth
 from preset_cli.lib import validate_response
+from preset_cli.typing import UserType
 
 
 class Role(int, Enum):
@@ -92,3 +94,62 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                 },
             )
             validate_response(response)
+
+    # pylint: disable=too-many-locals
+    def export_users(self, workspace_url: URL) -> Iterator[UserType]:
+        """
+        Return all users from a given workspace.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+
+        team_name: Optional[str] = None
+        workspace_id: Optional[int] = None
+
+        for team in self.get_teams():
+            for workspace in self.get_workspaces(team["name"]):
+                if workspace_url.host == workspace["hostname"]:
+                    team_name = team["name"]
+                    workspace_id = workspace["id"]
+                    break
+
+        if team_name is None or workspace_id is None:
+            raise Exception("Unable to find workspace and/or team")
+
+        url = (
+            self.baseurl
+            / "api/v1/teams"
+            / team_name
+            / "workspaces"
+            / str(workspace_id)
+            / "memberships"
+        )
+        response = session.get(url, headers=headers)
+        team_members: List[UserType] = [
+            {
+                "id": 0,
+                "username": payload["user"]["username"],
+                "role": [],  # TODO (betodealmeida)
+                "first_name": payload["user"]["first_name"],
+                "last_name": payload["user"]["last_name"],
+                "email": payload["user"]["email"],
+            }
+            for payload in response.json()["payload"]
+        ]
+
+        # TODO (betodealmeida): improve this
+        url = workspace_url / "roles/add"
+        response = session.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, features="html.parser")
+        select = soup.find("select", id="user")
+        ids = {
+            option.text: int(option.attrs["value"])
+            for option in select.find_all("option")
+        }
+
+        for team_member in team_members:
+            # pylint: disable=consider-using-f-string
+            full_name = "{first_name} {last_name}".format(**team_member)
+            if full_name in ids:
+                team_member["id"] = ids[full_name]
+                yield team_member
