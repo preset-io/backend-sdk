@@ -531,6 +531,7 @@ class ModelSchema(PostelSchema):
     name = fields.String()
     unique_id = fields.String(data_key="uniqueId")
     tags = fields.List(fields.String())
+    columns = fields.Raw()
 
 
 class FilterSchema(PostelSchema):

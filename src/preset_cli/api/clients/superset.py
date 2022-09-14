@@ -484,11 +484,16 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         return self.create_resource("dataset", **kwargs)
 
-    def update_dataset(self, dataset_id: int, **kwargs: Any) -> Any:
+    def update_dataset(
+        self,
+        dataset_id: int,
+        override_columns: bool = False,
+        **kwargs: Any,
+    ) -> Any:
         """
         Update a dataset.
         """
-        query_args = {"override_columns": "true"}
+        query_args = {"override_columns": "true" if override_columns else "false"}
         return self.update_resource("dataset", dataset_id, query_args, **kwargs)
 
     def get_chart(self, chart_id: int) -> Any:

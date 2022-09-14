@@ -95,14 +95,24 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         if base_url:
             fragment = "!/model/{unique_id}".format(**model)
             update["external_url"] = str(base_url.with_fragment(fragment))
-        client.update_dataset(dataset["id"], **update)
+        client.update_dataset(dataset["id"], override_columns=True, **update)
 
         # ...then update metrics
         if dataset_metrics:
             update = {
                 "metrics": dataset_metrics,
             }
-            client.update_dataset(dataset["id"], **update)
+            client.update_dataset(dataset["id"], override_columns=False, **update)
+
+        # update column descriptions
+        update = {
+            "columns": [
+                {"column_name": name, "description": column["description"]}
+                for name, column in model.get("columns", {}).items()
+            ],
+        }
+        if update["columns"]:
+            client.update_dataset(dataset["id"], override_columns=True, **update)
 
         datasets.append(dataset)
 
