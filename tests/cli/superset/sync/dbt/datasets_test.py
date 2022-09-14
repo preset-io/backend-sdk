@@ -40,6 +40,7 @@ models: List[ModelSchema] = [
             "meta": {},
             "name": "messages_channels",
             "unique_id": "model.superset_examples.messages_channels",
+            "columns": {"id": {"description": "Primary key"}},
         },
     ),
 ]
@@ -70,6 +71,7 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
         [
             mock.call(
                 1,
+                override_columns=True,
                 description="",
                 extra=json.dumps(
                     {
@@ -83,6 +85,7 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
             ),
             mock.call(
                 1,
+                override_columns=False,
                 metrics=[
                     {
                         "expression": "COUNT(*)",
@@ -90,6 +93,16 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
                         "metric_type": "count",
                         "verbose_name": "cnt",
                         "description": "",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
                     },
                 ],
             ),
@@ -122,6 +135,7 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
         [
             mock.call(
                 1,
+                override_columns=True,
                 description="",
                 extra=json.dumps(
                     {
@@ -132,6 +146,16 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
                 ),
                 is_managed_externally=False,
                 metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                    },
+                ],
             ),
         ],
     )
@@ -185,6 +209,7 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
         [
             mock.call(
                 1,
+                override_columns=True,
                 description="",
                 extra=json.dumps(
                     {
@@ -198,6 +223,7 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
             ),
             mock.call(
                 1,
+                override_columns=False,
                 metrics=[
                     {
                         "expression": "COUNT(*)",
@@ -205,6 +231,16 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
                         "metric_type": "count",
                         "verbose_name": "cnt",
                         "description": "",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
                     },
                 ],
             ),
@@ -251,6 +287,7 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
         [
             mock.call(
                 1,
+                override_columns=True,
                 description="",
                 extra=json.dumps(
                     {
@@ -262,12 +299,75 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
                 is_managed_externally=False,
                 metrics=[],
                 external_url=(
-                    "https://dbt.example.org/#!"
-                    "/model/model.superset_examples.messages_channels"
+                    "https://dbt.example.org/"
+                    "#!/model/model.superset_examples.messages_channels"
                 ),
             ),
             mock.call(
                 1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "cnt",
+                        "description": "",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_no_columns(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` when passing external URL prefix.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
+
+    modified_models = [models[0].copy()]
+    modified_models[0]["columns"] = {}
+
+    sync_datasets(
+        client=client,
+        models=modified_models,
+        metrics=metrics,
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_not_called()
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
                 metrics=[
                     {
                         "expression": "COUNT(*)",

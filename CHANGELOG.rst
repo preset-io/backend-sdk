@@ -2,6 +2,11 @@
 Changelog
 =========
 
+Next
+====
+
+- dbt sync will now sync column descriptions.
+
 Version 0.1.1 - 2002-09-13
 ==========================
 

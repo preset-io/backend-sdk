@@ -977,7 +977,18 @@ def test_update_dataset(mocker: MockerFixture) -> None:
 
     client.update_dataset(1, dataset_name="my_other_db")
     update_resource.assert_called_with(
-        "dataset", 1, {"override_columns": "true"}, dataset_name="my_other_db",
+        "dataset",
+        1,
+        {"override_columns": "false"},
+        dataset_name="my_other_db",
+    )
+
+    client.update_dataset(1, override_columns=True, dataset_name="my_other_db")
+    update_resource.assert_called_with(
+        "dataset",
+        1,
+        {"override_columns": "true"},
+        dataset_name="my_other_db",
     )
 
 
