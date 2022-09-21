@@ -514,3 +514,66 @@ def test_invite_users_single_team(mocker: MockerFixture, fs: FakeFilesystem) -> 
         ["adoe@example.com", "bdoe@example.com"],
     )
     parse_selection.assert_not_called()
+
+
+def test_import_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``import_users`` command.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    users = [
+        {"first_name": "Alice", "last_name": "Doe", "email": "adoe@example.com"},
+        {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
+    ]
+    fs.create_file("users.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "import-users", "--teams=team1"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.import_users.assert_called_with(
+        ["team1"],
+        [
+            {"first_name": "Alice", "last_name": "Doe", "email": "adoe@example.com"},
+            {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
+        ],
+    )
+
+
+def test_import_users_choose_teams(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``import_users`` command when no teams are passed.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [
+        {"name": "botafogo", "title": "Alvinegro"},
+        {"name": "flamengo", "title": "Rubro-Negro"},
+    ]
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+    users = [
+        {"first_name": "Alice", "last_name": "Doe", "email": "adoe@example.com"},
+        {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
+    ]
+    fs.create_file("users.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "import-users"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.import_users.assert_called_with(
+        ["botafogo", "flamengo"],
+        [
+            {"first_name": "Alice", "last_name": "Doe", "email": "adoe@example.com"},
+            {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
+        ],
+    )

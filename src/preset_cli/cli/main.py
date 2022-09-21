@@ -249,6 +249,37 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
     click.echo(f"Credentials stored in {credentials_path}")
 
 
+def get_teams(client: PresetClient) -> List[str]:
+    """
+    Prompt users for teams.
+    """
+    click.echo("Choose one or more teams (eg: 1-3,5,8-):")
+    i = 0
+    all_teams = []
+    for team in client.get_teams():
+        click.echo(f'({i+1}) {team["title"]}')
+        all_teams.append(team["name"])
+        i += 1
+
+    if i == 0:
+        click.echo(
+            click.style(
+                "No teams available",
+                fg="bright_red",
+            ),
+        )
+        sys.exit(1)
+    if i == 1:
+        return all_teams
+
+    while True:
+        try:
+            choices = parse_selection(input("> "), i)
+            return [all_teams[choice - 1] for choice in choices]
+        except Exception:  # pylint: disable=broad-except
+            click.echo("Invalid choice")
+
+
 @click.command()
 @click.option("--teams", callback=split_comma)
 @click.argument(
@@ -264,31 +295,7 @@ def invite_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
     client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
 
     if not teams:
-        click.echo("Choose one or more teams (eg: 1-3,5,8-):")
-        i = 0
-        all_teams = []
-        for team in client.get_teams():
-            click.echo(f'({i+1}) {team["title"]}')
-            all_teams.append(team["name"])
-            i += 1
-
-        if i == 0:
-            click.echo(
-                click.style(
-                    "No teams available",
-                    fg="bright_red",
-                ),
-            )
-            sys.exit(1)
-        if i == 1:
-            teams = all_teams
-
-        while not teams:
-            try:
-                choices = parse_selection(input("> "), i)
-                teams = [all_teams[choice - 1] for choice in choices]
-            except Exception:  # pylint: disable=broad-except
-                click.echo("Invalid choice")
+        teams = get_teams(client)
 
     with open(path, encoding="utf-8") as input_:
         config = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -296,6 +303,29 @@ def invite_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
         client.invite_users(teams, emails)
 
 
+@click.command()
+@click.option("--teams", callback=split_comma)
+@click.argument(
+    "path",
+    type=click.Path(resolve_path=True),
+    default="users.yaml",
+)
+@click.pass_context
+def import_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
+    """
+    Import users by adding them via SCIM.
+    """
+    client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
+
+    if not teams:
+        teams = get_teams(client)
+
+    with open(path, encoding="utf-8") as input_:
+        users = yaml.load(input_, Loader=yaml.SafeLoader)
+        client.import_users(teams, users)
+
+
 preset_cli.add_command(auth)
 preset_cli.add_command(invite_users)
+preset_cli.add_command(import_users)
 preset_cli.add_command(superset)
