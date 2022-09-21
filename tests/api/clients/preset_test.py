@@ -183,3 +183,41 @@ def test_preset_client_export_users_no_workspaces(requests_mock: Mocker) -> None
     with pytest.raises(Exception) as excinfo:
         list(client.export_users(URL("https://superset.example.org/")))
     assert str(excinfo.value) == "Unable to find workspace and/or team"
+
+
+def test_preset_client_import_users(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_users`` method.
+    """
+    requests_mock.post("https://ws.preset.io/api/v1/teams/team1/scim/v2/Users")
+
+    auth = Auth()
+    client = PresetClient("https://ws.preset.io/", auth)
+    client.import_users(
+        ["team1"],
+        [
+            {
+                "id": 1,
+                "username": "adoe",
+                "role": [],
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "email": "adoe@example.com",
+            },
+        ],
+    )
+
+    assert requests_mock.last_request.headers["Content-Type"] == "application/scim+json"
+    assert requests_mock.last_request.headers["Accept"] == "application/scim+json"
+    assert requests_mock.last_request.json() == {
+        "schemas": [
+            "urn:ietf:params:scim:schemas:core:2.0:User",
+            "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User",
+        ],
+        "active": True,
+        "displayName": "Alice Doe",
+        "emails": [{"primary": True, "type": "work", "value": "adoe@example.com"}],
+        "meta": {"resourceType": "User"},
+        "userName": "adoe@example.com",
+        "name": {"formatted": "Alice Doe", "familyName": "Doe", "givenName": "Alice"},
+    }

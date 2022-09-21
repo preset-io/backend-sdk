@@ -153,3 +153,40 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             if full_name in ids:
                 team_member["id"] = ids[full_name]
                 yield team_member
+
+    def import_users(self, teams: List[str], users: List[UserType]) -> None:
+        """
+        Import users by adding them via SCIM.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+
+        for team in teams:
+            url = self.baseurl / "api/v1/teams" / team / "scim/v2/Users"
+            for user in users:
+                payload = {
+                    "schemas": [
+                        "urn:ietf:params:scim:schemas:core:2.0:User",
+                        "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User",
+                    ],
+                    "active": True,
+                    "displayName": f'{user["first_name"]} {user["last_name"]}',
+                    "emails": [
+                        {
+                            "primary": True,
+                            "type": "work",
+                            "value": user["email"],
+                        },
+                    ],
+                    "meta": {"resourceType": "User"},
+                    "userName": user["email"],
+                    "name": {
+                        "formatted": f'{user["first_name"]} {user["last_name"]}',
+                        "familyName": user["last_name"],
+                        "givenName": user["first_name"],
+                    },
+                }
+                headers["Content-Type"] = "application/scim+json"
+                headers["Accept"] = "application/scim+json"
+                response = session.post(url, json=payload, headers=headers)
+                validate_response(response)

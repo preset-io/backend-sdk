@@ -107,6 +107,8 @@ Commands
 The following commands are currently available:
 
 - ``preset-cli auth``: store authentication credentials.
+- ``preset-cli invite-users``: invite users to Preset.
+- ``preset-cli import-users``: automatically add users to Preset.
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
 - ``preset-cli superset export-assets``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
 - ``preset-cli superset export-ownership``: export resource ownership (UUID -> email) into a YAML file.
@@ -423,7 +425,7 @@ So that when processed by ``preset-cli superset sync native`` the original Jinja
 Exporting users
 ~~~~~~~~~~~~~~~
 
-The ``preset-cli superset export-users`` command can be used to export a list of users. Currently there's no way to import this into a workspace, but work is in progress.
+The ``preset-cli superset export-users`` command can be used to export a list of users. These users can then be imported to Preset via the ``preset-cli import-users`` command.
 
 Exporting RLS rules
 ~~~~~~~~~~~~~~~~~~~
