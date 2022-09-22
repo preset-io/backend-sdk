@@ -116,6 +116,7 @@ Commands:
   export-assets
   export-ownership
   export-rls
+  export-roles
   export-users
   import-assets
   import-ownership

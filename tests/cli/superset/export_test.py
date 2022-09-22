@@ -218,9 +218,41 @@ def test_export_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     ]
 
 
+def test_export_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``export_roles`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_roles.return_value = [
+        {
+            "name": "Public",
+            "permissions": [],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "export-roles", "roles.yaml"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    with open("roles.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == [
+        {
+            "name": "Public",
+            "permissions": [],
+        },
+    ]
+
+
 def test_export_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
-    Test the ``export_users`` command.
+    Test the ``export_rls`` command.
     """
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")

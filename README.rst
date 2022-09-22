@@ -113,6 +113,7 @@ The following commands are currently available:
 - ``preset-cli superset export-assets``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
 - ``preset-cli superset export-ownership``: export resource ownership (UUID -> email) into a YAML file.
 - ``preset-cli superset export-rls``: export RLS rules into a YAML file.
+- ``preset-cli superset export-roles``: export user roles into a YAML file.
 - ``preset-cli superset export-users``: export users (name, username, email, roles) into a YAML file.
 - ``preset-cli superset sync native``: synchronize the workspace from a directory of templated configuration files.
 - ``preset-cli superset sync dbt-core``: synchronize the workspace from a dbt Core project.
@@ -426,6 +427,8 @@ Exporting users
 ~~~~~~~~~~~~~~~
 
 The ``preset-cli superset export-users`` command can be used to export a list of users. These users can then be imported to Preset via the ``preset-cli import-users`` command.
+
+You can also export roles via ``preset-cli superset export-roles``, and import with ``import-roles``.
 
 Exporting RLS rules
 ~~~~~~~~~~~~~~~~~~~

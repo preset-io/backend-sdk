@@ -156,6 +156,15 @@ def parse_html_array(value: str) -> List[str]:
     return [part for part in parts if part.strip()]
 
 
+class RoleType(TypedDict):
+    """
+    Schema for a role.
+    """
+
+    name: str
+    permissions: List[str]
+
+
 class RuleType(TypedDict):
     """
     Schema for an RLS rule.
@@ -677,6 +686,51 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     "role": parse_html_array(tds[6].text.strip()),
                 }
 
+    def export_roles(self) -> Iterator[RoleType]:
+        """
+        Return all roles.
+        """
+        session = self.auth.get_session()
+        headers = self.auth.get_headers()
+        headers["Referer"] = str(self.baseurl)
+
+        page = 0
+        while True:
+            params = {
+                "psize_RoleModelView": MAX_PAGE_SIZE,
+                "page_RoleModelView": page,
+            }
+            url = self.baseurl / "roles/list/"
+            page += 1
+
+            response = session.get(url, params=params, headers=headers)
+            soup = BeautifulSoup(response.text, features="html.parser")
+            table = soup.find_all("table")[1]
+            trs = table.find_all("tr")
+            if len(trs) == 1:
+                break
+
+            for tr in trs[1:]:  # pylint: disable=invalid-name
+                tds = tr.find_all("td")
+
+                role_id = int(tds[0].find("input").attrs["id"])
+                role_url = self.baseurl / "roles/show" / str(role_id)
+
+                response = session.get(role_url, headers=headers)
+                soup = BeautifulSoup(response.text, features="html.parser")
+                table = soup.find_all("table")[-1]
+                keys: List[Tuple[str, Callable[[Any], Any]]] = [
+                    ("name", str),
+                    ("permissions", parse_html_array),
+                ]
+                yield cast(
+                    RoleType,
+                    {
+                        key: parse(tr.find("td").text.strip())
+                        for (key, parse), tr in zip(keys, table.find_all("tr"))
+                    },
+                )
+
     def export_rls(self) -> Iterator[RuleType]:
         """
         Return all RLS rules.
@@ -696,7 +750,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
             response = session.get(url, params=params, headers=headers)
             soup = BeautifulSoup(response.text, features="html.parser")
-            table = soup.find_all("table")[1]
+            try:
+                table = soup.find_all("table")[1]
+            except IndexError:
+                return
             trs = table.find_all("tr")
             if len(trs) == 1:
                 break
