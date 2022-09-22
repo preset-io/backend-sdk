@@ -1387,6 +1387,115 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
     ]
 
 
+def test_export_roles(requests_mock: Mocker) -> None:
+    """
+    Test ``export_roles``.
+    """
+    requests_mock.get(
+        (
+            "https://superset.example.org/roles/list/?"
+            "psize_RoleModelView=100&"
+            "page_RoleModelView=0"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+      <tr>
+        <td><input id="1" /></td>
+        <td>Admin</td>
+      </tr>
+      <tr>
+        <td><input id="2" /></td>
+        <td>Public</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        (
+            "https://superset.example.org/roles/list/?"
+            "psize_RoleModelView=100&"
+            "page_RoleModelView=1"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/show/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table>
+      <tr><th>Name</th><td>Admin</td></tr>
+      <tr><th>Permissions</th><td>[can this, can that]</td></tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/show/2",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table>
+      <tr><th>Name</th><td>Public</td></tr>
+      <tr><th>Permissions</th><td>[]</td></tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_roles()) == [
+        {
+            "name": "Admin",
+            "permissions": ["can this", "can that"],
+        },
+        {
+            "name": "Public",
+            "permissions": [],
+        },
+    ]
+
+
 def test_export_rls(requests_mock: Mocker) -> None:
     """
     Test ``export_rls``.
@@ -1496,6 +1605,35 @@ def test_export_rls(requests_mock: Mocker) -> None:
             "clause": "client_id = 9",
         },
     ]
+
+
+def test_export_rls_no_rules(requests_mock: Mocker) -> None:
+    """
+    Test ``export_rls``.
+    """
+    requests_mock.get(
+        (
+            "https://superset.example.org/rowlevelsecurityfiltersmodelview/list/?"
+            "psize_RowLevelSecurityFiltersModelView=100&"
+            "page_RowLevelSecurityFiltersModelView=0"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    No records found
+  </body>
+</html>
+        """,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_rls()) == []
 
 
 def test_export_ownership(mocker: MockerFixture) -> None:

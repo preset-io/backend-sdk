@@ -11,6 +11,7 @@ from preset_cli.cli.superset.export import (
     export_assets,
     export_ownership,
     export_rls,
+    export_roles,
     export_users,
 )
 from preset_cli.cli.superset.import_ import import_ownership, import_rls
@@ -56,6 +57,7 @@ superset_cli.add_command(export_assets)
 superset_cli.add_command(export_assets, name="export")  # for backwards compatibility
 superset_cli.add_command(export_users)
 superset_cli.add_command(export_rls)
+superset_cli.add_command(export_roles)
 superset_cli.add_command(export_ownership)
 superset_cli.add_command(import_rls)
 superset_cli.add_command(import_ownership)

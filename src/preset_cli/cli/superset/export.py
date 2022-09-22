@@ -119,6 +119,25 @@ def export_users(ctx: click.core.Context, path: str) -> None:
 @click.argument(
     "path",
     type=click.Path(resolve_path=True),
+    default="roles.yaml",
+)
+@click.pass_context
+def export_roles(ctx: click.core.Context, path: str) -> None:
+    """
+    Export roles to a YAML file.
+    """
+    auth = ctx.obj["AUTH"]
+    url = URL(ctx.obj["INSTANCE"])
+    client = SupersetClient(url, auth)
+
+    with open(path, "w", encoding="utf-8") as output:
+        yaml.dump(list(client.export_roles()), output)
+
+
+@click.command()
+@click.argument(
+    "path",
+    type=click.Path(resolve_path=True),
     default="rls.yaml",
 )
 @click.pass_context
