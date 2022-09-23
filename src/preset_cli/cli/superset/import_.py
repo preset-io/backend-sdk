@@ -34,6 +34,27 @@ def import_rls(ctx: click.core.Context, path: str) -> None:
 @click.argument(
     "path",
     type=click.Path(resolve_path=True),
+    default="roles.yaml",
+)
+@click.pass_context
+def import_roles(ctx: click.core.Context, path: str) -> None:
+    """
+    Import roles from a YAML file.
+    """
+    auth = ctx.obj["AUTH"]
+    url = URL(ctx.obj["INSTANCE"])
+    client = SupersetClient(url, auth)
+
+    with open(path, encoding="utf-8") as input_:
+        config = yaml.load(input_, Loader=yaml.SafeLoader)
+        for role in config:
+            client.import_role(role)
+
+
+@click.command()
+@click.argument(
+    "path",
+    type=click.Path(resolve_path=True),
     default="ownership.yaml",
 )
 @click.pass_context

@@ -43,6 +43,32 @@ def test_import_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     client.import_rls.assert_called_with(rls[0])
 
 
+def test_import_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``import_roles`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
+    client = SupersetClient()
+    roles = [
+        {
+            "name": "Role name",
+            "permissions": ["can do this", "can do that"],
+        },
+    ]
+    fs.create_file("roles.yaml", contents=yaml.dump(roles))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "import-roles"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.import_role.assert_called_with(roles[0])
+
+
 def test_import_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``import_ownership`` command.

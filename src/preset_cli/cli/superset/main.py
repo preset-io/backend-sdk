@@ -14,7 +14,7 @@ from preset_cli.cli.superset.export import (
     export_roles,
     export_users,
 )
-from preset_cli.cli.superset.import_ import import_ownership, import_rls
+from preset_cli.cli.superset.import_ import import_ownership, import_rls, import_roles
 from preset_cli.cli.superset.sql import sql
 from preset_cli.cli.superset.sync.main import sync
 from preset_cli.cli.superset.sync.native.command import native
@@ -60,6 +60,7 @@ superset_cli.add_command(export_rls)
 superset_cli.add_command(export_roles)
 superset_cli.add_command(export_ownership)
 superset_cli.add_command(import_rls)
+superset_cli.add_command(import_roles)
 superset_cli.add_command(import_ownership)
 superset_cli.add_command(native, name="import-assets")
 

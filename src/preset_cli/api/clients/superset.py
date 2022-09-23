@@ -14,10 +14,12 @@ A simple client for running SQL queries (and more) against Superset:
     1      NES     2
 
 Data is returned in a Pandas Dataframe.
-
 """
 
+# pylint: disable=consider-using-f-string
+
 import json
+import re
 import uuid
 from datetime import datetime
 from enum import IntEnum
@@ -54,6 +56,22 @@ from preset_cli.typing import UserType
 
 MAX_PAGE_SIZE = 100
 MAX_IDS_IN_EXPORT = 100
+
+
+PERMISSION_MAP = {
+    "all datasource access on all_datasource_access": "All dataset access",
+    "all database access on all_database_access": "All database access",
+    "all query access on all_query_access": "All query access",
+}
+DATABASE_PERMISSION = re.compile(
+    r"database access on \[(?P<database_name>.*?)\]\.\(id:\d+\)",
+)
+SCHEMA_PERMISSION = re.compile(
+    r"schema access on \[(?P<database_name>.*?)\].\[(?P<schema_name>.*?)\]",
+)
+DATASET_PERMISSION = re.compile(
+    r"datasource access on \[(?P<database_name>.*?)\].\[(?P<dataset_name>.*?)\]\(id:\d+\)",
+)
 
 
 class GenericDataType(IntEnum):
@@ -199,6 +217,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         # convert to URL if necessary
         self.baseurl = URL(baseurl)
         self.auth = auth
+
+        self.session = auth.get_session()
+        self.session.headers.update(auth.get_headers())
+        self.session.headers["Referer"] = str(self.baseurl)
 
     def run_query(
         self,
@@ -790,6 +812,50 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     },
                 )
 
+    def import_role(self, role: RoleType) -> None:
+        """
+        Import a given role.
+        """
+        # build a map between permission name and their IDs
+        url = self.baseurl / "roles/add"
+        response = self.session.get(url)
+        soup = BeautifulSoup(response.text, features="html.parser")
+        select = soup.find("select", id="permissions")
+        ids = {
+            option.text: int(option.attrs["value"])
+            for option in select.find_all("option")
+        }
+
+        permission_ids: List[int] = []
+        for permission in role["permissions"]:
+            # map to custom Preset permissions
+            if permission in PERMISSION_MAP:
+                permission = PERMISSION_MAP[permission]
+            elif match_ := DATABASE_PERMISSION.match(permission):
+                permission = "Database access on {database_name}".format(
+                    **match_.groupdict()
+                )
+            elif match_ := SCHEMA_PERMISSION.match(permission):
+                permission = "Schema access on {database_name}.{schema_name}".format(
+                    **match_.groupdict()
+                )
+            elif match_ := DATASET_PERMISSION.match(permission):
+                permission = "Dataset access on {database_name}.{dataset_name}".format(
+                    **match_.groupdict()
+                )
+
+            if permission in ids:
+                permission_ids.append(ids[permission])
+
+        response = self.session.post(
+            url,
+            data={
+                "name": role["name"],
+                "permissions": permission_ids,
+            },
+        )
+        validate_response(response)
+
     def import_rls(self, rls: RuleType) -> None:  # pylint: disable=too-many-locals
         """
         Import a given RLS rule.
@@ -834,7 +900,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         response = session.post(
             url,
             data={
-                # "csrf_token": "needed?",
                 "name": rls["name"],
                 "description": rls["description"],
                 "filter_type": rls["filter_type"],

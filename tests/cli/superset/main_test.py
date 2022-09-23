@@ -121,6 +121,7 @@ Commands:
   import-assets
   import-ownership
   import-rls
+  import-roles
   sql
   sync
 """
