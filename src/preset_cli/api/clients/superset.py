@@ -19,6 +19,7 @@ Data is returned in a Pandas Dataframe.
 # pylint: disable=consider-using-f-string
 
 import json
+import logging
 import re
 import uuid
 from datetime import datetime
@@ -52,6 +53,8 @@ from preset_cli.api.operators import Equal, Operator
 from preset_cli.auth.main import Auth
 from preset_cli.lib import remove_root, validate_response
 from preset_cli.typing import UserType
+
+_logger = logging.getLogger(__name__)
 
 MAX_PAGE_SIZE = 100
 MAX_IDS_IN_EXPORT = 100
@@ -812,6 +815,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Import a given RLS rule.
         """
+
         table_ids: List[int] = []
         for table in rls["tables"]:
             if "." in table:
@@ -832,12 +836,23 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             url = self.baseurl / "roles/list/"
             response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
-            trs = soup.find_all("table")[1].find_all("tr")
+            tables = soup.find_all("table")
+            if len(tables) < 2:
+                continue
+            trs = tables[1].find_all("tr")
             if len(trs) == 1:
                 raise Exception(f"Cannot find role: {role}")
             if len(trs) > 2:
                 raise Exception(f"More than one role found: {role}")
-            td = trs[1].find("td")  # pylint: disable=invalid-name
+            tds = trs[1].find_all("td")
+            if tds[2].text.strip():
+                _logger.warning(
+                    "Role %(role)s currently has permissions associated with it. "
+                    "To use it with RLS it should have no permissions.",
+                    role,
+                )
+                continue
+            td = tds[0]  # pylint: disable=invalid-name
             if td.find("a"):
                 id_ = int(td.find("a").attrs["href"].split("/")[-1])
             else:
@@ -890,6 +905,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         resource_ids = {str(v): k for k, v in self.get_uuids(resource_name).items()}
 
         for item in ownership:
+            if item["uuid"] not in resource_ids:
+                continue
             resource_id = resource_ids[item["uuid"]]
             owner_ids = [user_ids[email] for email in item["owners"]]
             self.update_resource(resource_name, resource_id, owners=owner_ids)

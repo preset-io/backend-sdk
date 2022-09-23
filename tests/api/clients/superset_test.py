@@ -1810,10 +1810,12 @@ def test_import_rls(requests_mock: Mocker) -> None:
       <tr>
         <td></td>
         <td>Name</td>
+        <td>Permissions</td>
       </tr>
       <tr>
         <td><input id="1" /></td>
         <td>Gamma</td>
+        <td>\n</td>
       </tr>
     </table>
   </body>
@@ -1849,6 +1851,148 @@ def test_import_rls(requests_mock: Mocker) -> None:
     )
 
 
+def test_import_rls_no_role_table(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method when there's no table for roles in the DOM.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.post(
+        "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
+    )
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["main.test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_rls(rls)
+
+    assert requests_mock.last_request.text == (
+        "name=Rule+name&"
+        "description=Rule+description&"
+        "filter_type=Regular&"
+        "tables=1&"
+        "group_key=department&"
+        "clause=client_id+%3D+9"
+    )
+
+
+def test_import_rls_invalid_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
+    """
+    Test the ``import_rls`` method when the role has permissions.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 1}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/?q="
+        "(filters:!((col:schema,opr:eq,value:main),"
+        "(col:table_name,opr:eq,value:test_table)),"
+        "order_column:changed_on_delta_humanized,"
+        "order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <td></td>
+        <td>Name</td>
+        <td>Permissions</td>
+      </tr>
+      <tr>
+        <td><input id="1" /></td>
+        <td>Gamma</td>
+        <td>All database access</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.post(
+        "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
+    )
+    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+
+    rls: RuleType = {
+        "clause": "client_id = 9",
+        "description": "Rule description",
+        "filter_type": "Regular",
+        "group_key": "department",
+        "name": "Rule name",
+        "roles": ["Gamma"],
+        "tables": ["main.test_table"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_rls(rls)
+
+    assert requests_mock.last_request.text == (
+        "name=Rule+name&"
+        "description=Rule+description&"
+        "filter_type=Regular&"
+        "tables=1&"
+        "group_key=department&"
+        "clause=client_id+%3D+9"
+    )
+    assert _logger.warning.called_with(
+        "Role %(role)s currently has permissions associated with it. "
+        "To use it with RLS it should have no permissions.",
+        "Gamma",
+    )
+
+
 def test_import_rls_no_schema(requests_mock: Mocker) -> None:
     """
     Test the ``import_rls`` method when the table has no schema.
@@ -1881,10 +2025,12 @@ def test_import_rls_no_schema(requests_mock: Mocker) -> None:
       <tr>
         <td></td>
         <td>Name</td>
+        <td>Permissions</td>
       </tr>
       <tr>
         <td><input id="1" /></td>
         <td>Gamma</td>
+        <td>\n</td>
       </tr>
     </table>
   </body>
@@ -2152,10 +2298,12 @@ def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
       <tr>
         <td></td>
         <td>Name</td>
+        <td>Permissions</td>
       </tr>
       <tr>
         <td><a href="/roles/edit/1">Edit</a></td>
         <td>Gamma</td>
+        <td>\n</td>
       </tr>
     </table>
   </body>
@@ -2220,6 +2368,11 @@ def test_import_ownership(mocker: MockerFixture, requests_mock: Mocker) -> None:
                 "name": "test_table",
                 "owners": ["admin@example.com", "adoe@example.com"],
                 "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
+            },
+            {
+                "name": "another_table",
+                "owners": ["admin@example.com", "adoe@example.com"],
+                "uuid": "1192072c-4bee-4535-b8ee-e9f5fc4eb6a2",
             },
         ],
     )
