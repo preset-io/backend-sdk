@@ -17,6 +17,7 @@ from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.api.clients.superset import (
+    RoleType,
     RuleType,
     SupersetClient,
     convert_to_adhoc_column,
@@ -1753,6 +1754,39 @@ def test_parse_html_array() -> None:
         )
         == ["main.sales", "public.FCC 2018 Survey"]
     )
+
+
+def test_import_role(requests_mock: Mocker) -> None:
+    """
+    Test the ``import_role`` method.
+    """
+    requests_mock.get(
+        "https://superset.example.org/roles/add",
+        text="""
+<select id="permissions">
+    <option value="1">All database access</option>
+    <option value="2">Schema access on Google Sheets.main</option>
+</select>
+    """,
+    )
+    requests_mock.post("https://superset.example.org/roles/add")
+
+    role: RoleType = {
+        "name": "Admin",
+        "permissions": [
+            "can do something that is not in Preset",
+            "all database access on all_database_access",
+            "schema access on [Google Sheets].[main]",
+            "database access on [Not added].(id:1)",
+            "datasource access on [Not added].[nope](id:42)",
+        ],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_role(role)
+
+    assert requests_mock.last_request.text == "name=Admin&permissions=1&permissions=2"
 
 
 def test_import_rls(requests_mock: Mocker) -> None:
