@@ -782,12 +782,16 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Import a given role.
         """
-        # build a map between permission name and their IDs
+        user_id_map = {user["email"]: user["id"] for user in self.export_users()}
+        user_ids = [
+            user_id_map[email] for email in role["users"] if email in user_id_map
+        ]
+
         url = self.baseurl / "roles/add"
         response = self.session.get(url)
         soup = BeautifulSoup(response.text, features="html.parser")
         select = soup.find("select", id="permissions")
-        ids = {
+        permission_id_map = {
             option.text: int(option.attrs["value"])
             for option in select.find_all("option")
         }
@@ -810,13 +814,14 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     **match_.groupdict()
                 )
 
-            if permission in ids:
-                permission_ids.append(ids[permission])
+            if permission in permission_id_map:
+                permission_ids.append(permission_id_map[permission])
 
         response = self.session.post(
             url,
             data={
                 "name": role["name"],
+                "user": user_ids,
                 "permissions": permission_ids,
             },
         )
