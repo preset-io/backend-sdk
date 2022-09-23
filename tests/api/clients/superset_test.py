@@ -1765,7 +1765,7 @@ def test_parse_html_array() -> None:
     )
 
 
-def test_import_role(requests_mock: Mocker) -> None:
+def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
     Test the ``import_role`` method.
     """
@@ -1779,6 +1779,14 @@ def test_import_role(requests_mock: Mocker) -> None:
     """,
     )
     requests_mock.post("https://superset.example.org/roles/add")
+    mocker.patch.object(
+        SupersetClient,
+        "export_users",
+        return_value=[
+            {"id": 1, "email": "admin@example.com"},
+            {"id": 2, "email": "adoe@example.com"},
+        ],
+    )
 
     role: RoleType = {
         "name": "Admin",
@@ -1789,14 +1797,17 @@ def test_import_role(requests_mock: Mocker) -> None:
             "database access on [Not added].(id:1)",
             "datasource access on [Not added].[nope](id:42)",
         ],
-        "users": [],
+        "users": ["admin@example.com", "adoe@example.com", "bdoe@example.com"],
     }
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
     client.import_role(role)
 
-    assert requests_mock.last_request.text == "name=Admin&permissions=1&permissions=2"
+    assert (
+        requests_mock.last_request.text
+        == "name=Admin&user=1&user=2&permissions=1&permissions=2"
+    )
 
 
 def test_import_rls(requests_mock: Mocker) -> None:
