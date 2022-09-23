@@ -1445,6 +1445,26 @@ def test_export_roles(requests_mock: Mocker) -> None:
   </head>
   <body>
     <table>
+      <tr>
+        <th></th>
+        <th>First Name</th>
+        <th>Last Name</th>
+        <th>User Name</th>
+        <th>Email</th>
+        <th>Is Active?</th>
+        <th>Role</th>
+      </tr>
+      <tr>
+        <td></td>
+        <td>Alice</td>
+        <td>Doe</td>
+        <td>adoe</td>
+        <td>adoe@example.com</td>
+        <td>True</td>
+        <td>[Admin]</td>
+      </tr>
+    </table>
+    <table>
       <tr><th>Name</th><td>Admin</td></tr>
       <tr><th>Permissions</th><td>[can this, can that]</td></tr>
     </table>
@@ -1476,10 +1496,12 @@ def test_export_roles(requests_mock: Mocker) -> None:
         {
             "name": "Admin",
             "permissions": ["can this", "can that"],
+            "users": ["adoe@example.com"],
         },
         {
             "name": "Public",
             "permissions": [],
+            "users": [],
         },
     ]
 
@@ -1767,6 +1789,7 @@ def test_import_role(requests_mock: Mocker) -> None:
             "database access on [Not added].(id:1)",
             "datasource access on [Not added].[nope](id:42)",
         ],
+        "users": [],
     }
 
     auth = Auth()

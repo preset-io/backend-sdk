@@ -183,6 +183,7 @@ class RoleType(TypedDict):
 
     name: str
     permissions: List[str]
+    users: List[str]
 
 
 class RuleType(TypedDict):
@@ -671,7 +672,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     "role": parse_html_array(tds[6].text.strip()),
                 }
 
-    def export_roles(self) -> Iterator[RoleType]:
+    def export_roles(self) -> Iterator[RoleType]:  # pylint: disable=too-many-locals
         """
         Return all roles.
         """
@@ -699,18 +700,28 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
                 response = self.session.get(role_url)
                 soup = BeautifulSoup(response.text, features="html.parser")
-                table = soup.find_all("table")[-1]
+                tables = soup.find_all("table")
+
+                role_table = tables[-1]
                 keys: List[Tuple[str, Callable[[Any], Any]]] = [
                     ("name", str),
                     ("permissions", parse_html_array),
                 ]
-                yield cast(
-                    RoleType,
-                    {
-                        key: parse(tr.find("td").text.strip())
-                        for (key, parse), tr in zip(keys, table.find_all("tr"))
-                    },
-                )
+                role_info = {
+                    key: parse(tr.find("td").text.strip())
+                    for (key, parse), tr in zip(keys, role_table.find_all("tr"))
+                }
+
+                if len(tables) >= 2:
+                    user_table = tables[-2]
+                    role_info["users"] = [
+                        tr.find_all("td")[4].text.strip()
+                        for tr in user_table.find_all("tr")[1:]
+                    ]
+                else:
+                    role_info["users"] = []
+
+                yield cast(RoleType, role_info)
 
     def export_rls(self) -> Iterator[RuleType]:
         """
