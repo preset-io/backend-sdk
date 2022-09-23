@@ -42,7 +42,6 @@ from zipfile import ZipFile
 
 import pandas as pd
 import prison
-import requests
 import yaml
 from bs4 import BeautifulSoup
 from yarl import URL
@@ -221,6 +220,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         self.session = auth.get_session()
         self.session.headers.update(auth.get_headers())
         self.session.headers["Referer"] = str(self.baseurl)
+        self.session.headers["User-Agent"] = f"Apache Superset Client ({__version__})"
 
     def run_query(
         self,
@@ -251,13 +251,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": f"Apache Superset Client ({__version__})",
-            "Referer": str(self.baseurl),
         }
-        headers.update(self.auth.get_headers())
+        self.session.headers.update(headers)
 
-        session = self.auth.get_session()
-        response = session.post(url, json=data, headers=headers)
+        response = self.session.post(url, json=data)
         validate_response(response)
 
         payload = response.json()
@@ -362,13 +359,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": f"Apache Superset Client ({__version__})",
-            "Referer": str(self.baseurl),
         }
-        headers.update(self.auth.get_headers())
+        self.session.headers.update(headers)
 
-        session = self.auth.get_session()
-        response = session.post(url, json=data, headers=headers)
+        response = self.session.post(url, json=data)
         validate_response(response)
 
         payload = response.json()
@@ -381,10 +375,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         url = self.baseurl / "api/v1" / resource_name / str(resource_id)
 
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-        response = session.get(url, headers=headers)
+        response = self.session.get(url)
         validate_response(response)
 
         resource = response.json()
@@ -417,10 +408,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             )
             url = self.baseurl / "api/v1" / resource_name / "" % {"q": query}
 
-            session = self.auth.get_session()
-            headers = self.auth.get_headers()
-            headers["Referer"] = str(self.baseurl)
-            response = session.get(url, headers=headers)
+            response = self.session.get(url)
             validate_response(response)
 
             payload = response.json()
@@ -439,10 +427,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         url = self.baseurl / "api/v1" / resource_name / ""
 
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-        response = session.post(url, json=kwargs, headers=headers)
+        response = self.session.post(url, json=kwargs)
         validate_response(response)
 
         resource = response.json()
@@ -463,10 +448,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         if query_args:
             url %= query_args
 
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-        response = session.put(url, json=kwargs, headers=headers)
+        response = self.session.put(url, json=kwargs)
         validate_response(response)
 
         resource = response.json()
@@ -567,9 +549,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Export one or more of a resource.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
         url = self.baseurl / "api/v1" / resource_name / "export/"
 
         buf = BytesIO()
@@ -577,7 +556,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             while ids:
                 page, ids = ids[:MAX_IDS_IN_EXPORT], ids[MAX_IDS_IN_EXPORT:]
                 params = {"q": prison.dumps(page)}
-                response = session.get(url, params=params, headers=headers)
+                response = self.session.get(url, params=params)
                 validate_response(response)
 
                 # write files from response to main ZIP bundle
@@ -596,16 +575,13 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Still method is very inneficient, but it's the only way to get the mapping
         between IDs and UUIDs in older versions of Superset.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
         url = self.baseurl / "api/v1" / resource_name / "export/"
 
         uuids: Dict[int, UUID] = {}
         for resource in self.get_resources(resource_name):
             id_ = resource["id"]
             params = {"q": prison.dumps([id_])}
-            response = session.get(url, params=params, headers=headers)
+            response = self.session.get(url, params=params)
 
             with ZipFile(BytesIO(response.content)) as export:
                 for name in export.namelist():
@@ -627,15 +603,11 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         url = self.baseurl / "api/v1" / resource_name / "import/"
 
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-        headers["Accept"] = "application/json"
-        response = session.post(
+        self.session.headers.update({"Accept": "application/json"})
+        response = self.session.post(
             url,
             files=dict(formData=data),
             data=dict(overwrite=json.dumps(overwrite)),
-            headers=headers,
         )
         validate_response(response)
 
@@ -647,16 +619,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return all users.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-
         # For on-premise OSS Superset we can fetch the list of users by crawling the
         # ``/users/list/`` page. For a Preset workspace we need custom logic to talk
         # to Manager.
-        response = session.get(self.baseurl / "users/list/", headers=headers)
+        response = self.session.get(self.baseurl / "users/list/")
         if response.ok:
-            return self._export_users_superset(session, headers)
+            return self._export_users_superset()
         return self._export_users_preset()
 
     def _export_users_preset(self) -> Iterator[UserType]:
@@ -667,20 +635,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         client = PresetClient("https://manage.app.preset.io/", self.auth)
         return client.export_users(self.baseurl)
 
-    def _export_users_superset(
-        self,
-        session: requests.Session,
-        headers: Dict[str, str],
-    ) -> Iterator[UserType]:
+    def _export_users_superset(self) -> Iterator[UserType]:
         """
         Return all users from a standalone Superset instance.
 
         Since this is not exposed via an API we need to crawl the CRUD page.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-
         page = 0
         while True:
             params = {
@@ -690,7 +650,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             url = self.baseurl / "users/list/"
             page += 1
 
-            response = session.get(url, params=params, headers=headers)
+            response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
             table = soup.find_all("table")[1]
             trs = table.find_all("tr")
@@ -712,10 +672,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return all roles.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-
         page = 0
         while True:
             params = {
@@ -725,7 +681,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             url = self.baseurl / "roles/list/"
             page += 1
 
-            response = session.get(url, params=params, headers=headers)
+            response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
             table = soup.find_all("table")[1]
             trs = table.find_all("tr")
@@ -738,7 +694,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 role_id = int(tds[0].find("input").attrs["id"])
                 role_url = self.baseurl / "roles/show" / str(role_id)
 
-                response = session.get(role_url, headers=headers)
+                response = self.session.get(role_url)
                 soup = BeautifulSoup(response.text, features="html.parser")
                 table = soup.find_all("table")[-1]
                 keys: List[Tuple[str, Callable[[Any], Any]]] = [
@@ -757,10 +713,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return all RLS rules.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-
         page = 0
         while True:
             params = {
@@ -770,7 +722,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             url = self.baseurl / "rowlevelsecurityfiltersmodelview/list/"
             page += 1
 
-            response = session.get(url, params=params, headers=headers)
+            response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
             try:
                 table = soup.find_all("table")[1]
@@ -792,7 +744,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     / str(rule_id)
                 )
 
-                response = session.get(rule_url, headers=headers)
+                response = self.session.get(rule_url)
                 soup = BeautifulSoup(response.text, features="html.parser")
                 table = soup.find("table")
                 keys: List[Tuple[str, Callable[[Any], Any]]] = [
@@ -860,10 +812,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Import a given RLS rule.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        headers["Referer"] = str(self.baseurl)
-
         table_ids: List[int] = []
         for table in rls["tables"]:
             if "." in table:
@@ -882,7 +830,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         for role in rls["roles"]:
             params = {"_flt_0_name": role}
             url = self.baseurl / "roles/list/"
-            response = session.get(url, params=params, headers=headers)
+            response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
             trs = soup.find_all("table")[1].find_all("tr")
             if len(trs) == 1:
@@ -897,7 +845,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             role_ids.append(id_)
 
         url = self.baseurl / "rowlevelsecurityfiltersmodelview/add"
-        response = session.post(
+        response = self.session.post(
             url,
             data={
                 "name": rls["name"],
@@ -908,7 +856,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 "group_key": rls["group_key"],
                 "clause": rls["clause"],
             },
-            headers=headers,
         )
         validate_response(response)
 

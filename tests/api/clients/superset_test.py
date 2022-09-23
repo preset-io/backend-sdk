@@ -5,7 +5,6 @@ Tests for ``preset_cli.api.clients.superset``.
 
 import json
 from io import BytesIO
-from unittest import mock
 from uuid import UUID
 from zipfile import ZipFile, is_zipfile
 
@@ -13,7 +12,6 @@ import pytest
 import yaml
 from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
-from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.api.clients.superset import (
@@ -523,27 +521,32 @@ LIMIT 10000;
     }
 
 
-def test_get_data_parameters(mocker: MockerFixture) -> None:
+def test_get_data_parameters(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
     Test different parameters passed to ``get_data``.
     """
-    auth = mocker.MagicMock()
-    session = auth.get_session()
-    session.get().json.return_value = {
-        "result": {
-            "columns": [],
-            "metrics": [],
-        },
-    }
-    session.post().json.return_value = {
-        "result": [
-            {
-                "data": [{"a": 1}],
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/27",
+        json={
+            "result": {
+                "columns": [],
+                "metrics": [],
             },
-        ],
-    }
+        },
+    )
+    post_mock = requests_mock.post(
+        "https://superset.example.org/api/v1/chart/data",
+        json={
+            "result": [
+                {
+                    "data": [{"a": 1}],
+                },
+            ],
+        },
+    )
     mocker.patch("preset_cli.api.clients.superset.uuid4", return_value=1234)
 
+    auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
     client.get_data(
         27,
@@ -554,64 +557,48 @@ def test_get_data_parameters(mocker: MockerFixture) -> None:
         granularity="P1M",
     )
 
-    session.post.assert_has_calls(
-        [
-            mock.call(),
-            mock.call(
-                URL("https://superset.example.org/api/v1/chart/data"),
-                json={
-                    "datasource": {"id": 27, "type": "table"},
-                    "force": False,
-                    "queries": [
-                        {
-                            "annotation_layers": [],
-                            "applied_time_extras": {},
-                            "columns": [{"label": "name", "sqlExpression": "name"}],
-                            "custom_form_data": {},
-                            "custom_params": {},
-                            "extras": {
-                                "having": "",
-                                "having_druid": [],
-                                "time_grain_sqla": "P1M",
-                                "where": "",
-                            },
-                            "filters": [],
-                            "granularity": "ts",
-                            "is_timeseries": True,
-                            "metrics": [
-                                {
-                                    "aggregate": None,
-                                    "column": None,
-                                    "expressionType": "SQL",
-                                    "hasCustomLabel": False,
-                                    "isNew": False,
-                                    "label": "cnt",
-                                    "optionName": "metric_1234",
-                                    "sqlExpression": "cnt",
-                                },
-                            ],
-                            "order_desc": True,
-                            "orderby": [],
-                            "row_limit": 10000,
-                            "time_range": "No filter",
-                            "timeseries_limit": 0,
-                            "url_params": {},
-                        },
-                    ],
-                    "result_format": "json",
-                    "result_type": "full",
+    assert post_mock.last_request.json() == {
+        "datasource": {"id": 27, "type": "table"},
+        "force": False,
+        "queries": [
+            {
+                "annotation_layers": [],
+                "applied_time_extras": {},
+                "columns": [{"label": "name", "sqlExpression": "name"}],
+                "custom_form_data": {},
+                "custom_params": {},
+                "extras": {
+                    "having": "",
+                    "having_druid": [],
+                    "where": "",
+                    "time_grain_sqla": "P1M",
                 },
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "User-Agent": f"Apache Superset Client ({__version__})",
-                    "Referer": "https://superset.example.org/",
-                },
-            ),
-            mock.call().ok.__bool__(),
-            mock.call().json(),
+                "filters": [],
+                "is_timeseries": True,
+                "metrics": [
+                    {
+                        "aggregate": None,
+                        "column": None,
+                        "expressionType": "SQL",
+                        "hasCustomLabel": False,
+                        "isNew": False,
+                        "label": "cnt",
+                        "optionName": "metric_1234",
+                        "sqlExpression": "cnt",
+                    },
+                ],
+                "order_desc": True,
+                "orderby": [],
+                "row_limit": 10000,
+                "time_range": "No filter",
+                "timeseries_limit": 0,
+                "url_params": {},
+                "granularity": "ts",
+            },
         ],
-    )
+        "result_format": "json",
+        "result_type": "full",
+    }
 
 
 def test_get_data_time_column_error(requests_mock: Mocker) -> None:

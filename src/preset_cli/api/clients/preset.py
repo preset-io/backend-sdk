@@ -33,20 +33,17 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         # convert to URL if necessary
         self.baseurl = URL(baseurl)
         self.auth = auth
-        self.auth.headers.update(
-            {
-                "User-Agent": "Preset CLI",
-                "X-Client-Version": __version__,
-            },
-        )
+
+        self.session = auth.get_session()
+        self.session.headers.update(auth.get_headers())
+        self.session.headers["User-Agent"] = "Preset CLI"
+        self.session.headers["X-Client-Version"] = __version__
 
     def get_teams(self) -> List[Any]:
         """
         Retrieve all teams based on membership.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        response = session.get(self.baseurl / "api/v1/teams/", headers=headers)
+        response = self.session.get(self.baseurl / "api/v1/teams/")
         validate_response(response)
 
         payload = response.json()
@@ -58,11 +55,8 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Retrieve all workspaces for a given team.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        response = session.get(
+        response = self.session.get(
             self.baseurl / "api/v1/teams" / team_name / "workspaces/",
-            headers=headers,
         )
         validate_response(response)
 
@@ -80,13 +74,9 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Invite users to teams.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-
         for team in teams:
-            response = session.post(
+            response = self.session.post(
                 self.baseurl / "api/v1/teams" / team / "invites/many",
-                headers=headers,
                 json={
                     "invites": [
                         {"team_role_id": role_id, "email": email} for email in emails
@@ -100,9 +90,6 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Return all users from a given workspace.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-
         team_name: Optional[str] = None
         workspace_id: Optional[int] = None
 
@@ -124,7 +111,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             / str(workspace_id)
             / "memberships"
         )
-        response = session.get(url, headers=headers)
+        response = self.session.get(url)
         team_members: List[UserType] = [
             {
                 "id": 0,
@@ -139,7 +126,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
 
         # TODO (betodealmeida): improve this
         url = workspace_url / "roles/add"
-        response = session.get(url, headers=headers)
+        response = self.session.get(url)
         soup = BeautifulSoup(response.text, features="html.parser")
         select = soup.find("select", id="user")
         ids = {
@@ -158,9 +145,6 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Import users by adding them via SCIM.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-
         for team in teams:
             url = self.baseurl / "api/v1/teams" / team / "scim/v2/Users"
             for user in users:
@@ -186,7 +170,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                         "givenName": user["first_name"],
                     },
                 }
-                headers["Content-Type"] = "application/scim+json"
-                headers["Accept"] = "application/scim+json"
-                response = session.post(url, json=payload, headers=headers)
+                self.session.headers["Content-Type"] = "application/scim+json"
+                self.session.headers["Accept"] = "application/scim+json"
+                response = self.session.post(url, json=payload)
                 validate_response(response)
