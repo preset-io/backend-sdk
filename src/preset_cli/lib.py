@@ -4,6 +4,7 @@ Basic helper functions.
 
 import json
 import logging
+from http.client import HTTPConnection
 from pathlib import Path
 from typing import Any, Dict, List, cast
 
@@ -31,6 +32,8 @@ def setup_logging(loglevel: str) -> None:
     if not isinstance(level, int):
         raise ValueError(f"Invalid log level: {loglevel}")
 
+    # HTTPConnection.debuglevel = 1
+
     logformat = "[%(asctime)s] %(levelname)s: %(name)s: %(message)s"
     logging.basicConfig(
         level=level,
@@ -39,6 +42,10 @@ def setup_logging(loglevel: str) -> None:
         handlers=[RichHandler()],
         force=True,
     )
+
+    requests_log = logging.getLogger("urllib3")
+    requests_log.setLevel(level)
+    requests_log.propagate = True
 
 
 def deserialize_error_level(errors: List[Dict[str, Any]]) -> List[ErrorPayload]:

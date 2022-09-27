@@ -1,12 +1,11 @@
 """
 Main entry point for Superset commands.
 """
-from typing import Any, Optional
+from typing import Any
 
 import click
 from yarl import URL
 
-from preset_cli.auth.jwt import JWTAuth
 from preset_cli.auth.main import UsernamePasswordAuth
 from preset_cli.cli.superset.export import (
     export_assets,
@@ -19,11 +18,11 @@ from preset_cli.cli.superset.import_ import import_ownership, import_rls, import
 from preset_cli.cli.superset.sql import sql
 from preset_cli.cli.superset.sync.main import sync
 from preset_cli.cli.superset.sync.native.command import native
+from preset_cli.lib import setup_logging
 
 
 @click.group()
 @click.argument("instance")
-@click.option("--jwt-token", default=None, help="JWT token")
 @click.option("-u", "--username", default="admin", help="Username")
 @click.option(
     "-p",
@@ -34,27 +33,27 @@ from preset_cli.cli.superset.sync.native.command import native
     hide_input=True,
     help="Password (leave empty for prompt)",
 )
+@click.option("--loglevel", default="INFO")
 @click.pass_context
 def superset_cli(
     ctx: click.core.Context,
     instance: str,
-    jwt_token: Optional[str],
-    username: str = "admin",
-    password: str = "admin",
+    username: str,
+    password: str,
+    loglevel: str,
 ):
     """
     An Apache Superset CLI.
     """
+    setup_logging(loglevel)
+
     ctx.ensure_object(dict)
 
     ctx.obj["INSTANCE"] = instance
 
     # allow a custom authenticator to be passed via the context
     if "AUTH" not in ctx.obj:
-        if jwt_token:
-            ctx.obj["AUTH"] = JWTAuth(jwt_token)
-        else:
-            ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password)
+        ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password)
 
 
 superset_cli.add_command(sql)
