@@ -1,11 +1,12 @@
 """
 Main entry point for Superset commands.
 """
-from typing import Any
+from typing import Any, Optional
 
 import click
 from yarl import URL
 
+from preset_cli.auth.jwt import JWTAuth
 from preset_cli.auth.main import UsernamePasswordAuth
 from preset_cli.cli.superset.export import (
     export_assets,
@@ -23,6 +24,7 @@ from preset_cli.lib import setup_logging
 
 @click.group()
 @click.argument("instance")
+@click.option("--jwt-token", default=None, help="JWT token")
 @click.option("-u", "--username", default="admin", help="Username")
 @click.option(
     "-p",
@@ -38,6 +40,7 @@ from preset_cli.lib import setup_logging
 def superset_cli(
     ctx: click.core.Context,
     instance: str,
+    jwt_token: Optional[str],
     username: str,
     password: str,
     loglevel: str,
@@ -53,7 +56,10 @@ def superset_cli(
 
     # allow a custom authenticator to be passed via the context
     if "AUTH" not in ctx.obj:
-        ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password)
+        if jwt_token:
+            ctx.obj["AUTH"] = JWTAuth(jwt_token)
+        else:
+            ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password)
 
 
 superset_cli.add_command(sql)
