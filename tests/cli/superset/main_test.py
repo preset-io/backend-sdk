@@ -135,9 +135,13 @@ Commands:
         == """Usage: superset export [OPTIONS] DIRECTORY
 
 Options:
-  --overwrite        Overwrite existing resources
-  --asset-type TEXT  Asset type
-  --help             Show this message and exit.
+  --overwrite           Overwrite existing resources
+  --asset-type TEXT     Asset type
+  --database-ids TEXT   Comma separated list of database IDs to export
+  --dataset-ids TEXT    Comma separated list of dataset IDs to export
+  --chart-ids TEXT      Comma separated list of chart IDs to export
+  --dashboard-ids TEXT  Comma separated list of dashboard IDs to export
+  --help                Show this message and exit.
 """
     )
 
