@@ -13,12 +13,8 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 from yarl import URL
 
-from preset_cli.cli.main import (
-    get_status_icon,
-    parse_selection,
-    preset_cli,
-    split_comma,
-)
+from preset_cli.cli.main import get_status_icon, parse_selection, preset_cli
+from preset_cli.lib import split_comma
 
 
 def test_split_comma(mocker: MockerFixture) -> None:

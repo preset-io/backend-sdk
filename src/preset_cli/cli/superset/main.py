@@ -37,7 +37,7 @@ from preset_cli.lib import setup_logging
 )
 @click.option("--loglevel", default="INFO")
 @click.pass_context
-def superset_cli(
+def superset_cli(  # pylint: disable=too-many-arguments
     ctx: click.core.Context,
     instance: str,
     jwt_token: Optional[str],

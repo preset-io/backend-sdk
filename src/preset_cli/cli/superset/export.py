@@ -4,7 +4,7 @@ A command to export Superset resources into a directory.
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Tuple
+from typing import List, Set, Tuple
 from zipfile import ZipFile
 
 import click
@@ -12,7 +12,7 @@ import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
-from preset_cli.lib import remove_root
+from preset_cli.lib import remove_root, split_comma
 
 JINJA2_OPEN_MARKER = "__JINJA2_OPEN__"
 JINJA2_CLOSE_MARKER = "__JINJA2_CLOSE__"
@@ -32,11 +32,35 @@ assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
     help="Asset type",
     multiple=True,
 )
+@click.option(
+    "--database-ids",
+    callback=split_comma,
+    help="Comma separated list of database IDs to export",
+)
+@click.option(
+    "--dataset-ids",
+    callback=split_comma,
+    help="Comma separated list of dataset IDs to export",
+)
+@click.option(
+    "--chart-ids",
+    callback=split_comma,
+    help="Comma separated list of chart IDs to export",
+)
+@click.option(
+    "--dashboard-ids",
+    callback=split_comma,
+    help="Comma separated list of dashboard IDs to export",
+)
 @click.pass_context
-def export_assets(  # pylint: disable=too-many-locals
+def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     ctx: click.core.Context,
     directory: str,
     asset_type: Tuple[str, ...],
+    database_ids: List[str],
+    dataset_ids: List[str],
+    chart_ids: List[str],
+    dashboard_ids: List[str],
     overwrite: bool = False,
 ) -> None:
     """
@@ -47,14 +71,21 @@ def export_assets(  # pylint: disable=too-many-locals
     client = SupersetClient(url, auth)
     root = Path(directory)
     asset_types = set(asset_type)
+    ids = {
+        "database": {int(id_) for id_ in database_ids},
+        "dataset": {int(id_) for id_ in dataset_ids},
+        "chart": {int(id_) for id_ in chart_ids},
+        "dashboard": {int(id_) for id_ in dashboard_ids},
+    }
 
     for resource_name in ["database", "dataset", "chart", "dashboard"]:
         if not asset_types or resource_name in asset_types:
-            export_resource(resource_name, root, client, overwrite)
+            export_resource(resource_name, ids[resource_name], root, client, overwrite)
 
 
 def export_resource(
     resource_name: str,
+    requested_ids: Set[int],
     root: Path,
     client: SupersetClient,
     overwrite: bool,
@@ -63,7 +94,11 @@ def export_resource(
     Export a given resource and unzip it in a directory.
     """
     resources = client.get_resources(resource_name)
-    ids = [resource["id"] for resource in resources]
+    ids = [
+        resource["id"]
+        for resource in resources
+        if resource["id"] in requested_ids or not requested_ids
+    ]
     buf = client.export_zip(resource_name, ids)
 
     with ZipFile(buf) as bundle:

@@ -23,7 +23,8 @@ def test_preset_client_get_teams(mocker: MockerFixture, requests_mock: Mocker) -
     teams = client.get_teams()
     assert teams == [1, 2, 3]
     _logger.debug.assert_called_with(
-        "GET %s", URL("https://ws.preset.io/api/v1/teams/")
+        "GET %s",
+        URL("https://ws.preset.io/api/v1/teams/"),
     )
 
 

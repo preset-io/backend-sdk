@@ -5,8 +5,9 @@ Basic helper functions.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List, Optional, cast
 
+import click
 from requests import Response
 from rich.logging import RichHandler
 
@@ -96,3 +97,17 @@ def validate_response(response: Response) -> None:
 
     _logger.error(message)
     raise SupersetError(errors=errors)
+
+
+def split_comma(  # pylint: disable=unused-argument
+    ctx: click.core.Context,
+    param: str,
+    value: Optional[str],
+) -> List[str]:
+    """
+    Split CLI option into multiple values.
+    """
+    if value is None:
+        return []
+
+    return [option.strip() for option in value.split(",")]

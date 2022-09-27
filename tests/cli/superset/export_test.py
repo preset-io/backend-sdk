@@ -69,12 +69,24 @@ def test_export_resource(
     client = mocker.MagicMock()
     client.export_zip.return_value = dataset_export
 
-    export_resource(resource_name="database", root=root, client=client, overwrite=False)
+    export_resource(
+        resource_name="database",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=False,
+    )
     with open(root / "databases/gsheets.yaml", encoding="utf-8") as input_:
         assert input_.read() == "database_name: GSheets\nsqlalchemy_uri: gsheets://\n"
 
     # check that Jinja2 was escaped
-    export_resource(resource_name="dataset", root=root, client=client, overwrite=False)
+    export_resource(
+        resource_name="dataset",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=False,
+    )
     with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
         assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
             "table_name": "test",
@@ -104,10 +116,17 @@ def test_export_resource_overwrite(
     client = mocker.MagicMock()
     client.export_zip.return_value = dataset_export
 
-    export_resource(resource_name="database", root=root, client=client, overwrite=False)
+    export_resource(
+        resource_name="database",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=False,
+    )
     with pytest.raises(Exception) as excinfo:
         export_resource(
             resource_name="database",
+            requested_ids=set(),
             root=root,
             client=client,
             overwrite=False,
@@ -117,7 +136,13 @@ def test_export_resource_overwrite(
         "/path/to/root/databases/gsheets.yaml"
     )
 
-    export_resource(resource_name="database", root=root, client=client, overwrite=True)
+    export_resource(
+        resource_name="database",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=True,
+    )
 
 
 def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -142,10 +167,46 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     assert result.exit_code == 0
     export_resource.assert_has_calls(
         [
-            mock.call("database", Path("/path/to/root"), client, False),
-            mock.call("dataset", Path("/path/to/root"), client, False),
-            mock.call("chart", Path("/path/to/root"), client, False),
-            mock.call("dashboard", Path("/path/to/root"), client, False),
+            mock.call("database", set(), Path("/path/to/root"), client, False),
+            mock.call("dataset", set(), Path("/path/to/root"), client, False),
+            mock.call("chart", set(), Path("/path/to/root"), client, False),
+            mock.call("dashboard", set(), Path("/path/to/root"), client, False),
+        ],
+    )
+
+
+def test_export_assets_by_id(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``export_assets`` command.
+    """
+    # root must exist for command to succeed
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export",
+            "/path/to/root",
+            "--database-ids",
+            "1,2,3",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    export_resource.assert_has_calls(
+        [
+            mock.call("database", {1, 2, 3}, Path("/path/to/root"), client, False),
+            mock.call("dataset", set(), Path("/path/to/root"), client, False),
+            mock.call("chart", set(), Path("/path/to/root"), client, False),
+            mock.call("dashboard", set(), Path("/path/to/root"), client, False),
         ],
     )
 
@@ -180,8 +241,8 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
     assert result.exit_code == 0
     export_resource.assert_has_calls(
         [
-            mock.call("dataset", Path("/path/to/root"), client, False),
-            mock.call("dashboard", Path("/path/to/root"), client, False),
+            mock.call("dataset", set(), Path("/path/to/root"), client, False),
+            mock.call("dashboard", set(), Path("/path/to/root"), client, False),
         ],
     )
 
@@ -208,10 +269,10 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
     assert result.exit_code == 0
     export_resource.assert_has_calls(
         [
-            mock.call("database", Path("/path/to/root"), client, False),
-            mock.call("dataset", Path("/path/to/root"), client, False),
-            mock.call("chart", Path("/path/to/root"), client, False),
-            mock.call("dashboard", Path("/path/to/root"), client, False),
+            mock.call("database", set(), Path("/path/to/root"), client, False),
+            mock.call("dataset", set(), Path("/path/to/root"), client, False),
+            mock.call("chart", set(), Path("/path/to/root"), client, False),
+            mock.call("dashboard", set(), Path("/path/to/root"), client, False),
         ],
     )
 

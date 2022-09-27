@@ -21,23 +21,9 @@ from preset_cli.auth.lib import (
 )
 from preset_cli.auth.main import Auth
 from preset_cli.cli.superset.main import superset
-from preset_cli.lib import setup_logging
+from preset_cli.lib import setup_logging, split_comma
 
 _logger = logging.getLogger(__name__)
-
-
-def split_comma(  # pylint: disable=unused-argument
-    ctx: click.core.Context,
-    param: str,
-    value: Optional[str],
-) -> List[str]:
-    """
-    Split CLI option into multiple values.
-    """
-    if value is None:
-        return []
-
-    return [option.strip() for option in value.split(",")]
 
 
 def get_status_icon(status: str) -> str:
