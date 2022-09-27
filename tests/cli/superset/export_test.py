@@ -150,6 +150,42 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
 
+def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``export_assets`` command.
+    """
+    # root must exist for command to succeed
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--asset-type",
+            "dataset",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    export_resource.assert_has_calls(
+        [
+            mock.call("dataset", Path("/path/to/root"), client, False),
+            mock.call("dashboard", Path("/path/to/root"), client, False),
+        ],
+    )
+
+
 def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``export`` command.

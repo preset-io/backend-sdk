@@ -135,8 +135,9 @@ Commands:
         == """Usage: superset export [OPTIONS] DIRECTORY
 
 Options:
-  --overwrite  Overwrite existing resources
-  --help       Show this message and exit.
+  --overwrite        Overwrite existing resources
+  --asset-type TEXT  Asset type
+  --help             Show this message and exit.
 """
     )
 

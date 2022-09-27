@@ -4,6 +4,7 @@ A command to export Superset resources into a directory.
 
 from collections import defaultdict
 from pathlib import Path
+from typing import Tuple
 from zipfile import ZipFile
 
 import click
@@ -26,10 +27,16 @@ assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
     default=False,
     help="Overwrite existing resources",
 )
+@click.option(
+    "--asset-type",
+    help="Asset type",
+    multiple=True,
+)
 @click.pass_context
 def export_assets(  # pylint: disable=too-many-locals
     ctx: click.core.Context,
     directory: str,
+    asset_type: Tuple[str, ...],
     overwrite: bool = False,
 ) -> None:
     """
@@ -39,9 +46,11 @@ def export_assets(  # pylint: disable=too-many-locals
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     root = Path(directory)
+    asset_types = set(asset_type)
 
     for resource_name in ["database", "dataset", "chart", "dashboard"]:
-        export_resource(resource_name, root, client, overwrite)
+        if not asset_types or resource_name in asset_types:
+            export_resource(resource_name, root, client, overwrite)
 
 
 def export_resource(
