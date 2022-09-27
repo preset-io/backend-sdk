@@ -12,6 +12,7 @@ import pytest
 import yaml
 from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
+from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.api.clients.superset import (
@@ -27,10 +28,12 @@ from preset_cli.auth.main import Auth
 from preset_cli.exceptions import ErrorLevel, SupersetError
 
 
-def test_run_query(requests_mock: Mocker) -> None:
+def test_run_query(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
     Test the ``run_query`` method.
     """
+    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+    mocker.patch("preset_cli.api.clients.superset.shortid", return_value="5b8f4d8c89")
     requests_mock.post(
         "https://superset.example.org/superset/sql_json/",
         json={
@@ -78,6 +81,25 @@ def test_run_query(requests_mock: Mocker) -> None:
 
     results = client.run_query(database_id=1, sql="SELECT 1 AS value", limit=10)
     assert results.to_dict() == {"value": {0: 1}}
+    _logger.debug.assert_called_with(
+        "POST %s\n%s",
+        URL("https://superset.example.org/superset/sql_json/"),
+        """{
+    "client_id": "5b8f4d8c89",
+    "database_id": 1,
+    "json": true,
+    "runAsync": false,
+    "schema": null,
+    "sql": "SELECT 1 AS value",
+    "sql_editor_id": "1",
+    "tab": "Untitled Query 2",
+    "tmp_table_name": "",
+    "select_as_cta": false,
+    "ctas_method": "TABLE",
+    "queryLimit": 10,
+    "expand_data": true
+}""",
+    )
 
 
 def test_run_query_error(requests_mock: Mocker) -> None:

@@ -3,6 +3,7 @@ Tests for ``preset_cli.api.clients.preset``.
 """
 
 import pytest
+from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
 from yarl import URL
 
@@ -10,16 +11,20 @@ from preset_cli.api.clients.preset import PresetClient
 from preset_cli.auth.main import Auth
 
 
-def test_preset_client_get_teams(requests_mock: Mocker) -> None:
+def test_preset_client_get_teams(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
     Test the ``get_teams`` method.
     """
+    _logger = mocker.patch("preset_cli.api.clients.preset._logger")
     requests_mock.get("https://ws.preset.io/api/v1/teams/", json={"payload": [1, 2, 3]})
 
     auth = Auth()
     client = PresetClient("https://ws.preset.io/", auth)
     teams = client.get_teams()
     assert teams == [1, 2, 3]
+    _logger.debug.assert_called_with(
+        "GET %s", URL("https://ws.preset.io/api/v1/teams/")
+    )
 
 
 def test_preset_client_get_workspaces(requests_mock: Mocker) -> None:
