@@ -258,6 +258,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         }
         self.session.headers.update(headers)
 
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
         response = self.session.post(url, json=data)
         validate_response(response)
 
@@ -366,6 +367,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         }
         self.session.headers.update(headers)
 
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
         response = self.session.post(url, json=data)
         validate_response(response)
 
@@ -379,6 +381,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         url = self.baseurl / "api/v1" / resource_name / str(resource_id)
 
+        _logger.debug("GET %s", url)
         response = self.session.get(url)
         validate_response(response)
 
@@ -412,6 +415,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             )
             url = self.baseurl / "api/v1" / resource_name / "" % {"q": query}
 
+            _logger.debug("GET %s", url)
             response = self.session.get(url)
             validate_response(response)
 
@@ -431,6 +435,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         url = self.baseurl / "api/v1" / resource_name / ""
 
+        _logger.debug("POST %s\n%s", url, json.dumps(kwargs, indent=4))
         response = self.session.post(url, json=kwargs)
         validate_response(response)
 
@@ -560,6 +565,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             while ids:
                 page, ids = ids[:MAX_IDS_IN_EXPORT], ids[MAX_IDS_IN_EXPORT:]
                 params = {"q": prison.dumps(page)}
+                _logger.debug("GET %s", url % params)
                 response = self.session.get(url, params=params)
                 validate_response(response)
 
@@ -585,6 +591,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         for resource in self.get_resources(resource_name):
             id_ = resource["id"]
             params = {"q": prison.dumps([id_])}
+            _logger.debug("GET %s", url % params)
             response = self.session.get(url, params=params)
 
             with ZipFile(BytesIO(response.content)) as export:
@@ -599,7 +606,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
     def import_zip(
         self,
         resource_name: str,
-        data: BytesIO,
+        form_data: BytesIO,
         overwrite: bool = False,
     ) -> bool:
         """
@@ -608,10 +615,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         url = self.baseurl / "api/v1" / resource_name / "import/"
 
         self.session.headers.update({"Accept": "application/json"})
+        data = {"overwrite": json.dumps(overwrite)}
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
         response = self.session.post(
             url,
-            files=dict(formData=data),
-            data=dict(overwrite=json.dumps(overwrite)),
+            files=dict(formData=form_data),
+            data=data,
         )
         validate_response(response)
 
@@ -626,7 +635,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         # For on-premise OSS Superset we can fetch the list of users by crawling the
         # ``/users/list/`` page. For a Preset workspace we need custom logic to talk
         # to Manager.
-        response = self.session.get(self.baseurl / "users/list/")
+        url = self.baseurl / "users/list/"
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
         if response.ok:
             return self._export_users_superset()
         return self._export_users_preset()
@@ -654,6 +665,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             url = self.baseurl / "users/list/"
             page += 1
 
+            _logger.debug("GET %s", url % params)
             response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
             table = soup.find_all("table")[1]
@@ -685,6 +697,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             url = self.baseurl / "roles/list/"
             page += 1
 
+            _logger.debug("GET %s", url % params)
             response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
             table = soup.find_all("table")[1]
@@ -698,6 +711,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 role_id = int(tds[0].find("input").attrs["id"])
                 role_url = self.baseurl / "roles/show" / str(role_id)
 
+                _logger.debug("GET %s", role_url)
                 response = self.session.get(role_url)
                 soup = BeautifulSoup(response.text, features="html.parser")
                 tables = soup.find_all("table")
@@ -736,6 +750,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             url = self.baseurl / "rowlevelsecurityfiltersmodelview/list/"
             page += 1
 
+            _logger.debug("GET %s", url % params)
             response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
             try:
@@ -758,6 +773,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     / str(rule_id)
                 )
 
+                _logger.debug("GET %s", rule_url)
                 response = self.session.get(rule_url)
                 soup = BeautifulSoup(response.text, features="html.parser")
                 table = soup.find("table")
@@ -788,6 +804,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         ]
 
         url = self.baseurl / "roles/add"
+        _logger.debug("GET %s", url)
         response = self.session.get(url)
         soup = BeautifulSoup(response.text, features="html.parser")
         select = soup.find("select", id="permissions")
@@ -817,14 +834,13 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             if permission in permission_id_map:
                 permission_ids.append(permission_id_map[permission])
 
-        response = self.session.post(
-            url,
-            data={
-                "name": role["name"],
-                "user": user_ids,
-                "permissions": permission_ids,
-            },
-        )
+        data = {
+            "name": role["name"],
+            "user": user_ids,
+            "permissions": permission_ids,
+        }
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+        response = self.session.post(url, data=data)
         validate_response(response)
 
     def import_rls(self, rls: RuleType) -> None:  # pylint: disable=too-many-locals
@@ -850,6 +866,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         for role in rls["roles"]:
             params = {"_flt_0_name": role}
             url = self.baseurl / "roles/list/"
+            _logger.debug("GET %s", url % params)
             response = self.session.get(url, params=params)
             soup = BeautifulSoup(response.text, features="html.parser")
             tables = soup.find_all("table")
@@ -876,18 +893,17 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             role_ids.append(id_)
 
         url = self.baseurl / "rowlevelsecurityfiltersmodelview/add"
-        response = self.session.post(
-            url,
-            data={
-                "name": rls["name"],
-                "description": rls["description"],
-                "filter_type": rls["filter_type"],
-                "tables": table_ids,
-                "roles": role_ids,
-                "group_key": rls["group_key"],
-                "clause": rls["clause"],
-            },
-        )
+        data = {
+            "name": rls["name"],
+            "description": rls["description"],
+            "filter_type": rls["filter_type"],
+            "tables": table_ids,
+            "roles": role_ids,
+            "group_key": rls["group_key"],
+            "clause": rls["clause"],
+        }
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+        response = self.session.post(url, data=data)
         validate_response(response)
 
     def export_ownership(self, resource_name: str) -> Iterator[OwnershipType]:

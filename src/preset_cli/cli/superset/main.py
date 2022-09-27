@@ -18,6 +18,7 @@ from preset_cli.cli.superset.import_ import import_ownership, import_rls, import
 from preset_cli.cli.superset.sql import sql
 from preset_cli.cli.superset.sync.main import sync
 from preset_cli.cli.superset.sync.native.command import native
+from preset_cli.lib import setup_logging
 
 
 @click.group()
@@ -32,16 +33,20 @@ from preset_cli.cli.superset.sync.native.command import native
     hide_input=True,
     help="Password (leave empty for prompt)",
 )
+@click.option("--loglevel", default="INFO")
 @click.pass_context
 def superset_cli(
     ctx: click.core.Context,
     instance: str,
-    username: str = "admin",
-    password: str = "admin",
+    username: str,
+    password: str,
+    loglevel: str,
 ):
     """
     An Apache Superset CLI.
     """
+    setup_logging(loglevel)
+
     ctx.ensure_object(dict)
 
     ctx.obj["INSTANCE"] = instance

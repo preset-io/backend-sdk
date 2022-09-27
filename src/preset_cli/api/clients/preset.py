@@ -2,6 +2,8 @@
 A simple client for interacting with the Preset API.
 """
 
+import json
+import logging
 from enum import Enum
 from typing import Any, Iterator, List, Optional, Union
 
@@ -12,6 +14,8 @@ from preset_cli import __version__
 from preset_cli.auth.main import Auth
 from preset_cli.lib import validate_response
 from preset_cli.typing import UserType
+
+_logger = logging.getLogger(__name__)
 
 
 class Role(int, Enum):
@@ -43,7 +47,9 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Retrieve all teams based on membership.
         """
-        response = self.session.get(self.baseurl / "api/v1/teams/")
+        url = self.baseurl / "api/v1/teams/"
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
         validate_response(response)
 
         payload = response.json()
@@ -55,9 +61,9 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Retrieve all workspaces for a given team.
         """
-        response = self.session.get(
-            self.baseurl / "api/v1/teams" / team_name / "workspaces/",
-        )
+        url = self.baseurl / "api/v1/teams" / team_name / "workspaces/"
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
         validate_response(response)
 
         payload = response.json()
@@ -75,14 +81,14 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         Invite users to teams.
         """
         for team in teams:
-            response = self.session.post(
-                self.baseurl / "api/v1/teams" / team / "invites/many",
-                json={
-                    "invites": [
-                        {"team_role_id": role_id, "email": email} for email in emails
-                    ],
-                },
-            )
+            url = self.baseurl / "api/v1/teams" / team / "invites/many"
+            payload = {
+                "invites": [
+                    {"team_role_id": role_id, "email": email} for email in emails
+                ],
+            }
+            _logger.debug("POST %s\n%s", url, json.dumps(payload, indent=4))
+            response = self.session.post(url, json=payload)
             validate_response(response)
 
     # pylint: disable=too-many-locals
@@ -111,6 +117,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             / str(workspace_id)
             / "memberships"
         )
+        _logger.debug("GET %s", url)
         response = self.session.get(url)
         team_members: List[UserType] = [
             {
@@ -126,6 +133,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
 
         # TODO (betodealmeida): improve this
         url = workspace_url / "roles/add"
+        _logger.debug("GET %s", url)
         response = self.session.get(url)
         soup = BeautifulSoup(response.text, features="html.parser")
         select = soup.find("select", id="user")
@@ -172,5 +180,6 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                 }
                 self.session.headers["Content-Type"] = "application/scim+json"
                 self.session.headers["Accept"] = "application/scim+json"
+                _logger.debug("POST %s\n%s", url, json.dumps(payload, indent=4))
                 response = self.session.post(url, json=payload)
                 validate_response(response)
