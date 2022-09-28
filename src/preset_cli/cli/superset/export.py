@@ -77,18 +77,29 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
         "chart": {int(id_) for id_ in chart_ids},
         "dashboard": {int(id_) for id_ in dashboard_ids},
     }
+    ids_requested = any([database_ids, dataset_ids, chart_ids, dashboard_ids])
 
     for resource_name in ["database", "dataset", "chart", "dashboard"]:
-        if not asset_types or resource_name in asset_types:
-            export_resource(resource_name, ids[resource_name], root, client, overwrite)
+        if (not asset_types or resource_name in asset_types) and (
+            ids[resource_name] or not ids_requested
+        ):
+            export_resource(
+                resource_name,
+                ids[resource_name],
+                root,
+                client,
+                overwrite,
+                skip_related=not ids_requested,
+            )
 
 
-def export_resource(
+def export_resource(  # pylint: disable=too-many-arguments
     resource_name: str,
     requested_ids: Set[int],
     root: Path,
     client: SupersetClient,
     overwrite: bool,
+    skip_related: bool = True,
 ) -> None:
     """
     Export a given resource and unzip it in a directory.
@@ -108,8 +119,7 @@ def export_resource(
         }
 
     for file_name, file_contents in contents.items():
-        # skip related files
-        if not file_name.startswith(resource_name):
+        if skip_related and not file_name.startswith(resource_name):
             continue
 
         target = root / file_name
