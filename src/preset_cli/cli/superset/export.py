@@ -77,7 +77,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
         "chart": {int(id_) for id_ in chart_ids},
         "dashboard": {int(id_) for id_ in dashboard_ids},
     }
-    ids_requested = database_ids or dataset_ids or chart_ids or dashboard_ids
+    ids_requested = any([database_ids, dataset_ids, chart_ids, dashboard_ids])
 
     for resource_name in ["database", "dataset", "chart", "dashboard"]:
         if (not asset_types or resource_name in asset_types) and (

@@ -184,7 +184,12 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 skip_related=True,
             ),
             mock.call(
-                "chart", set(), Path("/path/to/root"), client, False, skip_related=True,
+                "chart",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
             ),
             mock.call(
                 "dashboard",
@@ -327,7 +332,12 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 skip_related=True,
             ),
             mock.call(
-                "chart", set(), Path("/path/to/root"), client, False, skip_related=True,
+                "chart",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
             ),
             mock.call(
                 "dashboard",
