@@ -7,7 +7,7 @@ import click
 from yarl import URL
 
 from preset_cli.auth.jwt import JWTAuth
-from preset_cli.auth.main import UsernamePasswordAuth
+from preset_cli.auth.password import UsernamePasswordAuth
 from preset_cli.cli.superset.export import (
     export_assets,
     export_ownership,
