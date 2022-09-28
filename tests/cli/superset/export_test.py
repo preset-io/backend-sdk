@@ -167,10 +167,33 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     assert result.exit_code == 0
     export_resource.assert_has_calls(
         [
-            mock.call("database", set(), Path("/path/to/root"), client, False),
-            mock.call("dataset", set(), Path("/path/to/root"), client, False),
-            mock.call("chart", set(), Path("/path/to/root"), client, False),
-            mock.call("dashboard", set(), Path("/path/to/root"), client, False),
+            mock.call(
+                "database",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
+            ),
+            mock.call(
+                "dataset",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
+            ),
+            mock.call(
+                "chart", set(), Path("/path/to/root"), client, False, skip_related=True,
+            ),
+            mock.call(
+                "dashboard",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
+            ),
         ],
     )
 
@@ -203,10 +226,14 @@ def test_export_assets_by_id(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     assert result.exit_code == 0
     export_resource.assert_has_calls(
         [
-            mock.call("database", {1, 2, 3}, Path("/path/to/root"), client, False),
-            mock.call("dataset", set(), Path("/path/to/root"), client, False),
-            mock.call("chart", set(), Path("/path/to/root"), client, False),
-            mock.call("dashboard", set(), Path("/path/to/root"), client, False),
+            mock.call(
+                "database",
+                {1, 2, 3},
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=False,
+            ),
         ],
     )
 
@@ -241,8 +268,22 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
     assert result.exit_code == 0
     export_resource.assert_has_calls(
         [
-            mock.call("dataset", set(), Path("/path/to/root"), client, False),
-            mock.call("dashboard", set(), Path("/path/to/root"), client, False),
+            mock.call(
+                "dataset",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
+            ),
+            mock.call(
+                "dashboard",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
+            ),
         ],
     )
 
@@ -269,10 +310,33 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
     assert result.exit_code == 0
     export_resource.assert_has_calls(
         [
-            mock.call("database", set(), Path("/path/to/root"), client, False),
-            mock.call("dataset", set(), Path("/path/to/root"), client, False),
-            mock.call("chart", set(), Path("/path/to/root"), client, False),
-            mock.call("dashboard", set(), Path("/path/to/root"), client, False),
+            mock.call(
+                "database",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
+            ),
+            mock.call(
+                "dataset",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
+            ),
+            mock.call(
+                "chart", set(), Path("/path/to/root"), client, False, skip_related=True,
+            ),
+            mock.call(
+                "dashboard",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                skip_related=True,
+            ),
         ],
     )
 
