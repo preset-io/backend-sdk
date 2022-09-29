@@ -36,6 +36,7 @@ from preset_cli.lib import setup_logging
     help="Password (leave empty for prompt)",
 )
 @click.option("--loglevel", default="INFO")
+@click.version_option()
 @click.pass_context
 def superset_cli(  # pylint: disable=too-many-arguments
     ctx: click.core.Context,
