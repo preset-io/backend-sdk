@@ -303,5 +303,17 @@
       "column_name": "customer_id",
       "file_key_name": "models.stg_customers"
     }
+  },
+  "child_map": {
+    "model.superset_examples.messages_channels": [
+      "metric.superset_examples.cnt"
+    ],
+    "source.superset_examples.public.messages": [
+      "model.superset_examples.messages_channels"
+    ],
+    "source.superset_examples.public.channels": [
+      "model.superset_examples.messages_channels"
+    ],
+    "metric.superset_examples.cnt": []
   }
 }
