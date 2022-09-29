@@ -72,6 +72,16 @@ def parse_selection(selection: str, count: int) -> List[int]:
     return numbers
 
 
+def is_help() -> bool:
+    """
+    Are we running ``--help`` in a subcommand?
+
+    This detects that ``--help`` was passed to a subcommand, and prevents prompting for
+    workspaces and teams.
+    """
+    return "--help" in sys.argv[1:]
+
+
 @click.group()
 @click.option("--baseurl", default="https://manage.app.preset.io/")
 @click.option("--api-token", envvar="PRESET_API_TOKEN")
@@ -136,7 +146,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
     # store auth in context so it's used by the Superset SDK
     ctx.obj["AUTH"] = JWTAuth(jwt_token) if jwt_token else Auth()
 
-    if not workspaces and ctx.invoked_subcommand == "superset":
+    if not workspaces and ctx.invoked_subcommand == "superset" and not is_help():
         client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
         click.echo("Choose one or more workspaces (eg: 1-3,5,8-):")
         i = 0
