@@ -1528,6 +1528,137 @@ def test_export_roles(requests_mock: Mocker) -> None:
     ]
 
 
+def test_export_roles_anchor_role_id(requests_mock: Mocker) -> None:
+    """
+    Test ``export_roles``.
+    """
+    requests_mock.get(
+        (
+            "https://superset.example.org/roles/list/?"
+            "psize_RoleModelView=100&"
+            "page_RoleModelView=0"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+      <tr>
+        <td><a href="/roles/edit/1">Edit</a></td>
+        <td>Admin</td>
+      </tr>
+      <tr>
+        <td><a href="/roles/edit/2">Edit</a></td>
+        <td>Public</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        (
+            "https://superset.example.org/roles/list/?"
+            "psize_RoleModelView=100&"
+            "page_RoleModelView=1"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/show/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table>
+      <tr>
+        <th></th>
+        <th>First Name</th>
+        <th>Last Name</th>
+        <th>User Name</th>
+        <th>Email</th>
+        <th>Is Active?</th>
+        <th>Role</th>
+      </tr>
+      <tr>
+        <td></td>
+        <td>Alice</td>
+        <td>Doe</td>
+        <td>adoe</td>
+        <td>adoe@example.com</td>
+        <td>True</td>
+        <td>[Admin]</td>
+      </tr>
+    </table>
+    <table>
+      <tr><th>Name</th><td>Admin</td></tr>
+      <tr><th>Permissions</th><td>[can this, can that]</td></tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/show/2",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table>
+      <tr><th>Name</th><td>Public</td></tr>
+      <tr><th>Permissions</th><td>[]</td></tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_roles()) == [
+        {
+            "name": "Admin",
+            "permissions": ["can this", "can that"],
+            "users": ["adoe@example.com"],
+        },
+        {
+            "name": "Public",
+            "permissions": [],
+            "users": [],
+        },
+    ]
+
+
 def test_export_rls(requests_mock: Mocker) -> None:
     """
     Test ``export_rls``.
@@ -1878,6 +2009,22 @@ def test_import_rls(requests_mock: Mocker) -> None:
 </html>
         """,
     )
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <select id="permissions">
+        <option value="1">some permission</option>
+    </select>
+  </body>
+</html>
+        """,
+    )
     requests_mock.post(
         "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
     )
@@ -1957,19 +2104,12 @@ def test_import_rls_no_role_table(requests_mock: Mocker) -> None:
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    client.import_rls(rls)
-
-    assert requests_mock.last_request.text == (
-        "name=Rule+name&"
-        "description=Rule+description&"
-        "filter_type=Regular&"
-        "tables=1&"
-        "group_key=department&"
-        "clause=client_id+%3D+9"
-    )
+    with pytest.raises(Exception) as excinfo:
+        client.import_rls(rls)
+    assert str(excinfo.value) == "Cannot find role: Gamma"
 
 
-def test_import_rls_invalid_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
+def test_import_rls_invalid_role(requests_mock: Mocker) -> None:
     """
     Test the ``import_rls`` method when the role has permissions.
     """
@@ -2015,10 +2155,25 @@ def test_import_rls_invalid_role(mocker: MockerFixture, requests_mock: Mocker) -
 </html>
         """,
     )
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <select id="permissions">
+        <option selected="" value="1">some permission</option>
+    </select>
+  </body>
+</html>
+        """,
+    )
     requests_mock.post(
         "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
     )
-    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
 
     rls: RuleType = {
         "clause": "client_id = 9",
@@ -2032,20 +2187,11 @@ def test_import_rls_invalid_role(mocker: MockerFixture, requests_mock: Mocker) -
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    client.import_rls(rls)
-
-    assert requests_mock.last_request.text == (
-        "name=Rule+name&"
-        "description=Rule+description&"
-        "filter_type=Regular&"
-        "tables=1&"
-        "group_key=department&"
-        "clause=client_id+%3D+9"
-    )
-    assert _logger.warning.called_with(
-        "Role %(role)s currently has permissions associated with it. "
-        "To use it with RLS it should have no permissions.",
-        "Gamma",
+    with pytest.raises(Exception) as excinfo:
+        client.import_rls(rls)
+    assert str(excinfo.value) == (
+        "Role Gamma currently has permissions associated with it. "
+        "To use it with RLS it should have no permissions."
     )
 
 
@@ -2089,6 +2235,22 @@ def test_import_rls_no_schema(requests_mock: Mocker) -> None:
         <td>\n</td>
       </tr>
     </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <select id="permissions">
+        <option value="1">some permission</option>
+    </select>
   </body>
 </html>
         """,
@@ -2366,6 +2528,22 @@ def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
 </html>
         """,
     )
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <select id="permissions">
+        <option value="1">some permission</option>
+    </select>
+  </body>
+</html>
+        """,
+    )
     requests_mock.post(
         "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
     )
@@ -2434,3 +2612,44 @@ def test_import_ownership(mocker: MockerFixture, requests_mock: Mocker) -> None:
     )
 
     assert requests_mock.last_request.json() == {"owners": [1, 2]}
+
+
+def test_update_role(requests_mock: Mocker) -> None:
+    """
+    Test the ``update_role`` method.
+    """
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <input name="name" value="Old Role" />
+    <select id="user">
+        <option selected="" value="1">Alice Doe</option>
+        <option value="2">Bob Doe</option>
+    </select>
+    <select id="permissions">
+        <option selected="" value="1">some permission</option>
+        <option value="2">another permission</option>
+    </select>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.post("https://superset.example.org/roles/edit/1")
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    client.update_role(1, name="New Role")
+    assert requests_mock.last_request.text == "name=New+Role&user=1&permissions=1"
+
+    client.update_role(1, user=[2], permissions=[1, 2])
+    assert (
+        requests_mock.last_request.text
+        == "name=Old+Role&user=2&permissions=1&permissions=2"
+    )

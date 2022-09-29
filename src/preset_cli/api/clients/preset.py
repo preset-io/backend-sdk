@@ -57,6 +57,20 @@ class PresetClient:  # pylint: disable=too-few-public-methods
 
         return teams
 
+    def get_team_members(self, team_name: str) -> List[Any]:
+        """
+        Retrieve all users for a given team.
+        """
+        url = self.baseurl / "api/v1/teams" / team_name / "memberships"
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
+        validate_response(response)
+
+        payload = response.json()
+        users = payload["payload"]
+
+        return users
+
     def get_workspaces(self, team_name: str) -> List[Any]:
         """
         Retrieve all workspaces for a given team.
@@ -183,3 +197,34 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                 _logger.debug("POST %s\n%s", url, json.dumps(payload, indent=4))
                 response = self.session.post(url, json=payload)
                 validate_response(response)
+
+    def change_team_role(self, team_name: str, user_id: int, role_id: int) -> None:
+        """
+        Change the team role of a given user.
+        """
+        url = self.baseurl / "api/v1/teams" / team_name / "memberships" / str(user_id)
+        payload = {"team_role_id": role_id}
+        _logger.debug("PATCH %s\n%s", url, json.dumps(payload, indent=4))
+        self.session.patch(url, json=payload)
+
+    def change_workspace_role(
+        self,
+        team_name: str,
+        workspace_id: int,
+        user_id: int,
+        role_identifier: str,
+    ) -> None:
+        """
+        Change the workspace role of a given user.
+        """
+        url = (
+            self.baseurl
+            / "api/v1/teams"
+            / team_name
+            / "workspaces"
+            / str(workspace_id)
+            / "membership"
+        )
+        payload = {"role_identifier": role_identifier, "user_id": user_id}
+        _logger.debug("PUT %s\n%s", url, json.dumps(payload, indent=4))
+        self.session.put(url, json=payload)

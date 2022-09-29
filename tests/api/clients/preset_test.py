@@ -227,3 +227,100 @@ def test_preset_client_import_users(requests_mock: Mocker) -> None:
         "userName": "adoe@example.com",
         "name": {"formatted": "Alice Doe", "familyName": "Doe", "givenName": "Alice"},
     }
+
+
+def test_get_team_members(requests_mock: Mocker) -> None:
+    """
+    Test the ``get_team_members`` method.
+    """
+    requests_mock.get(
+        "https://ws.preset.io/api/v1/teams/botafogo/memberships",
+        json={
+            "payload": [
+                {
+                    "user": {
+                        "username": "adoe",
+                        "first_name": "Alice",
+                        "last_name": "Doe",
+                        "email": "adoe@example.com",
+                    },
+                },
+                {
+                    "user": {
+                        "username": "bdoe",
+                        "first_name": "Bob",
+                        "last_name": "Doe",
+                        "email": "bdoe@example.com",
+                    },
+                },
+                {
+                    "user": {
+                        "username": "cdoe",
+                        "first_name": "Clarisse",
+                        "last_name": "Doe",
+                        "email": "cdoe@example.com",
+                    },
+                },
+            ],
+        },
+    )
+
+    auth = Auth()
+    client = PresetClient("https://ws.preset.io/", auth)
+    assert client.get_team_members("botafogo") == [
+        {
+            "user": {
+                "username": "adoe",
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "email": "adoe@example.com",
+            },
+        },
+        {
+            "user": {
+                "username": "bdoe",
+                "first_name": "Bob",
+                "last_name": "Doe",
+                "email": "bdoe@example.com",
+            },
+        },
+        {
+            "user": {
+                "username": "cdoe",
+                "first_name": "Clarisse",
+                "last_name": "Doe",
+                "email": "cdoe@example.com",
+            },
+        },
+    ]
+
+
+def test_change_team_role(requests_mock: Mocker) -> None:
+    """
+    Test the ``change_team_role`` method.
+    """
+    requests_mock.patch("https://ws.preset.io/api/v1/teams/botafogo/memberships/1")
+
+    auth = Auth()
+    client = PresetClient("https://ws.preset.io/", auth)
+    client.change_team_role("botafogo", 1, 2)
+
+    assert requests_mock.last_request.json() == {"team_role_id": 2}
+
+
+def test_change_workspace_role(requests_mock: Mocker) -> None:
+    """
+    Test the ``change_workspace_role`` method.
+    """
+    requests_mock.put(
+        "https://ws.preset.io/api/v1/teams/botafogo/workspaces/1/membership",
+    )
+
+    auth = Auth()
+    client = PresetClient("https://ws.preset.io/", auth)
+    client.change_workspace_role("botafogo", 1, 2, "PresetAlpha")
+
+    assert requests_mock.last_request.json() == {
+        "role_identifier": "PresetAlpha",
+        "user_id": 2,
+    }
