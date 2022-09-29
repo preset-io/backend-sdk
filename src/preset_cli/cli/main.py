@@ -91,6 +91,7 @@ workspace_role_identifiers = {
 @click.option("--jwt-token", envvar="PRESET_JWT_TOKEN")
 @click.option("--workspaces", callback=split_comma)
 @click.option("--loglevel", default="INFO")
+@click.version_option()
 @click.pass_context
 def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-arguments
     ctx: click.core.Context,
