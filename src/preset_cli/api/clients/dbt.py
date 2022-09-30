@@ -10,8 +10,9 @@ References:
 
 # pylint: disable=invalid-name, too-few-public-methods
 
+import logging
 from enum import Enum
-from typing import Any, Dict, List, Type, TypedDict
+from typing import Any, Dict, List, Optional, Type, TypedDict
 
 from marshmallow import INCLUDE, Schema, fields
 from python_graphql_client import GraphqlClient
@@ -19,6 +20,8 @@ from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.auth.main import Auth
+
+_logger = logging.getLogger(__name__)
 
 REST_ENDPOINT = URL("https://cloud.getdbt.com/")
 GRAPHQL_ENDPOINT = URL("https://metadata.cloud.getdbt.com/graphql")
@@ -575,15 +578,13 @@ class DBTClient:  # pylint: disable=too-few-public-methods
     """
 
     def __init__(self, auth: Auth):
-        self.auth = auth
-        self.auth.headers.update(
-            {
-                "User-Agent": "Preset CLI",
-                "X-Client-Version": __version__,
-            },
-        )
         self.graphql_client = GraphqlClient(endpoint=GRAPHQL_ENDPOINT)
         self.baseurl = REST_ENDPOINT
+
+        self.session = auth.get_session()
+        self.session.headers.update(auth.get_headers())
+        self.session.headers["User-Agent"] = "Preset CLI"
+        self.session.headers["X-Client-Version"] = __version__
 
     def execute(self, query: str, **variables: Any) -> DataResponse:
         """
@@ -592,16 +593,16 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         return self.graphql_client.execute(
             query=query,
             variables=variables,
-            headers=self.auth.get_headers(),
+            headers=self.session.headers,
         )
 
     def get_accounts(self) -> List[AccountSchema]:
         """
         List all accounts.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        response = session.get(self.baseurl / "api/v2/accounts/", headers=headers)
+        url = self.baseurl / "api/v2/accounts/"
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
 
         payload = response.json()
 
@@ -612,12 +613,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         """
         List all projects.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        response = session.get(
-            self.baseurl / "api/v2/accounts" / str(account_id) / "projects/",
-            headers=headers,
-        )
+        url = self.baseurl / "api/v2/accounts" / str(account_id) / "projects/"
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
 
         payload = response.json()
 
@@ -626,16 +624,18 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         return projects
 
-    def get_jobs(self, account_id: int) -> List[JobSchema]:
+    def get_jobs(
+        self,
+        account_id: int,
+        project_id: Optional[int] = None,
+    ) -> List[JobSchema]:
         """
-        List all jobs.
+        List all jobs, optionally for a project.
         """
-        session = self.auth.get_session()
-        headers = self.auth.get_headers()
-        response = session.get(
-            self.baseurl / "api/v2/accounts" / str(account_id) / "jobs/",
-            headers=headers,
-        )
+        url = self.baseurl / "api/v2/accounts" / str(account_id) / "jobs/"
+        params = {"project_id": project_id} if project_id is not None else {}
+        _logger.debug("GET %s", url % params)
+        response = self.session.get(url, params=params)
 
         payload = response.json()
 
