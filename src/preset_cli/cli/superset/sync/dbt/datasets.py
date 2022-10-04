@@ -6,8 +6,10 @@ Sync dbt datasets/etrics to Superset.
 
 import json
 import logging
-from typing import Any, List
+from typing import Any, Dict, List
 
+from sqlalchemy.engine import create_engine
+from sqlalchemy.engine.url import make_url
 from yarl import URL
 
 from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
@@ -16,6 +18,38 @@ from preset_cli.api.operators import OneToMany
 from preset_cli.cli.superset.sync.dbt.metrics import get_metric_expression
 
 _logger = logging.getLogger(__name__)
+
+
+def create_dataset(
+    client: SupersetClient,
+    database: Dict[str, Any],
+    model: ModelSchema,
+) -> Dict[str, Any]:
+    """
+    Create a physical or virtual dataset.
+
+    Virtual datasets are created when the table database is different from the main
+    database, for systems that support cross-database queries (Trino, BigQuery, etc.)
+    """
+    url = make_url(database["sqlalchemy_uri"])
+    if model["database"] == url.database:
+        kwargs = {
+            "database": database["id"],
+            "schema": model["schema"],
+            "table_name": model["name"],
+        }
+    else:
+        engine = create_engine(url)
+        quote = engine.dialect.identifier_preparer.quote
+        source = ".".join(quote(model[key]) for key in ("database", "schema", "name"))
+        kwargs = {
+            "database": database["id"],
+            "schema": model["schema"],
+            "table_name": model["name"],
+            "sql": f"SELECT * FROM {source}",
+        }
+
+    return client.create_dataset(**kwargs)
 
 
 def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments
@@ -49,11 +83,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         else:
             _logger.info("Creating dataset %s", model["unique_id"])
             try:
-                dataset = client.create_dataset(
-                    database=database["id"],
-                    schema=model["schema"],
-                    table_name=model["name"],
-                )
+                dataset = create_dataset(client, database, model)
             except Exception:  # pylint: disable=broad-except
                 # Superset can't add tables from different BigQuery projects
                 continue

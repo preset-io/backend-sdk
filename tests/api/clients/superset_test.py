@@ -1,10 +1,11 @@
 """
 Tests for ``preset_cli.api.clients.superset``.
 """
-# pylint: disable=too-many-lines, trailing-whitespace
+# pylint: disable=too-many-lines, trailing-whitespace, line-too-long, use-implicit-booleaness-not-comparison
 
 import json
 from io import BytesIO
+from urllib.parse import unquote_plus
 from uuid import UUID
 from zipfile import ZipFile, is_zipfile
 
@@ -2653,3 +2654,127 @@ def test_update_role(requests_mock: Mocker) -> None:
         requests_mock.last_request.text
         == "name=Old+Role&user=2&permissions=1&permissions=2"
     )
+
+
+def test_create_virtual_dataset(requests_mock: Mocker) -> None:
+    """
+    Test the ``create_dataset`` method with virtual datasets.
+    """
+    requests_mock.post(
+        "https://superset.example.org/superset/sql_json/",
+        json={
+            "query_id": 137,
+            "status": "success",
+            "data": [
+                {"ID": 20, "FIRST_NAME": "Anna", "LAST_NAME": "A.", "ds": "2022-01-01"},
+            ],
+            "columns": [
+                {"name": "ID", "type": "INTEGER", "is_dttm": False},
+                {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
+                {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
+                {"name": "ds", "type": "DATETIME", "is_dttm": True},
+            ],
+            "selected_columns": [
+                {"name": "ID", "type": "INTEGER", "is_dttm": False},
+                {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
+                {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
+                {"name": "ds", "type": "DATETIME", "is_dttm": True},
+            ],
+            "expanded_columns": [],
+            "query": {
+                "changedOn": "2022-10-04T00:54:22.174889",
+                "changed_on": "2022-10-04T00:54:22.174889",
+                "dbId": 6,
+                "db": "jaffle_shop_dev",
+                "endDttm": 1664844864497.491,
+                "errorMessage": None,
+                "executedSql": "-- 6dcd92a04feb50f14bbcf07c661680ba\nSELECT * FROM `dbt-tutorial`.jaffle_shop.customers LIMIT 2\n-- 6dcd92a04feb50f14bbcf07c661680ba",
+                "id": "eJfI9pxnh",
+                "queryId": 137,
+                "limit": 1,
+                "limitingFactor": "QUERY",
+                "progress": 100,
+                "rows": 1,
+                "schema": "dbt_beto",
+                "ctas": False,
+                "serverId": 137,
+                "sql": "SELECT * FROM `dbt-tutorial`.jaffle_shop.customers LIMIT 1;",
+                "sqlEditorId": "8",
+                "startDttm": 1664844861997.288000,
+                "state": "success",
+                "tab": "Query dbt_beto.customers",
+                "tempSchema": None,
+                "tempTable": None,
+                "userId": 2,
+                "user": "Beto Ferreira De Almeida",
+                "resultsKey": "313ec42b-3b76-40c7-8e90-31ed549174dd",
+                "trackingUrl": None,
+                "extra": {
+                    "progress": None,
+                    "columns": [
+                        {"name": "ID", "type": "INTEGER", "is_dttm": False},
+                        {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
+                        {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
+                        {"name": "ds", "type": "DATETIME", "is_dttm": True},
+                    ],
+                },
+            },
+        },
+    )
+    requests_mock.post(
+        "https://superset.example.org/superset/sqllab_viz/",
+        json={"data": [1, 2, 3]},
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    client.create_dataset(
+        database=1,
+        schema="public",
+        sql="SELECT * FROM `dbt-tutorial`.jaffle_shop.customers LIMIT 1;",
+        table_name="test virtual",
+    )
+
+    assert json.loads(
+        unquote_plus(requests_mock.last_request.text.split("=", 1)[1]),
+    ) == {
+        "sql": "SELECT * FROM `dbt-tutorial`.jaffle_shop.customers LIMIT 1;",
+        "dbId": 1,
+        "schema": "public",
+        "datasourceName": "test virtual",
+        "columns": [
+            {
+                "name": "ID",
+                "type": "INTEGER",
+                "is_dttm": False,
+                "column_name": "ID",
+                "groupby": True,
+                "type_generic": 0,
+            },
+            {
+                "name": "FIRST_NAME",
+                "type": "STRING",
+                "is_dttm": False,
+                "column_name": "FIRST_NAME",
+                "groupby": True,
+                "type_generic": 1,
+            },
+            {
+                "name": "LAST_NAME",
+                "type": "STRING",
+                "is_dttm": False,
+                "column_name": "LAST_NAME",
+                "groupby": True,
+                "type_generic": 1,
+            },
+            {
+                "name": "ds",
+                "type": "DATETIME",
+                "is_dttm": True,
+                "column_name": "ds",
+                "groupby": True,
+                "type_generic": 2,
+            },
+        ],
+    }
