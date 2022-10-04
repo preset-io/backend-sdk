@@ -25,8 +25,10 @@ def build_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
     """
     type_ = target.get("type")
 
-    if type_ in {"postgres", "redshift"}:
+    if type_ == "postgres":
         return build_postgres_sqlalchemy_params(target)
+    if type_ == "redshift":
+        return build_redshift_sqlalchemy_params(target)
     if type_ == "bigquery":
         return build_bigquery_sqlalchemy_params(target)
     if type_ == "snowflake":
@@ -58,6 +60,36 @@ def build_postgres_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         "sqlalchemy_uri": str(
             URL(
                 drivername="postgresql+psycopg2",
+                username=username,
+                password=password,
+                host=host,
+                port=port,
+                database=dbname,
+                query=query,
+            ),
+        ),
+    }
+
+
+def build_redshift_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build the SQLAlchemy URI for a Redshift target.
+    """
+    if "search_path" in target:
+        _logger.warning("Specifying a search path is not supported in Apache Superset")
+
+    username = target["user"]
+    password = target.get("password") or target.get("pass")
+    host = target["host"]
+    port = target["port"]
+    dbname = target["dbname"]
+
+    query = {"sslmode": target["sslmode"]} if "sslmode" in target else None
+
+    return {
+        "sqlalchemy_uri": str(
+            URL(
+                drivername="redshift+psycopg2",
                 username=username,
                 password=password,
                 host=host,
