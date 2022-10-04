@@ -62,7 +62,7 @@ def test_build_sqlalchemy_params_bigquery(fs: FakeFilesystem) -> None:
     }
     assert build_sqlalchemy_params(config) == {
         "sqlalchemy_uri": "bigquery://my_project/",
-        "encrypted_extra": json.dumps({"credentials_info": {"Hello": "World!"}}),
+        "masked_encrypted_extra": json.dumps({"credentials_info": {"Hello": "World!"}}),
     }
 
 
@@ -84,7 +84,7 @@ def test_build_sqlalchemy_params_bigquery_with_priority(fs: FakeFilesystem) -> N
     }
     assert build_sqlalchemy_params(config) == {
         "sqlalchemy_uri": "bigquery://my_project/?priority=INTERACTIVE",
-        "encrypted_extra": json.dumps({"credentials_info": {"Hello": "World!"}}),
+        "masked_encrypted_extra": json.dumps({"credentials_info": {"Hello": "World!"}}),
     }
 
 
