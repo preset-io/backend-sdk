@@ -47,6 +47,30 @@ def test_build_sqlalchemy_params_postgres(mocker: MockerFixture) -> None:
     )
 
 
+def test_build_sqlalchemy_params_redshift(mocker: MockerFixture) -> None:
+    """
+    Test ``build_sqlalchemy_params`` for Redshift.
+    """
+    _logger = mocker.patch("preset_cli.cli.superset.sync.dbt.lib._logger")
+    config = {
+        "type": "redshift",
+        "user": "username",
+        "password": "password123",
+        "host": "localhost",
+        "port": 5432,
+        "dbname": "db",
+    }
+    assert build_sqlalchemy_params(config) == {
+        "sqlalchemy_uri": "redshift+psycopg2://username:password123@localhost:5432/db",
+    }
+    _logger.warning.assert_not_called()
+    config["search_path"] = "test_schema"
+    build_sqlalchemy_params(config)
+    _logger.warning.assert_called_with(
+        "Specifying a search path is not supported in Apache Superset",
+    )
+
+
 def test_build_sqlalchemy_params_bigquery(fs: FakeFilesystem) -> None:
     """
     Test ``build_sqlalchemy_params`` for BigQuery.
