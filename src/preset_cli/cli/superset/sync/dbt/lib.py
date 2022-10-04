@@ -103,7 +103,7 @@ def build_bigquery_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
 
     with open(target["keyfile"], encoding="utf-8") as input_:
         credentials_info = json.load(input_)
-        parameters["encrypted_extra"] = json.dumps(
+        parameters["masked_encrypted_extra"] = json.dumps(
             {"credentials_info": credentials_info},
         )
 
