@@ -236,6 +236,17 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Run a SQL query, returning a Pandas dataframe.
         """
+        payload = self._run_query(database_id, sql, schema, limit)
+
+        return pd.DataFrame(payload["data"])
+
+    def _run_query(
+        self,
+        database_id: int,
+        sql: str,
+        schema: Optional[str] = None,
+        limit: int = 1000,
+    ) -> Dict[str, Any]:
         url = self.baseurl / "superset/sql_json/"
         data = {
             "client_id": shortid()[:10],
@@ -254,7 +265,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         }
         headers = {
             "Accept": "application/json",
-            "Content-Type": "application/json",
         }
         self.session.headers.update(headers)
 
@@ -264,7 +274,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         payload = response.json()
 
-        return pd.DataFrame(payload["data"])
+        return payload
 
     def get_data(  # pylint: disable=too-many-locals, too-many-arguments
         self,
@@ -363,7 +373,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         headers = {
             "Accept": "application/json",
-            "Content-Type": "application/json",
         }
         self.session.headers.update(headers)
 
@@ -504,7 +513,45 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Create a dataset.
         """
-        return self.create_resource("dataset", **kwargs)
+        if "sql" not in kwargs:
+            return self.create_resource("dataset", **kwargs)
+
+        # run query to determine columns types
+        payload = self._run_query(
+            database_id=kwargs["database"],
+            sql=kwargs["sql"],
+            schema=kwargs["schema"],
+            limit=1,
+        )
+
+        # now add the virtual dataset
+        columns = payload["columns"]
+        for column in columns:
+            column["column_name"] = column["name"]
+            column["groupby"] = True
+            if column["is_dttm"]:
+                column["type_generic"] = 2
+            elif column["type"].lower() == "string":
+                column["type_generic"] = 1
+            else:
+                column["type_generic"] = 0
+        payload = {
+            "sql": kwargs["sql"],
+            "dbId": kwargs["database"],
+            "schema": kwargs["schema"],
+            "datasourceName": kwargs["table_name"],
+            "columns": columns,
+        }
+        data = {"data": json.dumps(payload)}
+
+        url = self.baseurl / "superset/sqllab_viz/"
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+        response = self.session.post(url, data=data)
+        validate_response(response)
+
+        payload = response.json()
+
+        return payload["data"]
 
     def update_dataset(
         self,

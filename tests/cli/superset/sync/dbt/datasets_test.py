@@ -11,7 +11,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
-from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
+from preset_cli.cli.superset.sync.dbt.datasets import create_dataset, sync_datasets
 
 metric_schema = MetricSchema()
 metrics: List[MetricSchema] = [
@@ -58,7 +58,7 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
         client=client,
         models=models,
         metrics=metrics,
-        database={"id": 1},
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
         disallow_edits=False,
         external_url_prefix="",
     )
@@ -122,7 +122,7 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
         client=client,
         models=models,
         metrics=[],
-        database={"id": 1},
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
         disallow_edits=False,
         external_url_prefix="",
     )
@@ -177,7 +177,7 @@ def test_sync_datasets_new_bq_error(mocker: MockerFixture) -> None:
         client=client,
         models=models,
         metrics=metrics,
-        database={"id": 1},
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
         disallow_edits=False,
         external_url_prefix="",
     )
@@ -379,4 +379,55 @@ def test_sync_datasets_no_columns(mocker: MockerFixture) -> None:
                 ],
             ),
         ],
+    )
+
+
+def test_create_dataset_physical(mocker: MockerFixture) -> None:
+    """
+    Test ``create_dataset`` for physical datasets.
+    """
+    client = mocker.MagicMock()
+
+    create_dataset(
+        client,
+        {
+            "id": 1,
+            "schema": "public",
+            "name": "Database",
+            "sqlalchemy_uri": "postgresql://user@host/examples_dev",
+        },
+        models[0],
+    )
+    client.create_dataset.assert_called_with(
+        database=1,
+        schema="public",
+        table_name="messages_channels",
+    )
+
+
+def test_create_dataset_virtual(mocker: MockerFixture) -> None:
+    """
+    Test ``create_dataset`` for virtual datasets.
+    """
+    create_engine = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.datasets.create_engine",
+    )
+    create_engine().dialect.identifier_preparer.quote = lambda token: token
+    client = mocker.MagicMock()
+
+    create_dataset(
+        client,
+        {
+            "id": 1,
+            "schema": "public",
+            "name": "Database",
+            "sqlalchemy_uri": "postgresql://user@host/examples",
+        },
+        models[0],
+    )
+    client.create_dataset.assert_called_with(
+        database=1,
+        schema="public",
+        table_name="messages_channels",
+        sql="SELECT * FROM examples_dev.public.messages_channels",
     )
