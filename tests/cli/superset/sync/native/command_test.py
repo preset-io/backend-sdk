@@ -165,6 +165,10 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         root / "README.txt",
         contents="Hello, world",
     )
+    fs.create_file(
+        root / "tmp/file.yaml",
+        contents=yaml.dump([1, 2, 3]),
+    )
 
     SupersetClient = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.SupersetClient",

@@ -22,6 +22,7 @@ from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.exceptions import SupersetError
 
 YAML_EXTENSIONS = {".yaml", ".yml"}
+ASSET_DIRECTORIES = {"databases", "datasets", "charts", "dashboards"}
 
 # This should be identical to ``superset.models.core.PASSWORD_MASK``. It's duplicated here
 # because we don't want to have the CLI to depend on the ``superset`` package.
@@ -118,14 +119,17 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
     queue = [root]
     while queue:
         path_name = queue.pop()
+        relative_path = path_name.relative_to(root)
         if path_name.is_dir() and not path_name.stem.startswith("."):
             queue.extend(path_name.glob("*"))
-        elif path_name.suffix.lower() in YAML_EXTENSIONS:
+        elif (
+            path_name.suffix.lower() in YAML_EXTENSIONS
+            and relative_path.parts[0] in ASSET_DIRECTORIES
+        ):
             with open(path_name, encoding="utf-8") as input_:
                 env["filepath"] = path_name
                 template = Template(input_.read())
                 content = template.render(**env)
-                relative_path = path_name.relative_to(root)
 
                 # mark resource as being managed externally
                 config = yaml.load(content, Loader=yaml.SafeLoader)
