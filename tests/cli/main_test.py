@@ -362,6 +362,27 @@ def test_workspaces(mocker: MockerFixture) -> None:
     assert obj["WORKSPACES"] == ["https://ws1", "https://ws2"]
 
 
+def test_workspaces_help(mocker: MockerFixture) -> None:
+    """
+    Test that we don't prompt user for their workspaces if ``--help`` is passed.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    sys = mocker.patch("preset_cli.cli.main.sys")
+    sys.argv = ["preset-cli", "--jwt-token", "JWT_TOKEN", "superset", "--help"]
+
+    runner = CliRunner()
+    obj: Dict[str, Any] = {}
+    runner.invoke(
+        preset_cli,
+        ["--jwt-token", "JWT_TOKEN", "superset", "--help"],
+        catch_exceptions=False,
+        obj=obj,
+    )
+    client.get_teams.assert_not_called()
+    client.get_workspaces.assert_not_called()
+
+
 def test_workspaces_single_workspace(mocker: MockerFixture) -> None:
     """
     Test that we don't prompt user for their workspaces if they have only one.
