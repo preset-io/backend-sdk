@@ -18,6 +18,12 @@ Install the CLI with ``pip``:
 
 Make sure you're using Python 3.8 or newer.
 
+You can also install from ``master``, if you need recent features:
+
+.. code-block:: bash
+
+     $ pip install "git+https://github.com/preset-io/backend-sdk.git"
+
 Authentication
 ==============
 

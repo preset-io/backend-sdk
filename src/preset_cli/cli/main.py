@@ -6,13 +6,15 @@ import getpass
 import logging
 import sys
 import webbrowser
-from typing import List, Optional, cast
+from collections import defaultdict
+from typing import Any, DefaultDict, Dict, List, Optional, Set, cast
 
 import click
 import yaml
 from yarl import URL
 
 from preset_cli.api.clients.preset import PresetClient
+from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.jwt import JWTAuth
 from preset_cli.auth.lib import (
     get_access_token,
@@ -82,6 +84,16 @@ def is_help() -> bool:
     return "--help" in sys.argv[1:]
 
 
+workspace_role_identifiers = {
+    "workspace admin": "Admin",
+    "primary contributor": "PresetAlpha",
+    "limited contributor": "PresetGamma",
+    "viewer": "PresetReportsOnly",
+    "dashboard viewer": "PresetDashboardsOnly",
+    "no access": "PresetNoAccess",
+}
+
+
 @click.group()
 @click.option("--baseurl", default="https://manage.app.preset.io/")
 @click.option("--api-token", envvar="PRESET_API_TOKEN")
@@ -89,6 +101,7 @@ def is_help() -> bool:
 @click.option("--jwt-token", envvar="PRESET_JWT_TOKEN")
 @click.option("--workspaces", callback=split_comma)
 @click.option("--loglevel", default="INFO")
+@click.version_option()
 @click.pass_context
 def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-arguments
     ctx: click.core.Context,
@@ -321,7 +334,159 @@ def import_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
         client.import_users(teams, users)
 
 
+@click.command()
+@click.option("--teams", callback=split_comma)
+@click.argument(
+    "path",
+    type=click.Path(resolve_path=True),
+    default="user_roles.yaml",
+)
+@click.pass_context
+def sync_roles(ctx: click.core.Context, teams: List[str], path: str) -> None:
+    """
+    Sync user roles (team, workspace, and data access).
+    """
+    client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
+
+    if not teams:
+        teams = get_teams(client)
+
+    with open(path, encoding="utf-8") as input_:
+        user_roles = yaml.load(input_, Loader=yaml.SafeLoader)
+
+    for team_name in teams:
+        workspaces = client.get_workspaces(team_name)
+        sync_all_user_roles_to_team(client, team_name, user_roles, workspaces)
+
+
+def sync_all_user_roles_to_team(  # pylint: disable=too-many-locals
+    client: PresetClient,
+    team_name: str,
+    user_roles: List[Dict[str, Any]],
+    workspaces: List[Dict[str, Any]],
+) -> None:
+    """
+    Sync all user roles to a given team.
+    """
+    workspace_names = {
+        workspace["title"]: workspace["name"] for workspace in workspaces
+    }
+    workspace_hostnames = {
+        workspace["name"]: workspace["hostname"] for workspace in workspaces
+    }
+
+    users = client.get_team_members(team_name)
+    user_ids = {user["user"]["email"]: user["user"]["id"] for user in users}
+
+    for user in user_roles:
+        user["id"] = user_ids[user["email"]]
+        sync_user_roles_to_team(client, team_name, user, workspaces)
+
+    # collect DAR roles so we can do a single request per workspace
+    data_access_roles: DefaultDict[str, DefaultDict[str, Set]] = defaultdict(
+        lambda: defaultdict(set),
+    )
+    for user in user_roles:
+        for workspace_name, workspace_roles in user["workspaces"].items():
+            # allow either a workspace name or title
+            if workspace_name in workspace_names:
+                workspace_name = workspace_names[workspace_name]
+            workspace_hostname = workspace_hostnames[workspace_name]
+
+            for data_access_role in workspace_roles.get("data_access_roles", []):
+                data_access_roles[workspace_hostname][data_access_role].add(
+                    user["email"],
+                )
+
+    for workspace_hostname, workspace_data_access_roles in data_access_roles.items():
+        superset_client = SupersetClient(f"https://{workspace_hostname}/", client.auth)
+
+        user_id_map = {
+            user["email"]: user["id"] for user in superset_client.export_users()
+        }
+        for data_access_role, user_emails in workspace_data_access_roles.items():
+            role_id = superset_client.get_role_id(data_access_role)
+            workspace_user_ids = [user_id_map[email] for email in user_emails]
+            superset_client.update_role(role_id, user=workspace_user_ids)
+
+
+def sync_user_roles_to_team(
+    client: PresetClient,
+    team_name: str,
+    user: Dict[str, Any],
+    workspaces: List[Dict[str, Any]],
+) -> None:
+    """
+    Sync roles from a single user to a given team.
+    """
+    workspace_names = {
+        workspace["title"]: workspace["name"] for workspace in workspaces
+    }
+    workspace_ids = {workspace["name"]: workspace["id"] for workspace in workspaces}
+
+    team_role = user["team_role"].lower()
+    user_email = user["email"]
+    user_id = user["id"]
+
+    if team_role == "user":
+        role_id = 2
+    elif team_role == "admin":
+        role_id = 1
+    else:
+        raise Exception(f"Invalid role {team_role.title()} for user {user_email}")
+    _logger.info(
+        "Setting team role of user %s to %s (%s) in team %s",
+        user_email,
+        role_id,
+        team_role.title(),
+        team_name,
+    )
+    client.change_team_role(team_name, user_id, role_id)
+
+    for workspace_name, workspace_roles in user["workspaces"].items():
+        # allow either a workspace name or title
+        if workspace_name in workspace_names:
+            workspace_name = workspace_names[workspace_name]
+        workspace_id = workspace_ids[workspace_name]
+
+        sync_user_role_to_workspace(
+            client,
+            team_name,
+            user,
+            workspace_id,
+            workspace_roles,
+        )
+
+
+def sync_user_role_to_workspace(
+    client: PresetClient,
+    team_name: str,
+    user: Dict[str, Any],
+    workspace_id: int,
+    workspace_roles: Dict[str, Any],
+) -> None:
+    """
+    Sync user role to a given workspace.
+    """
+    workspace_role = workspace_roles["workspace_role"].lower()
+    role_identifier = workspace_role_identifiers[workspace_role]
+
+    _logger.info(
+        "Setting workspace role of user %s to %s (%s)",
+        user["email"],
+        role_identifier,
+        workspace_role.title(),
+    )
+    client.change_workspace_role(
+        team_name,
+        workspace_id,
+        user["id"],
+        role_identifier,
+    )
+
+
 preset_cli.add_command(auth)
 preset_cli.add_command(invite_users)
 preset_cli.add_command(import_users)
+preset_cli.add_command(sync_roles)
 preset_cli.add_command(superset)

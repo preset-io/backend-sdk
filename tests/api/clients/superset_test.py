@@ -1,10 +1,11 @@
 """
 Tests for ``preset_cli.api.clients.superset``.
 """
-# pylint: disable=too-many-lines, trailing-whitespace
+# pylint: disable=too-many-lines, trailing-whitespace, line-too-long, use-implicit-booleaness-not-comparison
 
 import json
 from io import BytesIO
+from urllib.parse import unquote_plus
 from uuid import UUID
 from zipfile import ZipFile, is_zipfile
 
@@ -1528,6 +1529,137 @@ def test_export_roles(requests_mock: Mocker) -> None:
     ]
 
 
+def test_export_roles_anchor_role_id(requests_mock: Mocker) -> None:
+    """
+    Test ``export_roles``.
+    """
+    requests_mock.get(
+        (
+            "https://superset.example.org/roles/list/?"
+            "psize_RoleModelView=100&"
+            "page_RoleModelView=0"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+      <tr>
+        <td><a href="/roles/edit/1">Edit</a></td>
+        <td>Admin</td>
+      </tr>
+      <tr>
+        <td><a href="/roles/edit/2">Edit</a></td>
+        <td>Public</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        (
+            "https://superset.example.org/roles/list/?"
+            "psize_RoleModelView=100&"
+            "page_RoleModelView=1"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/show/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table>
+      <tr>
+        <th></th>
+        <th>First Name</th>
+        <th>Last Name</th>
+        <th>User Name</th>
+        <th>Email</th>
+        <th>Is Active?</th>
+        <th>Role</th>
+      </tr>
+      <tr>
+        <td></td>
+        <td>Alice</td>
+        <td>Doe</td>
+        <td>adoe</td>
+        <td>adoe@example.com</td>
+        <td>True</td>
+        <td>[Admin]</td>
+      </tr>
+    </table>
+    <table>
+      <tr><th>Name</th><td>Admin</td></tr>
+      <tr><th>Permissions</th><td>[can this, can that]</td></tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/show/2",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table>
+      <tr><th>Name</th><td>Public</td></tr>
+      <tr><th>Permissions</th><td>[]</td></tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_roles()) == [
+        {
+            "name": "Admin",
+            "permissions": ["can this", "can that"],
+            "users": ["adoe@example.com"],
+        },
+        {
+            "name": "Public",
+            "permissions": [],
+            "users": [],
+        },
+    ]
+
+
 def test_export_rls(requests_mock: Mocker) -> None:
     """
     Test ``export_rls``.
@@ -1878,6 +2010,22 @@ def test_import_rls(requests_mock: Mocker) -> None:
 </html>
         """,
     )
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <select id="permissions">
+        <option value="1">some permission</option>
+    </select>
+  </body>
+</html>
+        """,
+    )
     requests_mock.post(
         "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
     )
@@ -1957,19 +2105,12 @@ def test_import_rls_no_role_table(requests_mock: Mocker) -> None:
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    client.import_rls(rls)
-
-    assert requests_mock.last_request.text == (
-        "name=Rule+name&"
-        "description=Rule+description&"
-        "filter_type=Regular&"
-        "tables=1&"
-        "group_key=department&"
-        "clause=client_id+%3D+9"
-    )
+    with pytest.raises(Exception) as excinfo:
+        client.import_rls(rls)
+    assert str(excinfo.value) == "Cannot find role: Gamma"
 
 
-def test_import_rls_invalid_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
+def test_import_rls_invalid_role(requests_mock: Mocker) -> None:
     """
     Test the ``import_rls`` method when the role has permissions.
     """
@@ -2015,10 +2156,25 @@ def test_import_rls_invalid_role(mocker: MockerFixture, requests_mock: Mocker) -
 </html>
         """,
     )
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <select id="permissions">
+        <option selected="" value="1">some permission</option>
+    </select>
+  </body>
+</html>
+        """,
+    )
     requests_mock.post(
         "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
     )
-    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
 
     rls: RuleType = {
         "clause": "client_id = 9",
@@ -2032,20 +2188,11 @@ def test_import_rls_invalid_role(mocker: MockerFixture, requests_mock: Mocker) -
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    client.import_rls(rls)
-
-    assert requests_mock.last_request.text == (
-        "name=Rule+name&"
-        "description=Rule+description&"
-        "filter_type=Regular&"
-        "tables=1&"
-        "group_key=department&"
-        "clause=client_id+%3D+9"
-    )
-    assert _logger.warning.called_with(
-        "Role %(role)s currently has permissions associated with it. "
-        "To use it with RLS it should have no permissions.",
-        "Gamma",
+    with pytest.raises(Exception) as excinfo:
+        client.import_rls(rls)
+    assert str(excinfo.value) == (
+        "Role Gamma currently has permissions associated with it. "
+        "To use it with RLS it should have no permissions."
     )
 
 
@@ -2089,6 +2236,22 @@ def test_import_rls_no_schema(requests_mock: Mocker) -> None:
         <td>\n</td>
       </tr>
     </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <select id="permissions">
+        <option value="1">some permission</option>
+    </select>
   </body>
 </html>
         """,
@@ -2366,6 +2529,22 @@ def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
 </html>
         """,
     )
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <select id="permissions">
+        <option value="1">some permission</option>
+    </select>
+  </body>
+</html>
+        """,
+    )
     requests_mock.post(
         "https://superset.example.org/rowlevelsecurityfiltersmodelview/add",
     )
@@ -2434,3 +2613,168 @@ def test_import_ownership(mocker: MockerFixture, requests_mock: Mocker) -> None:
     )
 
     assert requests_mock.last_request.json() == {"owners": [1, 2]}
+
+
+def test_update_role(requests_mock: Mocker) -> None:
+    """
+    Test the ``update_role`` method.
+    """
+    requests_mock.get(
+        "https://superset.example.org/roles/edit/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <input name="name" value="Old Role" />
+    <select id="user">
+        <option selected="" value="1">Alice Doe</option>
+        <option value="2">Bob Doe</option>
+    </select>
+    <select id="permissions">
+        <option selected="" value="1">some permission</option>
+        <option value="2">another permission</option>
+    </select>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.post("https://superset.example.org/roles/edit/1")
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    client.update_role(1, name="New Role")
+    assert requests_mock.last_request.text == "name=New+Role&user=1&permissions=1"
+
+    client.update_role(1, user=[2], permissions=[1, 2])
+    assert (
+        requests_mock.last_request.text
+        == "name=Old+Role&user=2&permissions=1&permissions=2"
+    )
+
+
+def test_create_virtual_dataset(requests_mock: Mocker) -> None:
+    """
+    Test the ``create_dataset`` method with virtual datasets.
+    """
+    requests_mock.post(
+        "https://superset.example.org/superset/sql_json/",
+        json={
+            "query_id": 137,
+            "status": "success",
+            "data": [
+                {"ID": 20, "FIRST_NAME": "Anna", "LAST_NAME": "A.", "ds": "2022-01-01"},
+            ],
+            "columns": [
+                {"name": "ID", "type": "INTEGER", "is_dttm": False},
+                {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
+                {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
+                {"name": "ds", "type": "DATETIME", "is_dttm": True},
+            ],
+            "selected_columns": [
+                {"name": "ID", "type": "INTEGER", "is_dttm": False},
+                {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
+                {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
+                {"name": "ds", "type": "DATETIME", "is_dttm": True},
+            ],
+            "expanded_columns": [],
+            "query": {
+                "changedOn": "2022-10-04T00:54:22.174889",
+                "changed_on": "2022-10-04T00:54:22.174889",
+                "dbId": 6,
+                "db": "jaffle_shop_dev",
+                "endDttm": 1664844864497.491,
+                "errorMessage": None,
+                "executedSql": "-- 6dcd92a04feb50f14bbcf07c661680ba\nSELECT * FROM `dbt-tutorial`.jaffle_shop.customers LIMIT 2\n-- 6dcd92a04feb50f14bbcf07c661680ba",
+                "id": "eJfI9pxnh",
+                "queryId": 137,
+                "limit": 1,
+                "limitingFactor": "QUERY",
+                "progress": 100,
+                "rows": 1,
+                "schema": "dbt_beto",
+                "ctas": False,
+                "serverId": 137,
+                "sql": "SELECT * FROM `dbt-tutorial`.jaffle_shop.customers LIMIT 1;",
+                "sqlEditorId": "8",
+                "startDttm": 1664844861997.288000,
+                "state": "success",
+                "tab": "Query dbt_beto.customers",
+                "tempSchema": None,
+                "tempTable": None,
+                "userId": 2,
+                "user": "Beto Ferreira De Almeida",
+                "resultsKey": "313ec42b-3b76-40c7-8e90-31ed549174dd",
+                "trackingUrl": None,
+                "extra": {
+                    "progress": None,
+                    "columns": [
+                        {"name": "ID", "type": "INTEGER", "is_dttm": False},
+                        {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
+                        {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
+                        {"name": "ds", "type": "DATETIME", "is_dttm": True},
+                    ],
+                },
+            },
+        },
+    )
+    requests_mock.post(
+        "https://superset.example.org/superset/sqllab_viz/",
+        json={"data": [1, 2, 3]},
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    client.create_dataset(
+        database=1,
+        schema="public",
+        sql="SELECT * FROM `dbt-tutorial`.jaffle_shop.customers LIMIT 1;",
+        table_name="test virtual",
+    )
+
+    assert json.loads(
+        unquote_plus(requests_mock.last_request.text.split("=", 1)[1]),
+    ) == {
+        "sql": "SELECT * FROM `dbt-tutorial`.jaffle_shop.customers LIMIT 1;",
+        "dbId": 1,
+        "schema": "public",
+        "datasourceName": "test virtual",
+        "columns": [
+            {
+                "name": "ID",
+                "type": "INTEGER",
+                "is_dttm": False,
+                "column_name": "ID",
+                "groupby": True,
+                "type_generic": 0,
+            },
+            {
+                "name": "FIRST_NAME",
+                "type": "STRING",
+                "is_dttm": False,
+                "column_name": "FIRST_NAME",
+                "groupby": True,
+                "type_generic": 1,
+            },
+            {
+                "name": "LAST_NAME",
+                "type": "STRING",
+                "is_dttm": False,
+                "column_name": "LAST_NAME",
+                "groupby": True,
+                "type_generic": 1,
+            },
+            {
+                "name": "ds",
+                "type": "DATETIME",
+                "is_dttm": True,
+                "column_name": "ds",
+                "groupby": True,
+                "type_generic": 2,
+            },
+        ],
+    }

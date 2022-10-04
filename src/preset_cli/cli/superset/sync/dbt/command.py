@@ -106,7 +106,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     for config in configs["nodes"].values():
         if config["resource_type"] == "model":
             # conform to the same schema that dbt Cloud uses for models
-            config["uniqueId"] = config["unique_id"]
+            unique_id = config["uniqueId"] = config["unique_id"]
+            config["children"] = configs["child_map"][unique_id]
             models.append(model_schema.load(config, unknown=EXCLUDE))
     models = apply_select(models, select, exclude)
 

@@ -13,7 +13,14 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 from yarl import URL
 
-from preset_cli.cli.main import get_status_icon, parse_selection, preset_cli
+from preset_cli.cli.main import (
+    get_status_icon,
+    parse_selection,
+    preset_cli,
+    sync_all_user_roles_to_team,
+    sync_user_role_to_workspace,
+    sync_user_roles_to_team,
+)
 from preset_cli.lib import split_comma
 
 
@@ -593,4 +600,321 @@ def test_import_users_choose_teams(mocker: MockerFixture, fs: FakeFilesystem) ->
             {"first_name": "Alice", "last_name": "Doe", "email": "adoe@example.com"},
             {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
         ],
+    )
+
+
+def test_sync_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``sync_roles`` command.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_workspaces.return_value = [
+        {"workspace_status": "READY", "title": "My Workspace", "hostname": "ws1"},
+        {"workspace_status": "READY", "title": "My Other Workspace", "hostname": "ws2"},
+    ]
+    sync_all_user_roles_to_team = mocker.patch(
+        "preset_cli.cli.main.sync_all_user_roles_to_team",
+    )
+
+    user_roles = [
+        {
+            "email": "adoe@example.com",
+            "team_role": "Admin",
+            "workspaces": {
+                "My Workspace": {
+                    "workspace_role": "Limited Contributor",
+                    "data_access_roles": ["Database access on A Postgres database"],
+                },
+            },
+        },
+    ]
+    fs.create_file("user_roles.yaml", contents=yaml.dump(user_roles))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "sync-roles", "--teams=team1"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.get_workspaces.assert_called_with("team1")
+    sync_all_user_roles_to_team.assert_called_with(
+        client,
+        "team1",
+        user_roles,
+        [
+            {"workspace_status": "READY", "title": "My Workspace", "hostname": "ws1"},
+            {
+                "workspace_status": "READY",
+                "title": "My Other Workspace",
+                "hostname": "ws2",
+            },
+        ],
+    )
+
+    mocker.patch("preset_cli.cli.main.get_teams", return_value=["team1"])
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "sync-roles"],
+        catch_exceptions=False,
+    )
+    client.get_workspaces.assert_called_with("team1")
+
+
+def test_sync_all_user_roles_to_team(mocker: MockerFixture) -> None:
+    """
+    Test the ``sync_all_user_roles_to_team`` helper.
+    """
+    sync_user_roles_to_team = mocker.patch(
+        "preset_cli.cli.main.sync_user_roles_to_team",
+    )
+    client = mocker.MagicMock()
+    client.get_team_members.return_value = [
+        {"user": {"email": "adoe@example.com", "id": 1001}},
+        {"user": {"email": "bdoe@example.com", "id": 1002}},
+    ]
+    SupersetClient = mocker.patch("preset_cli.cli.main.SupersetClient")
+    superset_client = SupersetClient()
+    superset_client.export_users.return_value = [
+        {"email": "adoe@example.com", "id": 1},
+        {"email": "bdoe@example.com", "id": 2},
+    ]
+    superset_client.get_role_id.return_value = 42
+    workspaces = [
+        {"name": "ws1", "title": "My Workspace", "hostname": "ws1.example.org"},
+        {"name": "ws2", "title": "My Other Workspace", "hostname": "ws2.example.org"},
+    ]
+    user_roles = [
+        {
+            "email": "adoe@example.com",
+            "team_role": "Admin",
+            "workspaces": {
+                "ws1": {
+                    "workspace_role": "Limited Contributor",
+                    "data_access_roles": ["Database access on A Postgres database"],
+                },
+            },
+        },
+    ]
+
+    sync_all_user_roles_to_team(client, "team1", user_roles, workspaces)
+
+    sync_user_roles_to_team.assert_called_with(
+        client,
+        "team1",
+        {
+            "id": 1001,
+            "email": "adoe@example.com",
+            "team_role": "Admin",
+            "workspaces": {
+                "ws1": {
+                    "workspace_role": "Limited Contributor",
+                    "data_access_roles": ["Database access on A Postgres database"],
+                },
+            },
+        },
+        workspaces,
+    )
+    SupersetClient.assert_called_with("https://ws1.example.org/", client.auth)
+    superset_client.update_role.assert_called_with(42, user=[1])
+
+
+def test_sync_all_user_roles_to_team_workspace_title(mocker: MockerFixture) -> None:
+    """
+    Test the ``sync_all_user_roles_to_team`` helper.
+
+    Here the config uses the workspace title instead of the name.
+    """
+    sync_user_roles_to_team = mocker.patch(
+        "preset_cli.cli.main.sync_user_roles_to_team",
+    )
+    client = mocker.MagicMock()
+    client.get_team_members.return_value = [
+        {"user": {"email": "adoe@example.com", "id": 1001}},
+        {"user": {"email": "bdoe@example.com", "id": 1002}},
+    ]
+    SupersetClient = mocker.patch("preset_cli.cli.main.SupersetClient")
+    superset_client = SupersetClient()
+    superset_client.export_users.return_value = [
+        {"email": "adoe@example.com", "id": 1},
+        {"email": "bdoe@example.com", "id": 2},
+    ]
+    superset_client.get_role_id.return_value = 42
+    workspaces = [
+        {"name": "ws1", "title": "My Workspace", "hostname": "ws1.example.org"},
+        {"name": "ws2", "title": "My Other Workspace", "hostname": "ws2.example.org"},
+    ]
+    user_roles = [
+        {
+            "email": "adoe@example.com",
+            "team_role": "Admin",
+            "workspaces": {
+                "My Workspace": {
+                    "workspace_role": "Limited Contributor",
+                    "data_access_roles": ["Database access on A Postgres database"],
+                },
+            },
+        },
+    ]
+
+    sync_all_user_roles_to_team(client, "team1", user_roles, workspaces)
+
+    sync_user_roles_to_team.assert_called_with(
+        client,
+        "team1",
+        {
+            "id": 1001,
+            "email": "adoe@example.com",
+            "team_role": "Admin",
+            "workspaces": {
+                "My Workspace": {
+                    "workspace_role": "Limited Contributor",
+                    "data_access_roles": ["Database access on A Postgres database"],
+                },
+            },
+        },
+        workspaces,
+    )
+    SupersetClient.assert_called_with("https://ws1.example.org/", client.auth)
+    superset_client.update_role.assert_called_with(42, user=[1])
+
+
+def test_sync_user_roles_to_team(mocker: MockerFixture) -> None:
+    """
+    Test the ``sync_user_roles_to_team`` helper.
+    """
+    sync_user_role_to_workspace = mocker.patch(
+        "preset_cli.cli.main.sync_user_role_to_workspace",
+    )
+    client = mocker.MagicMock()
+    user = {
+        "id": 1001,
+        "email": "adoe@example.com",
+        "team_role": "Admin",
+        "workspaces": {
+            "My Workspace": {
+                "workspace_role": "Limited Contributor",
+                "data_access_roles": ["Database access on A Postgres database"],
+            },
+        },
+    }
+    workspaces = [
+        {
+            "id": 1,
+            "name": "ws1",
+            "title": "My Workspace",
+            "hostname": "ws1.example.org",
+        },
+        {
+            "id": 2,
+            "name": "ws2",
+            "title": "My Other Workspace",
+            "hostname": "ws2.example.org",
+        },
+    ]
+
+    sync_user_roles_to_team(client, "team1", user, workspaces)
+
+    client.change_team_role.assert_called_with("team1", 1001, 1)
+    sync_user_role_to_workspace.assert_called_with(
+        client,
+        "team1",
+        user,
+        1,
+        {
+            "data_access_roles": ["Database access on A Postgres database"],
+            "workspace_role": "Limited Contributor",
+        },
+    )
+
+    user = {
+        "id": 1001,
+        "email": "adoe@example.com",
+        "team_role": "User",
+        "workspaces": {
+            "My Workspace": {
+                "workspace_role": "Limited Contributor",
+                "data_access_roles": ["Database access on A Postgres database"],
+            },
+        },
+    }
+    sync_user_roles_to_team(client, "team1", user, workspaces)
+    client.change_team_role.assert_called_with("team1", 1001, 2)
+
+    user = {
+        "id": 1001,
+        "email": "adoe@example.com",
+        "team_role": "Super Mega Admin",
+        "workspaces": {
+            "My Workspace": {
+                "workspace_role": "Limited Contributor",
+                "data_access_roles": ["Database access on A Postgres database"],
+            },
+        },
+    }
+    with pytest.raises(Exception) as excinfo:
+        sync_user_roles_to_team(client, "team1", user, workspaces)
+    assert (
+        str(excinfo.value) == "Invalid role Super Mega Admin for user adoe@example.com"
+    )
+
+    user = {
+        "id": 1001,
+        "email": "adoe@example.com",
+        "team_role": "User",
+        "workspaces": {
+            "ws1": {
+                "workspace_role": "Limited Contributor",
+                "data_access_roles": ["Database access on A Postgres database"],
+            },
+        },
+    }
+    sync_user_roles_to_team(client, "team1", user, workspaces)
+    sync_user_role_to_workspace.assert_called_with(
+        client,
+        "team1",
+        user,
+        1,
+        {
+            "data_access_roles": ["Database access on A Postgres database"],
+            "workspace_role": "Limited Contributor",
+        },
+    )
+
+
+def test_sync_user_role_to_workspace(mocker: MockerFixture) -> None:
+    """
+    Test the ``sync_user_role_to_workspace`` helper.
+    """
+    client = mocker.MagicMock()
+    user = {
+        "id": 1001,
+        "email": "adoe@example.com",
+        "team_role": "User",
+        "workspaces": {
+            "ws1": {
+                "workspace_role": "Limited Contributor",
+                "data_access_roles": ["Database access on A Postgres database"],
+            },
+        },
+    }
+
+    sync_user_role_to_workspace(
+        client,
+        "team1",
+        user,
+        1,
+        {
+            "data_access_roles": ["Database access on A Postgres database"],
+            "workspace_role": "Limited Contributor",
+        },
+    )
+
+    client.change_workspace_role.assert_called_with(
+        "team1",
+        1,
+        1001,
+        "PresetGamma",
     )

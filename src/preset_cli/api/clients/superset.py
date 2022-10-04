@@ -16,7 +16,7 @@ A simple client for running SQL queries (and more) against Superset:
 Data is returned in a Pandas Dataframe.
 """
 
-# pylint: disable=consider-using-f-string
+# pylint: disable=consider-using-f-string, too-many-lines
 
 import json
 import logging
@@ -236,6 +236,17 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Run a SQL query, returning a Pandas dataframe.
         """
+        payload = self._run_query(database_id, sql, schema, limit)
+
+        return pd.DataFrame(payload["data"])
+
+    def _run_query(
+        self,
+        database_id: int,
+        sql: str,
+        schema: Optional[str] = None,
+        limit: int = 1000,
+    ) -> Dict[str, Any]:
         url = self.baseurl / "superset/sql_json/"
         data = {
             "client_id": shortid()[:10],
@@ -254,7 +265,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         }
         headers = {
             "Accept": "application/json",
-            "Content-Type": "application/json",
         }
         self.session.headers.update(headers)
 
@@ -264,7 +274,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         payload = response.json()
 
-        return pd.DataFrame(payload["data"])
+        return payload
 
     def get_data(  # pylint: disable=too-many-locals, too-many-arguments
         self,
@@ -363,7 +373,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         headers = {
             "Accept": "application/json",
-            "Content-Type": "application/json",
         }
         self.session.headers.update(headers)
 
@@ -504,7 +513,45 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Create a dataset.
         """
-        return self.create_resource("dataset", **kwargs)
+        if "sql" not in kwargs:
+            return self.create_resource("dataset", **kwargs)
+
+        # run query to determine columns types
+        payload = self._run_query(
+            database_id=kwargs["database"],
+            sql=kwargs["sql"],
+            schema=kwargs["schema"],
+            limit=1,
+        )
+
+        # now add the virtual dataset
+        columns = payload["columns"]
+        for column in columns:
+            column["column_name"] = column["name"]
+            column["groupby"] = True
+            if column["is_dttm"]:
+                column["type_generic"] = 2
+            elif column["type"].lower() == "string":
+                column["type_generic"] = 1
+            else:
+                column["type_generic"] = 0
+        payload = {
+            "sql": kwargs["sql"],
+            "dbId": kwargs["database"],
+            "schema": kwargs["schema"],
+            "datasourceName": kwargs["table_name"],
+            "columns": columns,
+        }
+        data = {"data": json.dumps(payload)}
+
+        url = self.baseurl / "superset/sqllab_viz/"
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+        response = self.session.post(url, data=data)
+        validate_response(response)
+
+        payload = response.json()
+
+        return payload["data"]
 
     def update_dataset(
         self,
@@ -646,7 +693,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return all users from a Preset workspace.
         """
-        # TODO (beto): remove hardcoded Manager URL
+        # TODO (betodealmeida): remove hardcoded Manager URL
         client = PresetClient("https://manage.app.preset.io/", self.auth)
         return client.export_users(self.baseurl)
 
@@ -708,7 +755,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             for tr in trs[1:]:  # pylint: disable=invalid-name
                 tds = tr.find_all("td")
 
-                role_id = int(tds[0].find("input").attrs["id"])
+                td = tds[0]  # pylint: disable=invalid-name
+                if td.find("a"):
+                    role_id = int(td.find("a").attrs["href"].split("/")[-1])
+                else:
+                    role_id = int(td.find("input").attrs["id"])
+                # TODO (betodealmeida): use roles/edit so it works with Preset
                 role_url = self.baseurl / "roles/show" / str(role_id)
 
                 _logger.debug("GET %s", role_url)
@@ -767,6 +819,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 # extract the ID to fetch each RLS in a separate request, since the list
                 # view doesn't have all the columns we need
                 rule_id = int(tds[0].find("input").attrs["id"])
+                # TODO (betodealmeida): use roles/edit so it works with Preset
                 rule_url = (
                     self.baseurl
                     / "rowlevelsecurityfiltersmodelview/show"
@@ -847,7 +900,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Import a given RLS rule.
         """
-
         table_ids: List[int] = []
         for table in rls["tables"]:
             if "." in table:
@@ -863,34 +915,14 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             table_ids.append(datasets[0]["id"])
 
         role_ids: List[int] = []
-        for role in rls["roles"]:
-            params = {"_flt_0_name": role}
-            url = self.baseurl / "roles/list/"
-            _logger.debug("GET %s", url % params)
-            response = self.session.get(url, params=params)
-            soup = BeautifulSoup(response.text, features="html.parser")
-            tables = soup.find_all("table")
-            if len(tables) < 2:
-                continue
-            trs = tables[1].find_all("tr")
-            if len(trs) == 1:
-                raise Exception(f"Cannot find role: {role}")
-            if len(trs) > 2:
-                raise Exception(f"More than one role found: {role}")
-            tds = trs[1].find_all("td")
-            if tds[2].text.strip():
-                _logger.warning(
-                    "Role %(role)s currently has permissions associated with it. "
-                    "To use it with RLS it should have no permissions.",
-                    role,
+        for role_name in rls["roles"]:
+            role_id = self.get_role_id(role_name)
+            if self.get_role_permissions(role_id):
+                raise Exception(
+                    f"Role {role_name} currently has permissions associated with it. To "
+                    "use it with RLS it should have no permissions.",
                 )
-                continue
-            td = tds[0]  # pylint: disable=invalid-name
-            if td.find("a"):
-                id_ = int(td.find("a").attrs["href"].split("/")[-1])
-            else:
-                id_ = int(td.find("input").attrs["id"])
-            role_ids.append(id_)
+            role_ids.append(role_id)
 
         url = self.baseurl / "rowlevelsecurityfiltersmodelview/add"
         data = {
@@ -905,6 +937,49 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
         response = self.session.post(url, data=data)
         validate_response(response)
+
+    def get_role_permissions(self, role_id: int) -> List[int]:
+        """
+        Return the IDs of permissions associated with a role.
+        """
+        url = self.baseurl / "roles/edit" / str(role_id)
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
+
+        soup = BeautifulSoup(response.text, features="html.parser")
+        return [
+            int(option.attrs["value"])
+            for option in soup.find("select", id="permissions").find_all("option")
+            if "selected" in option.attrs
+        ]
+
+    def get_role_id(self, role_name: str) -> int:
+        """
+        Return the ID of a given role.
+        """
+        params = {"_flt_0_name": role_name}
+        url = self.baseurl / "roles/list/"
+        _logger.debug("GET %s", url % params)
+        response = self.session.get(url, params=params)
+
+        soup = BeautifulSoup(response.text, features="html.parser")
+        tables = soup.find_all("table")
+        if len(tables) < 2:
+            raise Exception(f"Cannot find role: {role_name}")
+        trs = tables[1].find_all("tr")
+        if len(trs) == 1:
+            raise Exception(f"Cannot find role: {role_name}")
+        if len(trs) > 2:
+            raise Exception(f"More than one role found: {role_name}")
+
+        tds = trs[1].find_all("td")
+        td = tds[0]  # pylint: disable=invalid-name
+        if td.find("a"):
+            id_ = int(td.find("a").attrs["href"].split("/")[-1])
+        else:
+            id_ = int(td.find("input").attrs["id"])
+
+        return id_
 
     def export_ownership(self, resource_name: str) -> Iterator[OwnershipType]:
         """
@@ -942,3 +1017,34 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             resource_id = resource_ids[item["uuid"]]
             owner_ids = [user_ids[email] for email in item["owners"]]
             self.update_resource(resource_name, resource_id, owners=owner_ids)
+
+    def update_role(self, role_id: int, **kwargs: Any) -> None:
+        """
+        Update a role.
+        """
+        # fetch current role definition
+        url = self.baseurl / "roles/edit" / str(role_id)
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
+
+        soup = BeautifulSoup(response.text, features="html.parser")
+        name = soup.find("input", {"name": "name"}).attrs["value"]
+        user_ids = [
+            int(option.attrs["value"])
+            for option in soup.find("select", id="user").find_all("option")
+            if "selected" in option.attrs
+        ]
+        permission_ids = [
+            int(option.attrs["value"])
+            for option in soup.find("select", id="permissions").find_all("option")
+            if "selected" in option.attrs
+        ]
+        data = {
+            "name": name,
+            "user": user_ids,
+            "permissions": permission_ids,
+        }
+        data.update(kwargs)
+
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+        self.session.post(url, data=data)
