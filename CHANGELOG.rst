@@ -14,6 +14,7 @@ Next
 - Sync user roles (team, workspace, data access) from a file to a workspace.
 - Add ``--version`` option.
 - Do not prompt for workspaces if passing ``--help``.
+- Fix ``export-users`` in Preset workspaces.
 
 dbt
 ~~~

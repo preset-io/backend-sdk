@@ -735,11 +735,17 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return all roles.
         """
+        user_email_map = {user["id"]: user["email"] for user in self.export_users()}
+
         page = 0
         while True:
             params = {
+                # Superset
                 "psize_RoleModelView": MAX_PAGE_SIZE,
                 "page_RoleModelView": page,
+                # Preset
+                "psize_DataRoleModelView": MAX_PAGE_SIZE,
+                "page_DataRoleModelView": page,
             }
             url = self.baseurl / "roles/list/"
             page += 1
@@ -760,34 +766,31 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     role_id = int(td.find("a").attrs["href"].split("/")[-1])
                 else:
                     role_id = int(td.find("input").attrs["id"])
-                # TODO (betodealmeida): use roles/edit so it works with Preset
-                role_url = self.baseurl / "roles/show" / str(role_id)
+                role_url = self.baseurl / "roles/edit" / str(role_id)
 
                 _logger.debug("GET %s", role_url)
                 response = self.session.get(role_url)
                 soup = BeautifulSoup(response.text, features="html.parser")
-                tables = soup.find_all("table")
 
-                role_table = tables[-1]
-                keys: List[Tuple[str, Callable[[Any], Any]]] = [
-                    ("name", str),
-                    ("permissions", parse_html_array),
+                name = soup.find("input", {"name": "name"}).attrs["value"]
+                permissions = [
+                    option.text.strip()
+                    for option in soup.find("select", id="permissions").find_all(
+                        "option",
+                    )
+                    if "selected" in option.attrs
                 ]
-                role_info = {
-                    key: parse(tr.find("td").text.strip())
-                    for (key, parse), tr in zip(keys, role_table.find_all("tr"))
+                users = [
+                    user_email_map[int(option.attrs["value"])]
+                    for option in soup.find("select", id="user").find_all("option")
+                    if "selected" in option.attrs
+                ]
+
+                yield {
+                    "name": name,
+                    "permissions": permissions,
+                    "users": users,
                 }
-
-                if len(tables) >= 2:
-                    user_table = tables[-2]
-                    role_info["users"] = [
-                        tr.find_all("td")[4].text.strip()
-                        for tr in user_table.find_all("tr")[1:]
-                    ]
-                else:
-                    role_info["users"] = []
-
-                yield cast(RoleType, role_info)
 
     def export_rls(self) -> Iterator[RuleType]:
         """
@@ -819,7 +822,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 # extract the ID to fetch each RLS in a separate request, since the list
                 # view doesn't have all the columns we need
                 rule_id = int(tds[0].find("input").attrs["id"])
-                # TODO (betodealmeida): use roles/edit so it works with Preset
                 rule_url = (
                     self.baseurl
                     / "rowlevelsecurityfiltersmodelview/show"

@@ -1398,7 +1398,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
     ]
 
 
-def test_export_roles(requests_mock: Mocker) -> None:
+def test_export_roles(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
     Test ``export_roles``.
     """
@@ -1459,7 +1459,7 @@ def test_export_roles(requests_mock: Mocker) -> None:
         """,
     )
     requests_mock.get(
-        "https://superset.example.org/roles/show/1",
+        "https://superset.example.org/roles/edit/1",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -1467,36 +1467,22 @@ def test_export_roles(requests_mock: Mocker) -> None:
     <meta charset="utf-8">
   </head>
   <body>
-    <table>
-      <tr>
-        <th></th>
-        <th>First Name</th>
-        <th>Last Name</th>
-        <th>User Name</th>
-        <th>Email</th>
-        <th>Is Active?</th>
-        <th>Role</th>
-      </tr>
-      <tr>
-        <td></td>
-        <td>Alice</td>
-        <td>Doe</td>
-        <td>adoe</td>
-        <td>adoe@example.com</td>
-        <td>True</td>
-        <td>[Admin]</td>
-      </tr>
-    </table>
-    <table>
-      <tr><th>Name</th><td>Admin</td></tr>
-      <tr><th>Permissions</th><td>[can this, can that]</td></tr>
-    </table>
+    <input name="name" value="Admin" />
+    <select id="permissions">
+        <option selected="" value="1">can this</option>
+        <option selected="" value="2">can that</option>
+        <option value="3">cannot </option>
+    </select>
+    <select id="user">
+        <option selected="" value="1">Alice Doe</option>
+        <option value="2">Bob Doe</option>
+    </select>
   </body>
 </html>
         """,
     )
     requests_mock.get(
-        "https://superset.example.org/roles/show/2",
+        "https://superset.example.org/roles/edit/2",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -1504,13 +1490,27 @@ def test_export_roles(requests_mock: Mocker) -> None:
     <meta charset="utf-8">
   </head>
   <body>
-    <table>
-      <tr><th>Name</th><td>Public</td></tr>
-      <tr><th>Permissions</th><td>[]</td></tr>
-    </table>
+    <input name="name" value="Public" />
+    <select id="permissions">
+        <option value="1">can this</option>
+        <option value="2">can that</option>
+        <option value="3">cannot </option>
+    </select>
+    <select id="user">
+        <option value="1">Alice Doe</option>
+        <option value="2">Bob Doe</option>
+    </select>
   </body>
 </html>
         """,
+    )
+    mocker.patch.object(
+        SupersetClient,
+        "export_users",
+        return_value=[
+            {"id": 1, "email": "adoe@example.com"},
+            {"id": 2, "email": "bdoe@example.com"},
+        ],
     )
 
     auth = Auth()
@@ -1529,7 +1529,9 @@ def test_export_roles(requests_mock: Mocker) -> None:
     ]
 
 
-def test_export_roles_anchor_role_id(requests_mock: Mocker) -> None:
+def test_export_roles_anchor_role_id(
+    mocker: MockerFixture, requests_mock: Mocker,
+) -> None:
     """
     Test ``export_roles``.
     """
@@ -1590,7 +1592,7 @@ def test_export_roles_anchor_role_id(requests_mock: Mocker) -> None:
         """,
     )
     requests_mock.get(
-        "https://superset.example.org/roles/show/1",
+        "https://superset.example.org/roles/edit/1",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -1598,36 +1600,22 @@ def test_export_roles_anchor_role_id(requests_mock: Mocker) -> None:
     <meta charset="utf-8">
   </head>
   <body>
-    <table>
-      <tr>
-        <th></th>
-        <th>First Name</th>
-        <th>Last Name</th>
-        <th>User Name</th>
-        <th>Email</th>
-        <th>Is Active?</th>
-        <th>Role</th>
-      </tr>
-      <tr>
-        <td></td>
-        <td>Alice</td>
-        <td>Doe</td>
-        <td>adoe</td>
-        <td>adoe@example.com</td>
-        <td>True</td>
-        <td>[Admin]</td>
-      </tr>
-    </table>
-    <table>
-      <tr><th>Name</th><td>Admin</td></tr>
-      <tr><th>Permissions</th><td>[can this, can that]</td></tr>
-    </table>
+    <input name="name" value="Admin" />
+    <select id="permissions">
+        <option selected="" value="1">can this</option>
+        <option selected="" value="2">can that</option>
+        <option value="3">cannot </option>
+    </select>
+    <select id="user">
+        <option selected="" value="1">Alice Doe</option>
+        <option value="2">Bob Doe</option>
+    </select>
   </body>
 </html>
         """,
     )
     requests_mock.get(
-        "https://superset.example.org/roles/show/2",
+        "https://superset.example.org/roles/edit/2",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -1635,13 +1623,27 @@ def test_export_roles_anchor_role_id(requests_mock: Mocker) -> None:
     <meta charset="utf-8">
   </head>
   <body>
-    <table>
-      <tr><th>Name</th><td>Public</td></tr>
-      <tr><th>Permissions</th><td>[]</td></tr>
-    </table>
+    <input name="name" value="Public" />
+    <select id="permissions">
+        <option value="1">can this</option>
+        <option value="2">can that</option>
+        <option value="3">cannot </option>
+    </select>
+    <select id="user">
+        <option value="1">Alice Doe</option>
+        <option value="2">Bob Doe</option>
+    </select>
   </body>
 </html>
         """,
+    )
+    mocker.patch.object(
+        SupersetClient,
+        "export_users",
+        return_value=[
+            {"id": 1, "email": "adoe@example.com"},
+            {"id": 2, "email": "bdoe@example.com"},
+        ],
     )
 
     auth = Auth()
