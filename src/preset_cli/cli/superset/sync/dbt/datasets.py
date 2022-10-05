@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, List
 
 from sqlalchemy.engine import create_engine
+from sqlalchemy.engine.url import URL as SQLAlchemyURL
 from sqlalchemy.engine.url import make_url
 from yarl import URL
 
@@ -18,6 +19,16 @@ from preset_cli.api.operators import OneToMany
 from preset_cli.cli.superset.sync.dbt.metrics import get_metric_expression
 
 _logger = logging.getLogger(__name__)
+
+
+def model_in_database(model: ModelSchema, url: SQLAlchemyURL) -> bool:
+    """
+    Return if a model is in the same database as a SQLAlchemy URI.
+    """
+    if url.drivername == "bigquery":
+        return model["database"] == url.host
+
+    return model["database"] == url.database
 
 
 def create_dataset(
@@ -32,7 +43,7 @@ def create_dataset(
     database, for systems that support cross-database queries (Trino, BigQuery, etc.)
     """
     url = make_url(database["sqlalchemy_uri"])
-    if model["database"] == url.database:
+    if model_in_database(model, url):
         kwargs = {
             "database": database["id"],
             "schema": model["schema"],
