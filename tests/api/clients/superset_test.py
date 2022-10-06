@@ -1530,7 +1530,8 @@ def test_export_roles(mocker: MockerFixture, requests_mock: Mocker) -> None:
 
 
 def test_export_roles_anchor_role_id(
-    mocker: MockerFixture, requests_mock: Mocker,
+    mocker: MockerFixture,
+    requests_mock: Mocker,
 ) -> None:
     """
     Test ``export_roles``.

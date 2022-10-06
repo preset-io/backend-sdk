@@ -4,14 +4,19 @@ Tests for ``preset_cli.cli.superset.sync.dbt.datasets``.
 # pylint: disable=invalid-name
 
 import json
-from typing import List
+from typing import List, cast
 from unittest import mock
 
 import pytest
 from pytest_mock import MockerFixture
+from sqlalchemy.engine.url import make_url
 
 from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
-from preset_cli.cli.superset.sync.dbt.datasets import create_dataset, sync_datasets
+from preset_cli.cli.superset.sync.dbt.datasets import (
+    create_dataset,
+    model_in_database,
+    sync_datasets,
+)
 
 metric_schema = MetricSchema()
 metrics: List[MetricSchema] = [
@@ -431,3 +436,16 @@ def test_create_dataset_virtual(mocker: MockerFixture) -> None:
         table_name="messages_channels",
         sql="SELECT * FROM examples_dev.public.messages_channels",
     )
+
+
+def test_model_in_database() -> None:
+    """
+    Test the ``model_in_database`` helper.
+    """
+    url = make_url("bigquery://project-1")
+    assert model_in_database(cast(ModelSchema, {"database": "project-1"}), url)
+    assert not model_in_database(cast(ModelSchema, {"database": "project-2"}), url)
+
+    url = make_url("snowflake://user:password@host/db1")
+    assert model_in_database(cast(ModelSchema, {"database": "db1"}), url)
+    assert not model_in_database(cast(ModelSchema, {"database": "db2"}), url)
