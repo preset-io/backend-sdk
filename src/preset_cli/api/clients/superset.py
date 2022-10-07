@@ -57,7 +57,7 @@ from preset_cli.typing import UserType
 _logger = logging.getLogger(__name__)
 
 MAX_PAGE_SIZE = 100
-MAX_IDS_IN_EXPORT = 100
+MAX_IDS_IN_EXPORT = 50
 
 
 PERMISSION_MAP = {
