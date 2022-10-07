@@ -99,7 +99,7 @@ workspace_role_identifiers = {
 @click.option("--api-token", envvar="PRESET_API_TOKEN")
 @click.option("--api-secret", envvar="PRESET_API_SECRET")
 @click.option("--jwt-token", envvar="PRESET_JWT_TOKEN")
-@click.option("--workspaces", callback=split_comma)
+@click.option("--workspaces", envvar="PRESET_WORKSPACES", callback=split_comma)
 @click.option("--loglevel", default="INFO")
 @click.version_option()
 @click.pass_context

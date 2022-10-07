@@ -362,6 +362,31 @@ def test_workspaces(mocker: MockerFixture) -> None:
     assert obj["WORKSPACES"] == ["https://ws1", "https://ws2"]
 
 
+def test_workspaces_from_env(
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Test that we don't prompt user for their workspaces if defined in the environment.
+    """
+    monkeypatch.setenv("PRESET_WORKSPACES", "https://ws1,https://ws2")
+
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+
+    runner = CliRunner()
+    obj: Dict[str, Any] = {}
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token", "JWT_TOKEN", "superset", "--help"],
+        catch_exceptions=False,
+        obj=obj,
+    )
+    assert result.exit_code == 0
+    assert obj["WORKSPACES"] == ["https://ws1", "https://ws2"]
+    client.get_workspaces.assert_not_called()
+
+
 def test_workspaces_help(mocker: MockerFixture) -> None:
     """
     Test that we don't prompt user for their workspaces if ``--help`` is passed.
