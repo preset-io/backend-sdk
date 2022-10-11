@@ -41,8 +41,9 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     client.create_database.assert_called_with(
         database_name="my_project_dev",
-        sqlalchemy_uri="dummy://",
         is_managed_externally=False,
+        masked_encrypted_extra=None,
+        sqlalchemy_uri="dummy://",
     )
 
 
@@ -93,8 +94,9 @@ def test_sync_database_new_custom_sqlalchemy_uri(
 
     client.create_database.assert_called_with(
         database_name="my_database",
-        sqlalchemy_uri="sqlite://",
         is_managed_externally=False,
+        masked_encrypted_extra=None,
+        sqlalchemy_uri="sqlite://",
     )
 
 
@@ -148,8 +150,9 @@ def test_sync_database_env_var(
 
     client.create_database.assert_called_with(
         database_name="my_database",
-        sqlalchemy_uri="sqlite://",
         is_managed_externally=False,
+        masked_encrypted_extra=None,
+        sqlalchemy_uri="sqlite://",
     )
 
 
@@ -273,9 +276,10 @@ def test_sync_database_external_url_prefix(
 
     client.create_database.assert_called_with(
         database_name="my_project_dev",
-        sqlalchemy_uri="dummy://",
-        external_url="https://dbt.example.org/#!/overview",
         is_managed_externally=True,
+        external_url="https://dbt.example.org/#!/overview",
+        sqlalchemy_uri="dummy://",
+        masked_encrypted_extra=None,
     )
 
 

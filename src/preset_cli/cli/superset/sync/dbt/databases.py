@@ -69,8 +69,11 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         database = client.create_database(
             database_name=database_name,
             is_managed_externally=disallow_edits,
+            masked_encrypted_extra=connection_params.get("encrypted_extra"),
             **connection_params,
             **meta,
         )
+
+    database["sqlalchemy_uri"] = connection_params["sqlalchemy_uri"]
 
     return database
