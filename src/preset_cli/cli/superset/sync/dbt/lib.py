@@ -386,20 +386,21 @@ def apply_select(
     """
     Apply dbt node selection (https://docs.getdbt.com/reference/node-selection/syntax).
     """
-    if not select:
-        return models
-
     model_ids = {model["unique_id"]: model for model in models}
 
-    selected: Dict[str, ModelSchema] = {}
-    for selection in select:
-        ids = set.intersection(
-            *[
-                {model["unique_id"] for model in filter_models(models, condition)}
-                for condition in selection.split(",")
-            ]
-        )
-        selected.update({id_: model_ids[id_] for id_ in ids})
+    selected: Dict[str, ModelSchema]
+    if not select:
+        selected = {model["unique_id"]: model for model in models}
+    else:
+        selected = {}
+        for selection in select:
+            ids = set.intersection(
+                *[
+                    {model["unique_id"] for model in filter_models(models, condition)}
+                    for condition in selection.split(",")
+                ]
+            )
+            selected.update({id_: model_ids[id_] for id_ in ids})
 
     for selection in exclude:
         for id_ in set.intersection(
@@ -408,6 +409,7 @@ def apply_select(
                 for condition in selection.split(",")
             ]
         ):
-            del selected[id_]
+            if id_ in selected:
+                del selected[id_]
 
     return list(selected.values())

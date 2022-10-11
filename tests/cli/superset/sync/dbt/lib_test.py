@@ -180,7 +180,7 @@ def test_build_snowflake_sqlalchemy_params_pk(fs: FakeFilesystem) -> None:
                     "privatekey_body": "-----BEGIN ENCRYPTED PRIVATE KEY",
                     "privatekey_pass": "XXX",
                 },
-            }
+            },
         ),
     }
 
@@ -437,10 +437,27 @@ def test_apply_select() -> None:
         "one",
     }
 
-    # test exclude
     assert {
         model["name"]
         for model in apply_select(models, ("+two+",), ("three", "tag:test"))
     } == {
         "two",
     }
+
+
+def test_apply_select_exclude() -> None:
+    """
+    Custom tests for the ``exclude`` option.
+    """
+    a = dict(name="a", tags=[], unique_id="a", depends_on=[], children=["b", "c"])
+    b = dict(name="b", tags=[], unique_id="b", depends_on=["a"], children=["d"])
+    c = dict(name="c", tags=[], unique_id="c", depends_on=["a"], children=["d"])
+    d = dict(name="d", tags=[], unique_id="d", depends_on=["b", "c"], children=[])
+    models: List[ModelSchema] = [a, b, c, d]  # type: ignore
+
+    assert {model["name"] for model in apply_select(models, (), ("d",))} == {
+        "a",
+        "b",
+        "c",
+    }
+    assert {model["name"] for model in apply_select(models, (), ("b+", "c+"))} == {"a"}
