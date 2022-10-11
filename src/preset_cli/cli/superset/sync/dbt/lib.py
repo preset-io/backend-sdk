@@ -135,7 +135,7 @@ def build_bigquery_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
 
     with open(target["keyfile"], encoding="utf-8") as input_:
         credentials_info = json.load(input_)
-        parameters["masked_encrypted_extra"] = json.dumps(
+        parameters["encrypted_extra"] = json.dumps(
             {"credentials_info": credentials_info},
         )
 
@@ -147,12 +147,12 @@ def build_snowflake_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
     Build the SQLAlchemy URI for a Snowflake target.
     """
     username = target["user"]
-    password = target["password"] or None
+    password = target.get("password", "") or None
     database = target["database"]
     host = target["account"]
     query = {"role": target["role"], "warehouse": target["warehouse"]}
 
-    return {
+    parameters = {
         "sqlalchemy_uri": str(
             URL(
                 drivername="snowflake",
@@ -164,6 +164,22 @@ def build_snowflake_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
             ),
         ),
     }
+
+    if "private_key_path" in target:
+        with open(target["private_key_path"], encoding="utf-8") as input_:
+            pk_body = input_.read()
+
+        parameters["encrypted_extra"] = json.dumps(
+            {
+                "auth_method": "keypair",
+                "auth_params": {
+                    "privatekey_body": pk_body,
+                    "privatekey_pass": target.get("private_key_passphrase", ""),
+                },
+            },
+        )
+
+    return parameters
 
 
 def env_var(var: str, default: Optional[str] = None) -> str:
