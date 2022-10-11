@@ -461,3 +461,4 @@ def test_apply_select_exclude() -> None:
         "c",
     }
     assert {model["name"] for model in apply_select(models, (), ("b+", "c+"))} == {"a"}
+    assert {model["name"] for model in apply_select(models, ("a",), ("d",))} == {"a"}
