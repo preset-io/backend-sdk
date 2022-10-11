@@ -86,7 +86,7 @@ def test_build_sqlalchemy_params_bigquery(fs: FakeFilesystem) -> None:
     }
     assert build_sqlalchemy_params(config) == {
         "sqlalchemy_uri": "bigquery://my_project/",
-        "masked_encrypted_extra": json.dumps({"credentials_info": {"Hello": "World!"}}),
+        "encrypted_extra": json.dumps({"credentials_info": {"Hello": "World!"}}),
     }
 
 
@@ -108,7 +108,7 @@ def test_build_sqlalchemy_params_bigquery_with_priority(fs: FakeFilesystem) -> N
     }
     assert build_sqlalchemy_params(config) == {
         "sqlalchemy_uri": "bigquery://my_project/?priority=INTERACTIVE",
-        "masked_encrypted_extra": json.dumps({"credentials_info": {"Hello": "World!"}}),
+        "encrypted_extra": json.dumps({"credentials_info": {"Hello": "World!"}}),
     }
 
 
@@ -147,6 +147,40 @@ def test_build_snowflake_sqlalchemy_params() -> None:
         "sqlalchemy_uri": (
             "snowflake://jdoe:secret@abc123.eu-west-1.aws/default?"
             "role=admin&warehouse=dunder-mifflin"
+        ),
+    }
+
+
+def test_build_snowflake_sqlalchemy_params_pk(fs: FakeFilesystem) -> None:
+    """
+    Test ``build_snowflake_sqlalchemy_params`` for Snowflake with private keys.
+    """
+    fs.create_file("/path/to/key", contents="-----BEGIN ENCRYPTED PRIVATE KEY")
+
+    config = {
+        "type": "snowflake",
+        "account": "abc123.eu-west-1.aws",
+        "user": "jdoe",
+        "password": "secret",
+        "role": "admin",
+        "database": "default",
+        "warehouse": "dunder-mifflin",
+        "private_key_path": "/path/to/key",
+        "private_key_passphrase": "XXX",
+    }
+    assert build_sqlalchemy_params(config) == {
+        "sqlalchemy_uri": (
+            "snowflake://jdoe:secret@abc123.eu-west-1.aws/default?"
+            "role=admin&warehouse=dunder-mifflin"
+        ),
+        "encrypted_extra": json.dumps(
+            {
+                "auth_method": "keypair",
+                "auth_params": {
+                    "privatekey_body": "-----BEGIN ENCRYPTED PRIVATE KEY",
+                    "privatekey_pass": "XXX",
+                },
+            }
         ),
     }
 
