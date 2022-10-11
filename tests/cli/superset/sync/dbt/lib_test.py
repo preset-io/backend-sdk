@@ -185,6 +185,31 @@ def test_build_snowflake_sqlalchemy_params_pk(fs: FakeFilesystem) -> None:
     }
 
 
+def test_build_snowflake_sqlalchemy_params_mfa() -> None:
+    """
+    Test ``build_snowflake_sqlalchemy_params`` for Snowflake with MFA.
+    """
+    config = {
+        "type": "snowflake",
+        "account": "abc123.eu-west-1.aws",
+        "user": "jdoe",
+        "password": "secret",
+        "authenticator": "DUO code",
+        "role": "admin",
+        "database": "default",
+        "warehouse": "dunder-mifflin",
+    }
+    assert build_sqlalchemy_params(config) == {
+        "sqlalchemy_uri": (
+            "snowflake://jdoe:secret@abc123.eu-west-1.aws/default?"
+            "role=admin&warehouse=dunder-mifflin"
+        ),
+        "extra": json.dumps(
+            {"engine_params": {"connect_args": {"passcode": "DUO code"}}},
+        ),
+    }
+
+
 def test_build_sqlalchemy_params_unsupported() -> None:
     """
     Test ``build_sqlalchemy_params`` for databases currently unsupported.
