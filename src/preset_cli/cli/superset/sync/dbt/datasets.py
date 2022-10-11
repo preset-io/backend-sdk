@@ -96,7 +96,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             try:
                 dataset = create_dataset(client, database, model)
             except Exception:  # pylint: disable=broad-except
-                # Superset can't add tables from different BigQuery projects
+                _logger.exception("Unable to create dataset")
                 continue
 
         extra = {
@@ -114,20 +114,23 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             if model["unique_id"] in metric["depends_on"]
         }
         for name, metric in model_metrics.items():
+            meta = metric.get("meta", {})
+            kwargs = meta.pop("superset", {})
             dataset_metrics.append(
                 {
                     "expression": get_metric_expression(name, model_metrics),
                     "metric_name": name,
                     "metric_type": metric["type"],
-                    "verbose_name": name,
-                    "description": metric["description"],
-                    **metric["meta"],
+                    "verbose_name": metric.get("label", name),
+                    "description": metric.get("description", ""),
+                    "extra": json.dumps(meta),
+                    **kwargs,
                 },
             )
 
         # update dataset clearing metrics...
         update = {
-            "description": model["description"],
+            "description": model.get("description", ""),
             "extra": json.dumps(extra),
             "is_managed_externally": disallow_edits,
             "metrics": [],
@@ -148,7 +151,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         # update column descriptions
         update = {
             "columns": [
-                {"column_name": name, "description": column["description"]}
+                {"column_name": name, "description": column.get("description", "")}
                 for name, column in model.get("columns", {}).items()
             ],
         }
