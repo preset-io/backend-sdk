@@ -165,6 +165,22 @@ def build_snowflake_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         ),
     }
 
+    authenticator = target.get("authenticator")
+    if authenticator:
+        if authenticator == "externalbrowser":
+            raise NotImplementedError("SSO not supported")
+        if authenticator.startswith("http"):
+            raise NotImplementedError("SSO not supported")
+        parameters["extra"] = json.dumps(
+            {
+                "engine_params": {
+                    "connect_args": {
+                        "passcode": authenticator,
+                    },
+                },
+            },
+        )
+
     if "private_key_path" in target:
         with open(target["private_key_path"], encoding="utf-8") as input_:
             pk_body = input_.read()
