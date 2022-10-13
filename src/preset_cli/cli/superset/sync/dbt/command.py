@@ -24,7 +24,7 @@ from preset_cli.exceptions import DatabaseNotFoundError
 @click.command()
 @click.argument("manifest", type=click.Path(exists=True, resolve_path=True))
 @click.option("--project", help="Name of the dbt project", default="default")
-@click.option("--target", help="Target name", default="dev")
+@click.option("--target", help="Target name", default=None)
 @click.option(
     "--profiles",
     help="Location of profiles.yml file",
@@ -65,7 +65,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
     manifest: str,
     project: str,
-    target: str,
+    target: Optional[str],
     select: Tuple[str, ...],
     exclude: Tuple[str, ...],
     profiles: Optional[str] = None,
