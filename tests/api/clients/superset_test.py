@@ -2669,19 +2669,27 @@ def test_create_virtual_dataset(requests_mock: Mocker) -> None:
             "query_id": 137,
             "status": "success",
             "data": [
-                {"ID": 20, "FIRST_NAME": "Anna", "LAST_NAME": "A.", "ds": "2022-01-01"},
+                {
+                    "ID": 20,
+                    "FIRST_NAME": "Anna",
+                    "LAST_NAME": "A.",
+                    "ds": "2022-01-01",
+                    "complex": r"\x00",
+                },
             ],
             "columns": [
                 {"name": "ID", "type": "INTEGER", "is_dttm": False},
                 {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
                 {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
                 {"name": "ds", "type": "DATETIME", "is_dttm": True},
+                {"name": "complex", "type": None, "is_dttm": False},
             ],
             "selected_columns": [
                 {"name": "ID", "type": "INTEGER", "is_dttm": False},
                 {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
                 {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
                 {"name": "ds", "type": "DATETIME", "is_dttm": True},
+                {"name": "complex", "type": None, "is_dttm": False},
             ],
             "expanded_columns": [],
             "query": {
@@ -2719,6 +2727,7 @@ def test_create_virtual_dataset(requests_mock: Mocker) -> None:
                         {"name": "FIRST_NAME", "type": "STRING", "is_dttm": False},
                         {"name": "LAST_NAME", "type": "STRING", "is_dttm": False},
                         {"name": "ds", "type": "DATETIME", "is_dttm": True},
+                        {"name": "complex", "type": None, "is_dttm": False},
                     ],
                 },
             },
@@ -2778,6 +2787,14 @@ def test_create_virtual_dataset(requests_mock: Mocker) -> None:
                 "column_name": "ds",
                 "groupby": True,
                 "type_generic": 2,
+            },
+            {
+                "name": "complex",
+                "type": "UNKNOWN",
+                "is_dttm": False,
+                "column_name": "complex",
+                "groupby": True,
+                "type_generic": 1,
             },
         ],
     }
