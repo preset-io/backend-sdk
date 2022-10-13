@@ -305,6 +305,63 @@ jaffle_shop:
     }
 
 
+def test_load_profiles_default_target(
+    monkeypatch: pytest.MonkeyPatch, fs: FakeFilesystem
+) -> None:
+    """
+    Test ``load_profiles`` when no target is specified.
+    """
+    monkeypatch.setenv("REDSHIFT_HOST", "127.0.0.1")
+    monkeypatch.setenv("REDSHIFT_PORT", "1234")
+    monkeypatch.setenv("REDSHIFT_USER", "username")
+    monkeypatch.setenv("REDSHIFT_PASSWORD", "password123")
+    monkeypatch.setenv("REDSHIFT_DATABASE", "db")
+    monkeypatch.setenv("THREADS", "3")
+
+    path = Path("/path/to/profiles.yml")
+    fs.create_file(
+        path,
+        contents="""
+jaffle_shop:
+  outputs:
+    dev:
+      host: "{{ env_var('REDSHIFT_HOST') | as_text }}"
+      port: "{{ env_var('REDSHIFT_PORT') | as_number }}"
+      user: "{{ env_var('REDSHIFT_USER') }}"
+      pass: "{{ env_var('REDSHIFT_PASSWORD') }}"
+      dbname: "{{ env_var('REDSHIFT_DATABASE') }}"
+      schema: public
+      threads: "{{ env_var('THREADS') | as_native }}"
+      type: postgres
+      enabled: "{{ (target.name == 'prod') | as_bool }}"
+      a_list: [1, 2, 3]
+      a_value: 10
+  target: dev
+    """,
+    )
+
+    assert load_profiles(path, "jaffle_shop", None) == {
+        "jaffle_shop": {
+            "outputs": {
+                "dev": {
+                    "host": "127.0.0.1",
+                    "port": 1234,
+                    "user": "username",
+                    "pass": "password123",
+                    "dbname": "db",
+                    "schema": "public",
+                    "threads": 3,
+                    "type": "postgres",
+                    "enabled": False,
+                    "a_list": [1, 2, 3],
+                    "a_value": 10,
+                },
+            },
+            "target": "dev",
+        },
+    }
+
+
 def test_filter_models() -> None:
     """
     Test ``filter_models``.

@@ -4,7 +4,7 @@ Sync dbt database to Superset.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from yarl import URL
 
@@ -19,7 +19,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     client: SupersetClient,
     profiles_path: Path,
     project_name: str,
-    target_name: str,
+    target_name: Optional[str],
     import_db: bool,
     disallow_edits: bool,  # pylint: disable=unused-argument
     external_url_prefix: str,
@@ -32,6 +32,8 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     profiles = load_profiles(profiles_path, project_name, target_name)
     project = profiles[project_name]
     outputs = project["outputs"]
+    if target_name is None:
+        target_name = project["target"]
     target = outputs[target_name]
 
     # read additional metadata that should be applied to the DB

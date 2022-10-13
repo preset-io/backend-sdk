@@ -231,7 +231,9 @@ class Target(TypedDict):
     threads: int
 
 
-def load_profiles(path: Path, project_name: str, target_name: str) -> Dict[str, Any]:
+def load_profiles(
+    path: Path, project_name: str, target_name: Optional[str],
+) -> Dict[str, Any]:
     """
     Load the file and apply Jinja2 templating.
     """
@@ -242,6 +244,8 @@ def load_profiles(path: Path, project_name: str, target_name: str) -> Dict[str, 
         raise Exception(f"Project {project_name} not found in {path}")
     project = profiles[project_name]
     outputs = project["outputs"]
+    if target_name is None:
+        target_name = project["target"]
     if target_name not in outputs:
         raise Exception(f"Target {target_name} not found in the outputs of {path}")
     target = outputs[target_name]

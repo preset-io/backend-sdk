@@ -47,6 +47,41 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
 
+def test_sync_database_new_default_target(
+    mocker: MockerFixture, fs: FakeFilesystem
+) -> None:
+    """
+    Test ``sync_database`` when we want to import a new DB using the default target.
+    """
+    fs.create_file(
+        "/path/to/.dbt/profiles.yml",
+        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}, "target": "dev"}}),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
+        return_value={"sqlalchemy_uri": "dummy://"},
+    )
+    client = mocker.MagicMock()
+    client.get_databases.return_value = []
+
+    sync_database(
+        client=client,
+        profiles_path=Path("/path/to/.dbt/profiles.yml"),
+        project_name="my_project",
+        target_name=None,
+        import_db=True,
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+
+    client.create_database.assert_called_with(
+        database_name="my_project_dev",
+        is_managed_externally=False,
+        masked_encrypted_extra=None,
+        sqlalchemy_uri="dummy://",
+    )
+
+
 def test_sync_database_new_custom_sqlalchemy_uri(
     mocker: MockerFixture,
     fs: FakeFilesystem,
