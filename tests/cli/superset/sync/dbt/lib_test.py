@@ -283,7 +283,7 @@ jaffle_shop:
     """,
     )
 
-    assert load_profiles(path, "jaffle_shop", "dev") == {
+    assert load_profiles(path, "jaffle_shop", "jaffle_shop", "dev") == {
         "jaffle_shop": {
             "outputs": {
                 "dev": {
@@ -306,7 +306,8 @@ jaffle_shop:
 
 
 def test_load_profiles_default_target(
-    monkeypatch: pytest.MonkeyPatch, fs: FakeFilesystem
+    monkeypatch: pytest.MonkeyPatch,
+    fs: FakeFilesystem,
 ) -> None:
     """
     Test ``load_profiles`` when no target is specified.
@@ -340,7 +341,7 @@ jaffle_shop:
     """,
     )
 
-    assert load_profiles(path, "jaffle_shop", None) == {
+    assert load_profiles(path, "jaffle_shop", "jaffle_shop", None) == {
         "jaffle_shop": {
             "outputs": {
                 "dev": {

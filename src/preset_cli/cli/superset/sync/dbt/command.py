@@ -3,6 +3,8 @@ A command to sync dbt models/metrics to Superset and charts/dashboards back as e
 """
 
 import os.path
+import sys
+import warnings
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -22,8 +24,8 @@ from preset_cli.exceptions import DatabaseNotFoundError
 
 
 @click.command()
-@click.argument("manifest", type=click.Path(exists=True, resolve_path=True))
-@click.option("--project", help="Name of the dbt project", default="default")
+@click.argument("file", type=click.Path(exists=True, resolve_path=True))
+@click.option("--project", help="Name of the dbt project", default=None)
 @click.option("--target", help="Target name", default=None)
 @click.option(
     "--profiles",
@@ -63,8 +65,8 @@ from preset_cli.exceptions import DatabaseNotFoundError
 @click.pass_context
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
-    manifest: str,
-    project: str,
+    file: str,
+    project: Optional[str],
     target: Optional[str],
     select: Tuple[str, ...],
     exclude: Tuple[str, ...],
@@ -84,11 +86,40 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     if profiles is None:
         profiles = os.path.expanduser("~/.dbt/profiles.yml")
 
+    file_path = Path(file)
+    if file_path.name == "manifest.json":
+        warnings.warn(
+            (
+                "Passing the manifest.json file is deprecated. "
+                "Please pass the dbt_project.yml file instead."
+            ),
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        manifest = file_path
+        profile = project = project or "default"
+    elif file_path.name == "dbt_project.yml":
+        with open(file_path, encoding="utf-8") as input_:
+            dbt_project = yaml.load(input_, Loader=yaml.SafeLoader)
+
+        manifest = file_path.parent / dbt_project["target-path"] / "manifest.json"
+        profile = dbt_project["profile"]
+        project = project or dbt_project["name"]
+    else:
+        click.echo(
+            click.style(
+                "FILE should be either manifest.json or dbt_project.yml",
+                fg="bright_red",
+            ),
+        )
+        sys.exit(1)
+
     try:
         database = sync_database(
             client,
             Path(profiles),
             project,
+            profile,
             target,
             import_db,
             disallow_edits,

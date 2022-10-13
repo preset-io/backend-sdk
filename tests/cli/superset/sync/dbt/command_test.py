@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
+import yaml
 from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
@@ -67,6 +68,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client,
         profiles,
         "default",
+        "default",
         None,
         False,
         False,
@@ -105,6 +107,92 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "",
     )
     sync_exposures.assert_called_with(client, exposures, sync_datasets())
+
+
+def test_dbt_core_dbt_project(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``dbt-core`` command with a ``dbt_project.yml`` file.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    dbt_project = root / "default/dbt_project.yml"
+    fs.create_file(
+        dbt_project,
+        contents=yaml.dump(
+            {
+                "name": "my_project",
+                "profile": "default",
+                "target-path": "target",
+            },
+        ),
+    )
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(dbt_project),
+            "--profiles",
+            str(profiles),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "my_project",
+        "default",
+        None,
+        False,
+        False,
+        "",
+    )
+
+
+def test_dbt_core_invalid_argument(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``dbt-core`` command with an invalid argument.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+    wrong = root / "wrong"
+    fs.create_file(wrong)
+
+    mocker.patch("preset_cli.cli.superset.sync.dbt.command.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(wrong),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    assert result.output == "FILE should be either manifest.json or dbt_project.yml\n"
 
 
 def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -157,6 +245,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     sync_database.assert_called_with(
         client,
         profiles,
+        "default",
         "default",
         None,
         False,
@@ -278,6 +367,7 @@ def test_dbt_core_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> 
     sync_database.assert_called_with(
         client,
         profiles,
+        "default",
         "default",
         None,
         False,
