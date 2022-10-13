@@ -57,6 +57,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         _logger.info("Found an existing database, updating it")
         database = databases[0]
 
+        meta.pop("uuid", None)
         database = client.update_database(
             database_id=database["id"],
             database_name=database_name,

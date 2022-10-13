@@ -531,6 +531,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             column["groupby"] = True
             if column["is_dttm"]:
                 column["type_generic"] = 2
+            elif column["type"] is None:
+                column["type"] = "UNKNOWN"
+                column["type_generic"] = 1
             elif column["type"].lower() == "string":
                 column["type_generic"] = 1
             else:
