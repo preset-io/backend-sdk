@@ -19,6 +19,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     client: SupersetClient,
     profiles_path: Path,
     project_name: str,
+    profile_name: str,
     target_name: Optional[str],
     import_db: bool,
     disallow_edits: bool,  # pylint: disable=unused-argument
@@ -29,7 +30,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     """
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
-    profiles = load_profiles(profiles_path, project_name, target_name)
+    profiles = load_profiles(profiles_path, project_name, profile_name, target_name)
     project = profiles[project_name]
     outputs = project["outputs"]
     if target_name is None:

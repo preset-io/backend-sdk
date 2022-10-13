@@ -33,6 +33,7 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
+        profile_name="my_project",
         target_name="dev",
         import_db=True,
         disallow_edits=False,
@@ -48,7 +49,8 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
 
 def test_sync_database_new_default_target(
-    mocker: MockerFixture, fs: FakeFilesystem
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
 ) -> None:
     """
     Test ``sync_database`` when we want to import a new DB using the default target.
@@ -68,6 +70,7 @@ def test_sync_database_new_default_target(
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
+        profile_name="my_project",
         target_name=None,
         import_db=True,
         disallow_edits=False,
@@ -121,6 +124,7 @@ def test_sync_database_new_custom_sqlalchemy_uri(
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
+        profile_name="my_project",
         target_name="dev",
         import_db=True,
         disallow_edits=False,
@@ -177,6 +181,7 @@ def test_sync_database_env_var(
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
+        profile_name="my_project",
         target_name="dev",
         import_db=True,
         disallow_edits=False,
@@ -206,7 +211,8 @@ def test_sync_database_no_project(mocker: MockerFixture, fs: FakeFilesystem) -> 
         sync_database(
             client=client,
             profiles_path=Path("/path/to/.dbt/profiles.yml"),
-            project_name="my_other_project",
+            project_name="my_project",
+            profile_name="my_other_project",
             target_name="dev",
             import_db=True,
             disallow_edits=False,
@@ -234,6 +240,7 @@ def test_sync_database_no_target(mocker: MockerFixture, fs: FakeFilesystem) -> N
             client=client,
             profiles_path=Path("/path/to/.dbt/profiles.yml"),
             project_name="my_project",
+            profile_name="my_project",
             target_name="prod",
             import_db=True,
             disallow_edits=False,
@@ -273,6 +280,7 @@ def test_sync_database_multiple_databases(
             client=client,
             profiles_path=Path("/path/to/.dbt/profiles.yml"),
             project_name="my_project",
+            profile_name="my_project",
             target_name="dev",
             import_db=True,
             disallow_edits=False,
@@ -303,6 +311,7 @@ def test_sync_database_external_url_prefix(
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
+        profile_name="my_project",
         target_name="dev",
         import_db=True,
         disallow_edits=True,
@@ -339,6 +348,7 @@ def test_sync_database_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
+        profile_name="my_project",
         target_name="dev",
         import_db=True,
         disallow_edits=False,
@@ -374,6 +384,7 @@ def test_sync_database_new_no_import(mocker: MockerFixture, fs: FakeFilesystem) 
             client=client,
             profiles_path=Path("/path/to/.dbt/profiles.yml"),
             project_name="my_project",
+            profile_name="my_project",
             target_name="dev",
             import_db=False,
             disallow_edits=False,

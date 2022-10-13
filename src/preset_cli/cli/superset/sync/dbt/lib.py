@@ -232,7 +232,10 @@ class Target(TypedDict):
 
 
 def load_profiles(
-    path: Path, project_name: str, target_name: Optional[str],
+    path: Path,
+    project_name: str,
+    profile_name: str,
+    target_name: Optional[str],
 ) -> Dict[str, Any]:
     """
     Load the file and apply Jinja2 templating.
@@ -240,9 +243,9 @@ def load_profiles(
     with open(path, encoding="utf-8") as input_:
         profiles = yaml.load(input_, Loader=yaml.SafeLoader)
 
-    if project_name not in profiles:
-        raise Exception(f"Project {project_name} not found in {path}")
-    project = profiles[project_name]
+    if profile_name not in profiles:
+        raise Exception(f"Project {profile_name} not found in {path}")
+    project = profiles[profile_name]
     outputs = project["outputs"]
     if target_name is None:
         target_name = project["target"]
@@ -259,6 +262,7 @@ def load_profiles(
     context = {
         "env_var": env_var,
         "project_name": project_name,
+        "profile_name": profile_name,
         "target": target,
     }
 
