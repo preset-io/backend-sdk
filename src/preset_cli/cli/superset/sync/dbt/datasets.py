@@ -136,6 +136,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             "metrics": [],
         }
         update.update(model.get("meta", {}).get("superset", {}))
+        update.pop("uuid", None)
         if base_url:
             fragment = "!/model/{unique_id}".format(**model)
             update["external_url"] = str(base_url.with_fragment(fragment))
