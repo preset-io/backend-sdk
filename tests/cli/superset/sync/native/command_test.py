@@ -15,6 +15,7 @@ from freezegun import freeze_time
 from jinja2 import Template
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
+from sqlalchemy.engine.url import URL
 
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
@@ -22,6 +23,7 @@ from preset_cli.cli.superset.sync.native.command import (
     load_user_modules,
     prompt_for_passwords,
     raise_helper,
+    verify_db_connectivity,
 )
 from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
 
@@ -425,4 +427,77 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
             mock.call("chart", contents, client, False),
             mock.call("dashboard", contents, client, False),
         ],
+    )
+
+
+def test_verify_db_connectivity(mocker: MockerFixture) -> None:
+    """
+    Test ``verify_db_connectivity``.
+    """
+    create_engine = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.create_engine",
+    )
+
+    config = {
+        "sqlalchemy_uri": "postgresql://username:XXXXXXXXXX@localhost:5432/examples",
+        "password": "SECRET",
+    }
+    verify_db_connectivity(config)
+
+    create_engine.assert_called_with(
+        URL(
+            "postgresql",
+            username="username",
+            password="SECRET",
+            host="localhost",
+            port=5432,
+            database="examples",
+        ),
+    )
+
+
+def test_verify_db_connectivity_no_password(mocker: MockerFixture) -> None:
+    """
+    Test ``verify_db_connectivity`` without passwords.
+    """
+    create_engine = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.create_engine",
+    )
+
+    config = {
+        "sqlalchemy_uri": "gsheets://",
+    }
+    verify_db_connectivity(config)
+
+    create_engine.assert_called_with(
+        URL("gsheets"),
+    )
+
+
+def test_verify_db_connectivity_error(mocker: MockerFixture) -> None:
+    """
+    Test ``verify_db_connectivity`` errors.
+    """
+    _logger = mocker.patch("preset_cli.cli.superset.sync.native.command._logger")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.create_engine",
+        side_effect=Exception("Unable to connect"),
+    )
+
+    config = {
+        "sqlalchemy_uri": "postgresql://username:XXXXXXXXXX@localhost:5432/examples",
+        "password": "SECRET",
+    }
+    verify_db_connectivity(config)
+
+    _logger.warning.assert_called_with(
+        "Cannot connect to database %s",
+        URL(
+            "postgresql",
+            username="username",
+            password="SECRET",
+            host="localhost",
+            port=5432,
+            database="examples",
+        ),
     )

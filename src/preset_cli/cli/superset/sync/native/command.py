@@ -4,6 +4,7 @@ A command to sync Superset exports into a Superset instance.
 
 import getpass
 import importlib.util
+import logging
 import os
 from datetime import datetime, timezone
 from io import BytesIO
@@ -15,11 +16,14 @@ from zipfile import ZipFile
 import click
 import yaml
 from jinja2 import Template
+from sqlalchemy.engine import create_engine
 from sqlalchemy.engine.url import make_url
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.exceptions import SupersetError
+
+_logger = logging.getLogger(__name__)
 
 YAML_EXTENSIONS = {".yaml", ".yml"}
 ASSET_DIRECTORIES = {"databases", "datasets", "charts", "dashboards"}
@@ -130,9 +134,8 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
                 env["filepath"] = path_name
                 template = Template(input_.read())
                 content = template.render(**env)
-
-                # mark resource as being managed externally
                 config = yaml.load(content, Loader=yaml.SafeLoader)
+
                 config["is_managed_externally"] = disallow_edits
                 if base_url:
                     config["external_url"] = str(
@@ -140,12 +143,30 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
                     )
                 if relative_path.parts[0] == "databases":
                     prompt_for_passwords(relative_path, config)
+                    verify_db_connectivity(config)
 
                 contents[str("bundle" / relative_path)] = yaml.safe_dump(config)
 
     # TODO (betodealmeida): use endpoint from https://github.com/apache/superset/pull/19220
     for resource in ["database", "dataset", "chart", "dashboard"]:
         import_resource(resource, contents, client, overwrite)
+
+
+def verify_db_connectivity(config: Dict[str, Any]) -> None:
+    """
+    Test if we can connect to a given database.
+    """
+    uri = make_url(config["sqlalchemy_uri"])
+    if config.get("password"):
+        uri = uri.set(password=config["password"])
+
+    try:
+        engine = create_engine(uri)
+        raw_connection = engine.raw_connection()
+        engine.dialect.do_ping(raw_connection)
+    except Exception as ex:  # pylint: disable=broad-except
+        _logger.warning("Cannot connect to database %s", uri)
+        _logger.debug(ex)
 
 
 def prompt_for_passwords(path: Path, config: Dict[str, Any]) -> None:
