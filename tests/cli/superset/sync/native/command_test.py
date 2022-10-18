@@ -202,6 +202,67 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
 
+def test_native_asset_type(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``native`` command with a specific asset_type.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+    }
+    dataset_config = {"table_name": "test", "is_managed_externally": False}
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+    fs.create_file(
+        root / "datasets/gsheets/test.yaml",
+        contents=yaml.dump(dataset_config),
+    )
+    fs.create_file(
+        root / "README.txt",
+        contents="Hello, world",
+    )
+    fs.create_file(
+        root / "tmp/file.yaml",
+        contents=yaml.dump([1, 2, 3]),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    import_resource = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resource",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--asset-type=dataset",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    contents = {
+        "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+    }
+    import_resource.assert_has_calls(
+        [
+            mock.call("dataset", contents, client, False),
+        ],
+    )
+
+
 def test_native_load_env(
     mocker: MockerFixture,
     fs: FakeFilesystem,

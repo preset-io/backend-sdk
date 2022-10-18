@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 from zipfile import ZipFile
 
 import click
@@ -62,6 +62,19 @@ def raise_helper(message: str, *args: Any) -> None:
     raise Exception(message % args)
 
 
+def get_resource_name(path: Path) -> Optional[str]:
+    if not path.parts:
+        return None
+
+    resource_map = {
+        "databases": "database",
+        "datasets": "dataset",
+        "charts": "chart",
+        "dashboards": "dashboard",
+    }
+    return resource_map.get(path.parts[0])
+
+
 @click.command()
 @click.argument("directory", type=click.Path(exists=True, resolve_path=True))
 @click.option(
@@ -90,11 +103,17 @@ def raise_helper(message: str, *args: Any) -> None:
     default=False,
     help="Load environment variables to ``env[]`` template helper",
 )
+@click.option(
+    "--asset-type",
+    help="Asset type",
+    multiple=True,
+)
 @click.pass_context
 def native(  # pylint: disable=too-many-locals, too-many-arguments
     ctx: click.core.Context,
     directory: str,
     option: Tuple[str, ...],
+    asset_type: Tuple[str, ...],
     overwrite: bool = False,
     disallow_edits: bool = True,  # pylint: disable=unused-argument
     external_url_prefix: str = "",
@@ -107,6 +126,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     root = Path(directory)
+    asset_types = set(asset_type)
 
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
@@ -124,6 +144,11 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
     while queue:
         path_name = queue.pop()
         relative_path = path_name.relative_to(root)
+
+        resource_name = get_resource_name(relative_path)
+        if resource_name and asset_types and resource_name not in asset_types:
+            continue
+
         if path_name.is_dir() and not path_name.stem.startswith("."):
             queue.extend(path_name.glob("*"))
         elif (
@@ -148,8 +173,9 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
                 contents[str("bundle" / relative_path)] = yaml.safe_dump(config)
 
     # TODO (betodealmeida): use endpoint from https://github.com/apache/superset/pull/19220
-    for resource in ["database", "dataset", "chart", "dashboard"]:
-        import_resource(resource, contents, client, overwrite)
+    for resource_name in ["database", "dataset", "chart", "dashboard"]:
+        if not asset_types or resource_name in asset_types:
+            import_resource(resource_name, contents, client, overwrite)
 
 
 def verify_db_connectivity(config: Dict[str, Any]) -> None:
