@@ -111,3 +111,14 @@ def split_comma(  # pylint: disable=unused-argument
         return []
 
     return [option.strip() for option in value.split(",")]
+
+
+def dict_merge(base: Dict[Any, Any], overrides: Dict[Any, Any]) -> None:
+    """
+    Recursive dict merge.
+    """
+    for k in overrides:  # pylint: disable=invalid-name
+        if k in base and isinstance(base[k], dict) and isinstance(overrides[k], dict):
+            dict_merge(base[k], overrides[k])
+        else:
+            base[k] = overrides[k]
