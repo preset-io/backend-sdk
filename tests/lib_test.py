@@ -8,7 +8,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from preset_cli.exceptions import ErrorLevel, SupersetError
-from preset_cli.lib import remove_root, setup_logging, validate_response
+from preset_cli.lib import dict_merge, remove_root, setup_logging, validate_response
 
 
 def test_remove_root() -> None:
@@ -94,3 +94,13 @@ def test_validate_response(mocker: MockerFixture) -> None:
             "level": ErrorLevel.ERROR,
         },
     ]
+
+
+def test_dict_merge() -> None:
+    """
+    Test ``dict_merge``.
+    """
+    base = {"a": {"b": 42, "c": 43}, "d": 1, "e": 3}
+    overrides = {"a": {"c": 44}, "d": 2, "f": 3}
+    dict_merge(base, overrides)
+    assert base == {"a": {"b": 42, "c": 44}, "d": 2, "e": 3, "f": 3}

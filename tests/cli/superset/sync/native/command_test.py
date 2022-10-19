@@ -164,6 +164,10 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         contents=yaml.dump(dataset_config),
     )
     fs.create_file(
+        root / "datasets/gsheets/test.overrides.yaml",
+        contents="table_name: {{ 'Hello' }}",
+    )
+    fs.create_file(
         root / "README.txt",
         contents="Hello, world",
     )
@@ -190,7 +194,12 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     assert result.exit_code == 0
     contents = {
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
-        "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+        "bundle/datasets/gsheets/test.yaml": yaml.dump(
+            {
+                "table_name": "Hello",
+                "is_managed_externally": False,
+            },
+        ),
     }
     import_resource.assert_has_calls(
         [

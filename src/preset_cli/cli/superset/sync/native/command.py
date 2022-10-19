@@ -22,11 +22,13 @@ from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.exceptions import SupersetError
+from preset_cli.lib import dict_merge
 
 _logger = logging.getLogger(__name__)
 
 YAML_EXTENSIONS = {".yaml", ".yml"}
 ASSET_DIRECTORIES = {"databases", "datasets", "charts", "dashboards"}
+OVERRIDES_SUFFIX = ".overrides"
 
 # This should be identical to ``superset.models.core.PASSWORD_MASK``. It's duplicated here
 # because we don't want to have the CLI to depend on the ``superset`` package.
@@ -63,6 +65,9 @@ def raise_helper(message: str, *args: Any) -> None:
 
 
 def get_resource_name(path: Path) -> Optional[str]:
+    """
+    Get the resource name of a given path.
+    """
     if not path.parts:
         return None
 
@@ -73,6 +78,17 @@ def get_resource_name(path: Path) -> Optional[str]:
         "dashboards": "dashboard",
     }
     return resource_map.get(path.parts[0])
+
+
+def is_yaml_config(path: Path) -> bool:
+    """
+    Is this a valid YAML config?
+    """
+    return (
+        path.suffix.lower() in YAML_EXTENSIONS
+        and path.parts[0] in ASSET_DIRECTORIES
+        and path.suffixes[0].lower() != OVERRIDES_SUFFIX
+    )
 
 
 @click.command()
@@ -151,15 +167,20 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
 
         if path_name.is_dir() and not path_name.stem.startswith("."):
             queue.extend(path_name.glob("*"))
-        elif (
-            path_name.suffix.lower() in YAML_EXTENSIONS
-            and relative_path.parts[0] in ASSET_DIRECTORIES
-        ):
+        elif is_yaml_config(relative_path):
             with open(path_name, encoding="utf-8") as input_:
                 env["filepath"] = path_name
                 template = Template(input_.read())
                 content = template.render(**env)
                 config = yaml.load(content, Loader=yaml.SafeLoader)
+
+                overrides_path = path_name.with_suffix(".overrides" + path_name.suffix)
+                if overrides_path.exists():
+                    with open(overrides_path, encoding="utf-8") as overrides_input:
+                        template = Template(overrides_input.read())
+                        content = template.render(**env)
+                        overrides = yaml.load(content, Loader=yaml.SafeLoader)
+                    dict_merge(config, overrides)
 
                 config["is_managed_externally"] = disallow_edits
                 if base_url:
