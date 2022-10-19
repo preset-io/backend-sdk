@@ -219,7 +219,7 @@ def verify_db_connectivity(config: Dict[str, Any]) -> None:
         raw_connection = engine.raw_connection()
         engine.dialect.do_ping(raw_connection)
     except Exception as ex:  # pylint: disable=broad-except
-        _logger.warning("Cannot connect to database %s", uri)
+        _logger.warning("Cannot connect to database %s", repr(uri))
         _logger.debug(ex)
 
 
