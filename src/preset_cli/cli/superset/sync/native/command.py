@@ -91,6 +91,20 @@ def is_yaml_config(path: Path) -> bool:
     )
 
 
+def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load a YAML file as a template, render it, and deserialize it.
+    """
+    env["filepath"] = path
+
+    with open(path, encoding="utf-8") as input_:
+        template = Template(input_.read())
+
+    content = template.render(**env)
+
+    return yaml.load(content, Loader=yaml.SafeLoader)
+
+
 @click.command()
 @click.argument("directory", type=click.Path(exists=True, resolve_path=True))
 @click.option(
@@ -168,30 +182,23 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
         if path_name.is_dir() and not path_name.stem.startswith("."):
             queue.extend(path_name.glob("*"))
         elif is_yaml_config(relative_path):
-            with open(path_name, encoding="utf-8") as input_:
-                env["filepath"] = path_name
-                template = Template(input_.read())
-                content = template.render(**env)
-                config = yaml.load(content, Loader=yaml.SafeLoader)
+            config = render_yaml(path_name, env)
 
-                overrides_path = path_name.with_suffix(".overrides" + path_name.suffix)
-                if overrides_path.exists():
-                    with open(overrides_path, encoding="utf-8") as overrides_input:
-                        template = Template(overrides_input.read())
-                        content = template.render(**env)
-                        overrides = yaml.load(content, Loader=yaml.SafeLoader)
-                    dict_merge(config, overrides)
+            overrides_path = path_name.with_suffix(".overrides" + path_name.suffix)
+            if overrides_path.exists():
+                overrides = render_yaml(overrides_path, env)
+                dict_merge(config, overrides)
 
-                config["is_managed_externally"] = disallow_edits
-                if base_url:
-                    config["external_url"] = str(
-                        base_url / str(relative_path),
-                    )
-                if relative_path.parts[0] == "databases":
-                    prompt_for_passwords(relative_path, config)
-                    verify_db_connectivity(config)
+            config["is_managed_externally"] = disallow_edits
+            if base_url:
+                config["external_url"] = str(
+                    base_url / str(relative_path),
+                )
+            if relative_path.parts[0] == "databases":
+                prompt_for_passwords(relative_path, config)
+                verify_db_connectivity(config)
 
-                contents[str("bundle" / relative_path)] = yaml.safe_dump(config)
+            contents[str("bundle" / relative_path)] = yaml.safe_dump(config)
 
     # TODO (betodealmeida): use endpoint from https://github.com/apache/superset/pull/19220
     for resource_name in ["database", "dataset", "chart", "dashboard"]:
