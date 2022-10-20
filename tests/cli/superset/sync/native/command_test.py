@@ -19,7 +19,7 @@ from sqlalchemy.engine.url import URL
 
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
-    import_resource,
+    import_resources,
     load_user_modules,
     prompt_for_passwords,
     raise_helper,
@@ -46,21 +46,21 @@ def test_prompt_for_passwords(mocker: MockerFixture) -> None:
     getpass.getpass.assert_not_called()
 
 
-def test_import_resource(mocker: MockerFixture) -> None:
+def test_import_resources(mocker: MockerFixture) -> None:
     """
-    Test ``import_resource``.
+    Test ``import_resources``.
     """
     client = mocker.MagicMock()
 
     contents = {"bundle/databases/gsheets.yaml": "GSheets"}
     with freeze_time("2022-01-01T00:00:00Z"):
-        import_resource("database", contents=contents, client=client, overwrite=False)
+        import_resources(contents=contents, client=client, overwrite=False)
 
     call = client.import_zip.mock_calls[0]
     assert call.kwargs == {"overwrite": False}
 
     resource, buf = call.args
-    assert resource == "database"
+    assert resource == "assets"
     with ZipFile(buf) as bundle:
         assert bundle.namelist() == [
             "bundle/databases/gsheets.yaml",
@@ -68,14 +68,14 @@ def test_import_resource(mocker: MockerFixture) -> None:
         ]
         assert (
             bundle.read("bundle/metadata.yaml").decode()
-            == "timestamp: '2022-01-01T00:00:00+00:00'\ntype: Database\nversion: 1.0.0\n"
+            == "timestamp: '2022-01-01T00:00:00+00:00'\ntype: assets\nversion: 1.0.0\n"
         )
         assert bundle.read("bundle/databases/gsheets.yaml").decode() == "GSheets"
 
 
-def test_import_resource_overwrite_needed(mocker: MockerFixture) -> None:
+def test_import_resources_overwrite_needed(mocker: MockerFixture) -> None:
     """
-    Test ``import_resource`` when an overwrite error is raised.
+    Test ``import_resources`` when an overwrite error is raised.
     """
     click = mocker.patch("preset_cli.cli.superset.sync.native.command.click")
     client = mocker.MagicMock()
@@ -103,7 +103,7 @@ def test_import_resource_overwrite_needed(mocker: MockerFixture) -> None:
     client.import_zip.side_effect = SupersetError(errors)
 
     contents = {"bundle/databases/gsheets.yaml": "GSheets"}
-    import_resource("database", contents=contents, client=client, overwrite=False)
+    import_resources(contents=contents, client=client, overwrite=False)
 
     assert click.style.called_with(
         "The following file(s) already exist. Pass --overwrite to replace them.\n"
@@ -112,9 +112,9 @@ def test_import_resource_overwrite_needed(mocker: MockerFixture) -> None:
     )
 
 
-def test_import_resource_error(mocker: MockerFixture) -> None:
+def test_import_resources_error(mocker: MockerFixture) -> None:
     """
-    Test ``import_resource`` when an unexpected error is raised.
+    Test ``import_resources`` when an unexpected error is raised.
     """
     client = mocker.MagicMock()
     errors: List[ErrorPayload] = [
@@ -139,7 +139,7 @@ def test_import_resource_error(mocker: MockerFixture) -> None:
 
     contents = {"bundle/databases/gsheets.yaml": "GSheets"}
     with pytest.raises(SupersetError) as excinfo:
-        import_resource("database", contents=contents, client=client, overwrite=False)
+        import_resources(contents=contents, client=client, overwrite=False)
     assert excinfo.value.errors == errors
 
 
@@ -180,8 +180,8 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    import_resource = mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.import_resource",
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
     )
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
@@ -201,75 +201,7 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             },
         ),
     }
-    import_resource.assert_has_calls(
-        [
-            mock.call("database", contents, client, False),
-            mock.call("dataset", contents, client, False),
-            mock.call("chart", contents, client, False),
-            mock.call("dashboard", contents, client, False),
-        ],
-    )
-
-
-def test_native_asset_type(mocker: MockerFixture, fs: FakeFilesystem) -> None:
-    """
-    Test the ``native`` command with a specific asset_type.
-    """
-    root = Path("/path/to/root")
-    fs.create_dir(root)
-    database_config = {
-        "database_name": "GSheets",
-        "sqlalchemy_uri": "gsheets://",
-        "is_managed_externally": False,
-    }
-    dataset_config = {"table_name": "test", "is_managed_externally": False}
-    fs.create_file(
-        root / "databases/gsheets.yaml",
-        contents=yaml.dump(database_config),
-    )
-    fs.create_file(
-        root / "datasets/gsheets/test.yaml",
-        contents=yaml.dump(dataset_config),
-    )
-    fs.create_file(
-        root / "README.txt",
-        contents="Hello, world",
-    )
-    fs.create_file(
-        root / "tmp/file.yaml",
-        contents=yaml.dump([1, 2, 3]),
-    )
-
-    SupersetClient = mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.SupersetClient",
-    )
-    client = SupersetClient()
-    import_resource = mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.import_resource",
-    )
-    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-
-    runner = CliRunner()
-    result = runner.invoke(
-        superset_cli,
-        [
-            "https://superset.example.org/",
-            "sync",
-            "native",
-            str(root),
-            "--asset-type=dataset",
-        ],
-        catch_exceptions=False,
-    )
-    assert result.exit_code == 0
-    contents = {
-        "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
-    }
-    import_resource.assert_has_calls(
-        [
-            mock.call("dataset", contents, client, False),
-        ],
-    )
+    import_resources.assert_has_calls([mock.call(contents, client, False)])
 
 
 def test_native_load_env(
@@ -298,8 +230,8 @@ def test_native_load_env(
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    import_resource = mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.import_resource",
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
     )
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
@@ -325,14 +257,7 @@ def test_native_load_env(
             },
         ),
     }
-    import_resource.assert_has_calls(
-        [
-            mock.call("database", contents, client, False),
-            mock.call("dataset", contents, client, False),
-            mock.call("chart", contents, client, False),
-            mock.call("dashboard", contents, client, False),
-        ],
-    )
+    import_resources.assert_has_calls([mock.call(contents, client, False)])
 
 
 def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -365,8 +290,8 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    import_resource = mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.import_resource",
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
     )
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
@@ -393,14 +318,7 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
-    import_resource.assert_has_calls(
-        [
-            mock.call("database", contents, client, False),
-            mock.call("dataset", contents, client, False),
-            mock.call("chart", contents, client, False),
-            mock.call("dashboard", contents, client, False),
-        ],
-    )
+    import_resources.assert_has_calls([mock.call(contents, client, False)])
 
 
 def test_load_user_modules(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -468,8 +386,8 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    import_resource = mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.import_resource",
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
     )
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
@@ -490,14 +408,7 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
             },
         ),
     }
-    import_resource.assert_has_calls(
-        [
-            mock.call("database", contents, client, False),
-            mock.call("dataset", contents, client, False),
-            mock.call("chart", contents, client, False),
-            mock.call("dashboard", contents, client, False),
-        ],
-    )
+    import_resources.assert_has_calls([mock.call(contents, client, False)])
 
 
 def test_verify_db_connectivity(mocker: MockerFixture) -> None:
@@ -563,4 +474,115 @@ def test_verify_db_connectivity_error(mocker: MockerFixture) -> None:
     _logger.warning.assert_called_with(
         "Cannot connect to database %s",
         "postgresql://username:***@localhost:5432/examples",
+    )
+
+
+def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``native`` command with split imports.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "1",
+    }
+    dataset_config = {
+        "table_name": "test",
+        "is_managed_externally": False,
+        "database_uuid": "1",
+        "uuid": "2",
+    }
+    chart_config = {
+        "dataset_uuid": "2",
+        "is_managed_externally": False,
+        "slice_name": "Some chart",
+        "uuid": "3",
+    }
+    dashboard_config = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {
+            "DASHBOARD_VERSION_KEY": "v2",
+            "CHART-BVI44PWH": {
+                "type": "CHART",
+                "meta": {
+                    "uuid": "3",
+                },
+            },
+        },
+        "uuid": "4",
+    }
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+    fs.create_file(
+        root / "datasets/gsheets/test.yaml",
+        contents=yaml.dump(dataset_config),
+    )
+    fs.create_file(
+        root / "charts/chart.yaml",
+        contents=yaml.dump(chart_config),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard.yaml",
+        contents=yaml.dump(dashboard_config),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(root), "--split"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    import_resources.assert_has_calls(
+        [
+            mock.call(
+                {
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/charts/chart.yaml": yaml.dump(chart_config),
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/dashboards/dashboard.yaml": yaml.dump(dashboard_config),
+                    "bundle/charts/chart.yaml": yaml.dump(chart_config),
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+        ],
     )

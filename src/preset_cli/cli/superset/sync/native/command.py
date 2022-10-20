@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Iterator, Tuple
 from zipfile import ZipFile
 
 import click
@@ -33,6 +33,8 @@ OVERRIDES_SUFFIX = ".overrides"
 # This should be identical to ``superset.models.core.PASSWORD_MASK``. It's duplicated here
 # because we don't want to have the CLI to depend on the ``superset`` package.
 PASSWORD_MASK = "X" * 10
+
+AssetConfig = Dict[str, Any]
 
 
 resource_types = {
@@ -62,22 +64,6 @@ def raise_helper(message: str, *args: Any) -> None:
     Macro for Jinja2 so users can raise exceptions.
     """
     raise Exception(message % args)
-
-
-def get_resource_name(path: Path) -> Optional[str]:
-    """
-    Get the resource name of a given path.
-    """
-    if not path.parts:
-        return None
-
-    resource_map = {
-        "databases": "database",
-        "datasets": "dataset",
-        "charts": "chart",
-        "dashboards": "dashboard",
-    }
-    return resource_map.get(path.parts[0])
 
 
 def is_yaml_config(path: Path) -> bool:
@@ -134,20 +120,22 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     help="Load environment variables to ``env[]`` template helper",
 )
 @click.option(
-    "--asset-type",
-    help="Asset type",
-    multiple=True,
+    "--split",
+    "-s",
+    is_flag=True,
+    default=False,
+    help="Split imports into individual assets",
 )
 @click.pass_context
 def native(  # pylint: disable=too-many-locals, too-many-arguments
     ctx: click.core.Context,
     directory: str,
     option: Tuple[str, ...],
-    asset_type: Tuple[str, ...],
     overwrite: bool = False,
     disallow_edits: bool = True,  # pylint: disable=unused-argument
     external_url_prefix: str = "",
     load_env: bool = False,
+    split: bool = False,
 ) -> None:
     """
     Sync exported DBs/datasets/charts/dashboards to Superset.
@@ -156,7 +144,6 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     root = Path(directory)
-    asset_types = set(asset_type)
 
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
@@ -169,15 +156,11 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
         env["env"] = os.environ
 
     # read all the YAML files
-    contents: Dict[str, str] = {}
+    configs: Dict[Path, AssetConfig] = {}
     queue = [root]
     while queue:
         path_name = queue.pop()
         relative_path = path_name.relative_to(root)
-
-        resource_name = get_resource_name(relative_path)
-        if resource_name and asset_types and resource_name not in asset_types:
-            continue
 
         if path_name.is_dir() and not path_name.stem.startswith("."):
             queue.extend(path_name.glob("*"))
@@ -198,12 +181,59 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
                 prompt_for_passwords(relative_path, config)
                 verify_db_connectivity(config)
 
-            contents[str("bundle" / relative_path)] = yaml.safe_dump(config)
+            configs["bundle" / relative_path] = config
 
-    # TODO (betodealmeida): use endpoint from https://github.com/apache/superset/pull/19220
-    for resource_name in ["database", "dataset", "chart", "dashboard"]:
-        if not asset_types or resource_name in asset_types:
-            import_resource(resource_name, contents, client, overwrite)
+    if split:
+        import_resources_individually(configs, client, overwrite)
+    else:
+        contents = {str(k): yaml.dump(v) for k, v in configs.items()}
+        import_resources(contents, client, overwrite)
+
+
+def import_resources_individually(
+    configs: Dict[Path, AssetConfig],
+    client: SupersetClient,
+    overwrite: bool,
+) -> None:
+    """
+    Import contents individually.
+
+    This will first import all the databases, then import each dataset (together with the
+    database info, since it's needed), then charts, on so on. It helps troubleshoot
+    problematic exports and large imports.
+    """
+    asset_configs: Dict[Path, AssetConfig]
+
+    imports = [
+        ("databases", lambda config: []),
+        ("datasets", lambda config: [config["database_uuid"]]),
+        ("charts", lambda config: [config["dataset_uuid"]]),
+        ("dashboards", get_charts_uuids),
+    ]
+    related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
+    for resource_name, get_related_uuids in imports:
+        for path, config in configs.items():
+            if path.parts[1] == resource_name:
+                asset_configs = {path: config}
+                for uuid in get_related_uuids(config):
+                    asset_configs.update(related_configs[uuid])
+                _logger.info("Importing %s", path.relative_to("bundle"))
+                contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
+                import_resources(contents, client, overwrite)
+                related_configs[config["uuid"]] = asset_configs
+
+
+def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
+    """
+    Extract chart UUID from a dashboard config.
+    """
+    for child in config["position"].values():
+        if (
+            isinstance(child, dict)
+            and child["type"] == "CHART"
+            and "uuid" in child["meta"]
+        ):
+            yield child["meta"]["uuid"]
 
 
 def verify_db_connectivity(config: Dict[str, Any]) -> None:
@@ -237,19 +267,18 @@ def prompt_for_passwords(path: Path, config: Dict[str, Any]) -> None:
         )
 
 
-def import_resource(
-    resource: str,
+def import_resources(
     contents: Dict[str, str],
     client: SupersetClient,
     overwrite: bool,
 ) -> None:
     """
-    Import a given resource.
+    Import a bundle of assets.
     """
     contents["bundle/metadata.yaml"] = yaml.dump(
         dict(
             version="1.0.0",
-            type=resource_types[resource],
+            type="assets",
             timestamp=datetime.now(tz=timezone.utc).isoformat(),
         ),
     )
@@ -261,7 +290,7 @@ def import_resource(
                 output.write(file_content.encode())
     buf.seek(0)
     try:
-        client.import_zip(resource, buf, overwrite=overwrite)
+        client.import_zip("assets", buf, overwrite=overwrite)
     except SupersetError as ex:
         click.echo(
             click.style(

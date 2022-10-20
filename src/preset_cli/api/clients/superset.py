@@ -662,6 +662,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Import a ZIP bundle.
         """
+        key = "bundle" if resource_name == "assets" else "formData"
+        files = {key: form_data}
         url = self.baseurl / "api/v1" / resource_name / "import/"
 
         self.session.headers.update({"Accept": "application/json"})
@@ -669,7 +671,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
         response = self.session.post(
             url,
-            files=dict(formData=form_data),
+            files=files,
             data=data,
         )
         validate_response(response)
