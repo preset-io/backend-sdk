@@ -562,12 +562,5 @@ def test_verify_db_connectivity_error(mocker: MockerFixture) -> None:
 
     _logger.warning.assert_called_with(
         "Cannot connect to database %s",
-        URL(
-            "postgresql",
-            username="username",
-            password="SECRET",
-            host="localhost",
-            port=5432,
-            database="examples",
-        ),
+        "postgresql://username:***@localhost:5432/examples",
     )
