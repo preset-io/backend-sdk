@@ -95,7 +95,7 @@ workspace_role_identifiers = {
 
 
 @click.group()
-@click.option("--baseurl", default="https://manage.app.preset.io/")
+@click.option("--baseurl", default="https://api.app.preset.io/")
 @click.option("--api-token", envvar="PRESET_API_TOKEN")
 @click.option("--api-secret", envvar="PRESET_API_SECRET")
 @click.option("--jwt-token", envvar="PRESET_JWT_TOKEN")
@@ -120,7 +120,11 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
     ctx.ensure_object(dict)
 
     # store manager URL for other commands
-    ctx.obj["MANAGER_URL"] = manager_url = URL(baseurl)
+    ctx.obj["MANAGER_URL"] = manager_api_url = URL(baseurl)
+
+    if ctx.invoked_subcommand == "auth":
+        # The user is trying to auth themselves, so skip anything auth-related
+        return
 
     if jwt_token is None:
         if api_token is None or api_secret is None:
@@ -141,20 +145,31 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                     )
                     sys.exit(1)
             else:
+                manager_url = URL(baseurl.replace("api.", "manage."))
                 click.echo(
                     "You need to specify a JWT token or an API key (name and secret)",
                 )
                 webbrowser.open(str(manager_url / "app/user"))
                 api_token = input("API token: ")
                 api_secret = getpass.getpass("API secret: ")
-                store_credentials(api_token, api_secret, manager_url, credentials_path)
+                store_credentials(
+                    api_token, api_secret, manager_api_url, credentials_path
+                )
 
         api_token = cast(str, api_token)
         api_secret = cast(str, api_secret)
+
         try:
-            jwt_token = get_access_token(manager_url, api_token, api_secret)
+            jwt_token = get_access_token(manager_api_url, api_token, api_secret)
         except Exception:  # pylint: disable=broad-except
-            jwt_token = None
+            click.echo(
+                click.style(
+                    "Failed to auth using the provided credentials."
+                    " Please run 'preset-cli auth'",
+                    fg="bright_red",
+                ),
+            )
+            sys.exit(1)
 
     # store auth in context so it's used by the Superset SDK
     ctx.obj["AUTH"] = JWTAuth(jwt_token) if jwt_token else Auth()
@@ -168,7 +183,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
             click.echo(f'\n# {team["title"]} #')
             for workspace in client.get_workspaces(team_name=team["name"]):
                 status = get_status_icon(workspace["workspace_status"])
-                click.echo(f'{status} ({i+1}) {workspace["title"]}')
+                click.echo(f'{status} ({i + 1}) {workspace["title"]}')
                 hostnames.append("https://" + workspace["hostname"])
                 i += 1
 
@@ -195,7 +210,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
 
 
 @click.command()
-@click.option("--baseurl", default="https://manage.app.preset.io/")
+@click.option("--baseurl", default="https://api.app.preset.io/")
 @click.option(
     "--overwrite",
     is_flag=True,
@@ -246,7 +261,8 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
         )
         sys.exit(1)
 
-    manager_url = URL(baseurl)
+    manager_url = URL(baseurl.replace("api.", "manage."))
+    manager_api_url = URL(baseurl)
     click.echo(
         f"Please generate a new token at {manager_url} if you don't have one already",
     )
@@ -254,7 +270,7 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
     api_token = input("API token: ")
     api_secret = getpass.getpass("API secret: ")
 
-    store_credentials(api_token, api_secret, manager_url, credentials_path)
+    store_credentials(api_token, api_secret, manager_api_url, credentials_path)
     click.echo(f"Credentials stored in {credentials_path}")
 
 
@@ -266,7 +282,7 @@ def get_teams(client: PresetClient) -> List[str]:
     i = 0
     all_teams = []
     for team in client.get_teams():
-        click.echo(f'({i+1}) {team["title"]}')
+        click.echo(f'({i + 1}) {team["title"]}')
         all_teams.append(team["name"])
         i += 1
 

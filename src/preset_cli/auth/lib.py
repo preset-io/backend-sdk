@@ -21,10 +21,11 @@ def get_access_token(baseurl: Union[str, URL], api_token: str, api_secret: str) 
         baseurl = URL(baseurl)
 
     response = requests.post(
-        baseurl / "api/v1/auth/",
+        baseurl / "v1/auth/",
         json={"name": api_token, "secret": api_secret},
         headers={"Content-Type": "application/json"},
     )
+    response.raise_for_status()
     payload = response.json()
     return payload["payload"]["access_token"]
 

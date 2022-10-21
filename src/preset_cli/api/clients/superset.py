@@ -699,7 +699,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Return all users from a Preset workspace.
         """
         # TODO (betodealmeida): remove hardcoded Manager URL
-        client = PresetClient("https://manage.app.preset.io/", self.auth)
+        client = PresetClient("https://api.app.preset.io/", self.auth)
         return client.export_users(self.baseurl)
 
     def _export_users_superset(self) -> Iterator[UserType]:
