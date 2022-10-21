@@ -98,11 +98,11 @@ def test_auth(mocker: MockerFixture) -> None:
     )
     assert result.exit_code == 0
 
-    webbrowser.open.assert_called_with("https://manage.app.preset.io/app/user")
+    webbrowser.open.assert_called_with("https://api.app.preset.io/app/user")
     store_credentials.assert_called_with(
         "API_TOKEN",
         "API_SECRET",
-        URL("https://manage.app.preset.io/"),
+        URL("https://api.app.preset.io/"),
         credentials_path,
     )
 
@@ -116,7 +116,7 @@ def test_auth_show(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         credentials_path,
         contents=yaml.dump(
             {
-                "baseurl": "https://manage.app.preset.io/",
+                "baseurl": "https://api.app.preset.io/",
                 "api_secret": "XXX",
                 "api_token": "abc",
             },
@@ -140,7 +140,7 @@ def test_auth_show(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 ================================
 api_secret: XXX
 api_token: abc
-baseurl: https://manage.app.preset.io/
+baseurl: https://api.app.preset.io/
 
 """
     )
@@ -237,7 +237,7 @@ def test_auth_overwrite_expired_credentials(
     )
     assert result.exit_code == 0
     get_access_token.assert_called_with(
-        URL("https://manage.app.preset.io/"),
+        URL("https://api.app.preset.io/"),
         "API_TOKEN",
         "API_SECRET",
     )

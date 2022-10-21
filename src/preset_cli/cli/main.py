@@ -195,7 +195,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
 
 
 @click.command()
-@click.option("--baseurl", default="https://manage.app.preset.io/")
+@click.option("--baseurl", default="https://api.app.preset.io/")
 @click.option(
     "--overwrite",
     is_flag=True,
