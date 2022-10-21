@@ -1332,19 +1332,19 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
     """
     requests_mock.get("https://superset.example.org/users/list/", status_code=404)
     requests_mock.get(
-        "https://api.app.preset.io/api/v1/teams/",
+        "https://api.app.preset.io/v1/teams",
         json={
             "payload": [{"name": "team1"}],
         },
     )
     requests_mock.get(
-        "https://api.app.preset.io/api/v1/teams/team1/workspaces/",
+        "https://api.app.preset.io/v1/teams/team1/workspaces",
         json={
             "payload": [{"id": 1, "hostname": "superset.example.org"}],
         },
     )
     requests_mock.get(
-        "https://api.app.preset.io/api/v1/teams/team1/workspaces/1/memberships",
+        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships",
         json={
             "payload": [
                 {
