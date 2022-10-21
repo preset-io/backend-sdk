@@ -122,6 +122,10 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
     # store manager URL for other commands
     ctx.obj["MANAGER_URL"] = manager_api_url = URL(baseurl)
 
+    if ctx.invoked_subcommand == "auth":
+        # The user is trying to auth themselves, so skip anything auth-related
+        return
+
     if jwt_token is None:
         if api_token is None or api_secret is None:
             # check for stored credentials

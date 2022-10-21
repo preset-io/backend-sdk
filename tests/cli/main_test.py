@@ -98,7 +98,7 @@ def test_auth(mocker: MockerFixture) -> None:
     )
     assert result.exit_code == 0
 
-    webbrowser.open.assert_called_with("https://api.app.preset.io/app/user")
+    webbrowser.open.assert_called_with("https://manage.app.preset.io/app/user")
     store_credentials.assert_called_with(
         "API_TOKEN",
         "API_SECRET",
@@ -236,11 +236,7 @@ def test_auth_overwrite_expired_credentials(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    get_access_token.assert_called_with(
-        URL("https://api.app.preset.io/"),
-        "API_TOKEN",
-        "API_SECRET",
-    )
+    get_access_token.not_called()
 
 
 def test_jwt_token_credentials_exist(
@@ -265,7 +261,7 @@ def test_jwt_token_credentials_exist(
     runner = CliRunner()
     result = runner.invoke(preset_cli, ["auth", "--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    JWTAuth.assert_called_with("JWT_TOKEN")
+    JWTAuth.assert_not_called()
 
 
 def test_jwt_token_invalid_credentials(
@@ -288,7 +284,7 @@ def test_jwt_token_invalid_credentials(
 
     runner = CliRunner()
     result = runner.invoke(preset_cli, ["auth", "--help"], catch_exceptions=False)
-    assert result.exit_code == 1
+    assert result.exit_code == 0
 
 
 def test_jwt_token_prompt_for_credentials(
@@ -314,7 +310,7 @@ def test_jwt_token_prompt_for_credentials(
     runner = CliRunner()
     result = runner.invoke(preset_cli, ["auth", "--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    JWTAuth.assert_called_with("JWT_TOKEN")
+    JWTAuth.assert_not_called()
 
 
 def test_jwt_token_credentials_passed(
@@ -334,7 +330,7 @@ def test_jwt_token_credentials_passed(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    JWTAuth.assert_called_with("JWT_TOKEN")
+    JWTAuth.assert_not_called()
 
 
 def test_workspaces(mocker: MockerFixture) -> None:
