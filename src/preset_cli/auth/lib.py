@@ -25,6 +25,7 @@ def get_access_token(baseurl: Union[str, URL], api_token: str, api_secret: str) 
         json={"name": api_token, "secret": api_secret},
         headers={"Content-Type": "application/json"},
     )
+    response.raise_for_status()
     payload = response.json()
     return payload["payload"]["access_token"]
 
