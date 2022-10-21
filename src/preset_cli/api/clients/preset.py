@@ -47,7 +47,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Retrieve all teams based on membership.
         """
-        url = self.baseurl / "api/v1/teams/"
+        url = self.get_base_url() / "teams"
         _logger.debug("GET %s", url)
         response = self.session.get(url)
         validate_response(response)
@@ -61,7 +61,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Retrieve all users for a given team.
         """
-        url = self.baseurl / "api/v1/teams" / team_name / "memberships"
+        url = self.get_base_url() / "teams" / team_name / "memberships"
         _logger.debug("GET %s", url)
         response = self.session.get(url)
         validate_response(response)
@@ -75,7 +75,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Retrieve all workspaces for a given team.
         """
-        url = self.baseurl / "api/v1/teams" / team_name / "workspaces/"
+        url = self.get_base_url() / "teams" / team_name / "workspaces"
         _logger.debug("GET %s", url)
         response = self.session.get(url)
         validate_response(response)
@@ -95,7 +95,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         Invite users to teams.
         """
         for team in teams:
-            url = self.baseurl / "api/v1/teams" / team / "invites/many"
+            url = self.get_base_url() / "teams" / team / "invites/many"
             payload = {
                 "invites": [
                     {"team_role_id": role_id, "email": email} for email in emails
@@ -124,8 +124,8 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             raise Exception("Unable to find workspace and/or team")
 
         url = (
-            self.baseurl
-            / "api/v1/teams"
+            self.get_base_url()
+            / "teams"
             / team_name
             / "workspaces"
             / str(workspace_id)
@@ -168,7 +168,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         Import users by adding them via SCIM.
         """
         for team in teams:
-            url = self.baseurl / "api/v1/teams" / team / "scim/v2/Users"
+            url = self.get_base_url() / "teams" / team / "scim/v2/Users"
             for user in users:
                 payload = {
                     "schemas": [
@@ -202,7 +202,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Change the team role of a given user.
         """
-        url = self.baseurl / "api/v1/teams" / team_name / "memberships" / str(user_id)
+        url = self.get_base_url() / "teams" / team_name / "memberships" / str(user_id)
         payload = {"team_role_id": role_id}
         _logger.debug("PATCH %s\n%s", url, json.dumps(payload, indent=4))
         self.session.patch(url, json=payload)
@@ -218,8 +218,8 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         Change the workspace role of a given user.
         """
         url = (
-            self.baseurl
-            / "api/v1/teams"
+            self.get_base_url()
+            / "teams"
             / team_name
             / "workspaces"
             / str(workspace_id)
@@ -228,3 +228,6 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         payload = {"role_identifier": role_identifier, "user_id": user_id}
         _logger.debug("PUT %s\n%s", url, json.dumps(payload, indent=4))
         self.session.put(url, json=payload)
+
+    def get_base_url(self, version: Optional[str] = "v1") -> URL:
+        return self.baseurl / version

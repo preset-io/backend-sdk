@@ -22,19 +22,19 @@ def test_get_access_token(requests_mock: Mocker) -> None:
     Test ``get_access_token``.
     """
     requests_mock.post(
-        "https://manage.app.preset.io/api/v1/auth/",
+        "https://api.app.preset.io/v1/auth/",
         json={"payload": {"access_token": "TOKEN"}},
     )
 
     access_token = get_access_token(
-        URL("https://manage.app.preset.io/"),
+        URL("https://api.app.preset.io/"),
         "API_TOKEN",
         "API_SECRET",
     )
     assert access_token == "TOKEN"
 
     access_token = get_access_token(
-        "https://manage.app.preset.io/",
+        "https://api.app.preset.io/",
         "API_TOKEN",
         "API_SECRET",
     )
@@ -60,7 +60,7 @@ def test_store_credentials(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     store_credentials(
         "API_TOKEN",
         "API_SECRET",
-        URL("https://manage.app.preset.io/"),
+        URL("https://api.app.preset.io/"),
         credentials_path,
     )
     assert not credentials_path.exists()
@@ -69,7 +69,7 @@ def test_store_credentials(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     store_credentials(
         "API_TOKEN",
         "API_SECRET",
-        URL("https://manage.app.preset.io/"),
+        URL("https://api.app.preset.io/"),
         credentials_path,
     )
     assert credentials_path.exists()
@@ -78,5 +78,5 @@ def test_store_credentials(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     assert contents == {
         "api_secret": "API_SECRET",
         "api_token": "API_TOKEN",
-        "baseurl": "https://manage.app.preset.io/",
+        "baseurl": "https://api.app.preset.io/",
     }

@@ -102,7 +102,7 @@ def test_auth(mocker: MockerFixture) -> None:
     store_credentials.assert_called_with(
         "API_TOKEN",
         "API_SECRET",
-        URL("https://manage.app.preset.io/"),
+        URL("https://api.app.preset.io/"),
         credentials_path,
     )
 
@@ -116,7 +116,7 @@ def test_auth_show(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         credentials_path,
         contents=yaml.dump(
             {
-                "baseurl": "https://manage.app.preset.io/",
+                "baseurl": "https://api.app.preset.io/",
                 "api_secret": "XXX",
                 "api_token": "abc",
             },
@@ -140,7 +140,7 @@ def test_auth_show(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 ================================
 api_secret: XXX
 api_token: abc
-baseurl: https://manage.app.preset.io/
+baseurl: https://api.app.preset.io/
 
 """
     )
@@ -236,10 +236,45 @@ def test_auth_overwrite_expired_credentials(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
+    get_access_token.assert_not_called()
+
+
+def test_cmd_handling_failed_creds(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``superset`` command when overwriting expired credentials.
+    """
+    credentials_path = Path("/path/to/config/credentials.yaml")
+    fs.create_file(
+        credentials_path,
+        contents=yaml.dump({"api_secret": "API_SECRET", "api_token": "API_TOKEN"}),
+    )
+    mocker.patch(
+        "preset_cli.cli.main.get_credentials_path",
+        return_value=credentials_path,
+    )
+    get_access_token = mocker.patch(
+        "preset_cli.cli.main.get_access_token",
+        side_effect=Exception("Unable to get access token"),
+    )
+
+    runner = CliRunner()
+
+    mocker.patch("preset_cli.cli.main.webbrowser")
+    mocker.patch("preset_cli.cli.main.input", return_value="API_TOKEN")
+    getpass = mocker.patch("preset_cli.cli.main.getpass")
+    getpass.getpass.return_value = "API_SECRET"
+    mocker.patch("preset_cli.cli.main.store_credentials")
+    result = runner.invoke(
+        preset_cli,
+        ["superset"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
     get_access_token.assert_called_with(
-        URL("https://manage.app.preset.io/"),
-        "API_TOKEN",
-        "API_SECRET",
+        URL("https://api.app.preset.io/"), "API_TOKEN", "API_SECRET"
     )
 
 
@@ -263,8 +298,8 @@ def test_jwt_token_credentials_exist(
     JWTAuth = mocker.patch("preset_cli.cli.main.JWTAuth")
 
     runner = CliRunner()
-    result = runner.invoke(preset_cli, ["auth", "--help"], catch_exceptions=False)
-    assert result.exit_code == 0
+    result = runner.invoke(preset_cli, ["superset", "--help"], catch_exceptions=False)
+    assert result.exit_code == 1
     JWTAuth.assert_called_with("JWT_TOKEN")
 
 
@@ -287,7 +322,7 @@ def test_jwt_token_invalid_credentials(
     mocker.patch("preset_cli.cli.main.get_access_token", return_value="JWT_TOKEN")
 
     runner = CliRunner()
-    result = runner.invoke(preset_cli, ["auth", "--help"], catch_exceptions=False)
+    result = runner.invoke(preset_cli, ["superset", "--help"], catch_exceptions=False)
     assert result.exit_code == 1
 
 
@@ -312,8 +347,8 @@ def test_jwt_token_prompt_for_credentials(
     JWTAuth = mocker.patch("preset_cli.cli.main.JWTAuth")
 
     runner = CliRunner()
-    result = runner.invoke(preset_cli, ["auth", "--help"], catch_exceptions=False)
-    assert result.exit_code == 0
+    result = runner.invoke(preset_cli, ["superset", "--help"], catch_exceptions=False)
+    assert result.exit_code == 1
     JWTAuth.assert_called_with("JWT_TOKEN")
 
 
@@ -330,10 +365,17 @@ def test_jwt_token_credentials_passed(
     runner = CliRunner()
     result = runner.invoke(
         preset_cli,
-        ["--api-token", "API_TOKEN", "--api-secret", "API_SECRET", "auth", "--help"],
+        [
+            "--api-token",
+            "API_TOKEN",
+            "--api-secret",
+            "API_SECRET",
+            "superset",
+            "--help",
+        ],
         catch_exceptions=False,
     )
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     JWTAuth.assert_called_with("JWT_TOKEN")
 
 
