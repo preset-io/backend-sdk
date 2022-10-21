@@ -95,7 +95,7 @@ workspace_role_identifiers = {
 
 
 @click.group()
-@click.option("--baseurl", default="https://manage.app.preset.io/")
+@click.option("--baseurl", default="https://api.app.preset.io/")
 @click.option("--api-token", envvar="PRESET_API_TOKEN")
 @click.option("--api-secret", envvar="PRESET_API_SECRET")
 @click.option("--jwt-token", envvar="PRESET_JWT_TOKEN")

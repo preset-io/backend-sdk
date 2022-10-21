@@ -16,7 +16,7 @@ def test_preset_client_get_teams(mocker: MockerFixture, requests_mock: Mocker) -
     Test the ``get_teams`` method.
     """
     _logger = mocker.patch("preset_cli.api.clients.preset._logger")
-    requests_mock.get("https://ws.preset.io/api/v1/teams/", json={"payload": [1, 2, 3]})
+    requests_mock.get("https://ws.preset.io/v1/teams", json={"payload": [1, 2, 3]})
 
     auth = Auth()
     client = PresetClient("https://ws.preset.io/", auth)
@@ -24,7 +24,7 @@ def test_preset_client_get_teams(mocker: MockerFixture, requests_mock: Mocker) -
     assert teams == [1, 2, 3]
     _logger.debug.assert_called_with(
         "GET %s",
-        URL("https://ws.preset.io/api/v1/teams/"),
+        URL("https://ws.preset.io/v1/teams"),
     )
 
 
@@ -33,7 +33,7 @@ def test_preset_client_get_workspaces(requests_mock: Mocker) -> None:
     Test the ``get_workspaces`` method.
     """
     requests_mock.get(
-        "https://ws.preset.io/api/v1/teams/botafogo/workspaces/",
+        "https://ws.preset.io/v1/teams/botafogo/workspaces",
         json={"payload": [1, 2, 3]},
     )
 
@@ -48,10 +48,10 @@ def test_preset_client_invite_users(requests_mock: Mocker) -> None:
     Test the ``invite_users`` method.
     """
     mock1 = requests_mock.post(
-        "https://ws.preset.io/api/v1/teams/team1/invites/many",
+        "https://ws.preset.io/v1/teams/team1/invites/many",
     )
     mock2 = requests_mock.post(
-        "https://ws.preset.io/api/v1/teams/team2/invites/many",
+        "https://ws.preset.io/v1/teams/team2/invites/many",
     )
 
     auth = Auth()
@@ -75,13 +75,13 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
     Test the ``export_users`` method.
     """
     requests_mock.get(
-        "https://ws.preset.io/api/v1/teams/",
+        "https://ws.preset.io/v1/teams",
         json={
             "payload": [{"name": "team1"}],
         },
     )
     requests_mock.get(
-        "https://ws.preset.io/api/v1/teams/team1/workspaces/",
+        "https://ws.preset.io/v1/teams/team1/workspaces",
         json={
             "payload": [
                 {"id": 1, "hostname": "other.example.org"},
@@ -91,7 +91,7 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
         },
     )
     requests_mock.get(
-        "https://ws.preset.io/api/v1/teams/team1/workspaces/2/memberships",
+        "https://ws.preset.io/v1/teams/team1/workspaces/2/memberships",
         json={
             "payload": [
                 {
@@ -158,7 +158,7 @@ def test_preset_client_export_users_no_teams(requests_mock: Mocker) -> None:
     Test the ``export_users`` method when no teams exist.
     """
     requests_mock.get(
-        "https://ws.preset.io/api/v1/teams/",
+        "https://ws.preset.io/v1/teams",
         json={"payload": []},
     )
 
@@ -174,13 +174,13 @@ def test_preset_client_export_users_no_workspaces(requests_mock: Mocker) -> None
     Test the ``export_users`` method when no teams exist.
     """
     requests_mock.get(
-        "https://ws.preset.io/api/v1/teams/",
+        "https://ws.preset.io/v1/teams",
         json={
             "payload": [{"name": "team1"}],
         },
     )
     requests_mock.get(
-        "https://ws.preset.io/api/v1/teams/team1/workspaces/",
+        "https://ws.preset.io/v1/teams/team1/workspaces",
         json={"payload": []},
     )
 
@@ -195,7 +195,7 @@ def test_preset_client_import_users(requests_mock: Mocker) -> None:
     """
     Test the ``import_users`` method.
     """
-    requests_mock.post("https://ws.preset.io/api/v1/teams/team1/scim/v2/Users")
+    requests_mock.post("https://ws.preset.io/v1/teams/team1/scim/v2/Users")
 
     auth = Auth()
     client = PresetClient("https://ws.preset.io/", auth)
@@ -234,7 +234,7 @@ def test_get_team_members(requests_mock: Mocker) -> None:
     Test the ``get_team_members`` method.
     """
     requests_mock.get(
-        "https://ws.preset.io/api/v1/teams/botafogo/memberships",
+        "https://ws.preset.io/v1/teams/botafogo/memberships",
         json={
             "payload": [
                 {
@@ -299,7 +299,7 @@ def test_change_team_role(requests_mock: Mocker) -> None:
     """
     Test the ``change_team_role`` method.
     """
-    requests_mock.patch("https://ws.preset.io/api/v1/teams/botafogo/memberships/1")
+    requests_mock.patch("https://ws.preset.io/v1/teams/botafogo/memberships/1")
 
     auth = Auth()
     client = PresetClient("https://ws.preset.io/", auth)
@@ -313,7 +313,7 @@ def test_change_workspace_role(requests_mock: Mocker) -> None:
     Test the ``change_workspace_role`` method.
     """
     requests_mock.put(
-        "https://ws.preset.io/api/v1/teams/botafogo/workspaces/1/membership",
+        "https://ws.preset.io/v1/teams/botafogo/workspaces/1/membership",
     )
 
     auth = Auth()
