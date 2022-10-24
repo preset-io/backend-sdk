@@ -230,4 +230,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         self.session.put(url, json=payload)
 
     def get_base_url(self, version: Optional[str] = "v1") -> URL:
+        """
+        Return the base URL for API calls.
+        """
         return self.baseurl / version

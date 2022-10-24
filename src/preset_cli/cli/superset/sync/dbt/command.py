@@ -160,7 +160,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     )
     if exposures:
         exposures = os.path.expanduser(exposures)
-        sync_exposures(client, Path(exposures), datasets)
+        sync_exposures(client, Path(exposures), datasets, models)
 
 
 @click.command()

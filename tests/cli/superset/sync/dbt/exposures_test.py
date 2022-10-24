@@ -14,6 +14,7 @@ from pytest_mock import MockerFixture
 from yarl import URL
 
 from preset_cli.cli.superset.sync.dbt.exposures import (
+    ModelKey,
     get_chart_depends_on,
     get_dashboard_depends_on,
     sync_exposures,
@@ -503,7 +504,7 @@ def test_get_dashboard_depends_on(mocker: MockerFixture) -> None:
     session = client.auth.get_session()
     session.get().json.return_value = datasets_response
 
-    depends_on = get_dashboard_depends_on(client, dashboard_response["result"])
+    depends_on = get_dashboard_depends_on(client, dashboard_response["result"], {})
     assert depends_on == ["ref('messages_channels')"]
 
 
@@ -518,7 +519,7 @@ def test_get_dashboard_depends_on_no_extra(mocker: MockerFixture) -> None:
     session = client.auth.get_session()
     session.get().json.return_value = datasets_response
 
-    depends_on = get_dashboard_depends_on(client, dashboard_response["result"])
+    depends_on = get_dashboard_depends_on(client, dashboard_response["result"], {})
     assert not depends_on
 
 
@@ -533,7 +534,7 @@ def test_get_dashboard_depends_on_invalid_extra(mocker: MockerFixture) -> None:
     session = client.auth.get_session()
     session.get().json.return_value = datasets_response
 
-    depends_on = get_dashboard_depends_on(client, dashboard_response["result"])
+    depends_on = get_dashboard_depends_on(client, dashboard_response["result"], {})
     assert not depends_on
 
 
@@ -544,7 +545,7 @@ def test_get_chart_depends_on(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     client.get_dataset.return_value = dataset_response
 
-    depends_on = get_chart_depends_on(client, chart_response["result"])
+    depends_on = get_chart_depends_on(client, chart_response["result"], {})
     assert depends_on == ["ref('messages_channels')"]
 
 
@@ -557,7 +558,7 @@ def test_get_chart_depends_on_no_extra(mocker: MockerFixture) -> None:
     modified_dataset_response["result"]["extra"] = None  # type: ignore
     client.get_dataset.return_value = modified_dataset_response
 
-    depends_on = get_chart_depends_on(client, chart_response["result"])
+    depends_on = get_chart_depends_on(client, chart_response["result"], {})
     assert not depends_on
 
 
@@ -585,7 +586,7 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
     datasets = [dataset_response["result"]]
-    sync_exposures(client, exposures, datasets)
+    sync_exposures(client, exposures, datasets, [])
 
     with open(exposures, encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -622,7 +623,7 @@ def test_sync_exposures_no_charts_no_dashboards(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test ``sync_exposures`` when no dashboads use the datasets.
+    Test ``sync_exposures`` when no dashboards use the datasets.
     """
     root = Path("/path/to/root")
     fs.create_dir(root / "models")
@@ -637,7 +638,7 @@ def test_sync_exposures_no_charts_no_dashboards(
     session.get().json.return_value = no_related_objects_response
 
     datasets = [dataset_response["result"]]
-    sync_exposures(client, exposures, datasets)
+    sync_exposures(client, exposures, datasets, [])
 
     with open(exposures, encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -645,3 +646,44 @@ def test_sync_exposures_no_charts_no_dashboards(
         "version": 2,
         "exposures": [],
     }
+
+
+def test_get_chart_depends_on_from_dataset(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_exposures`` when datasets don't have model metadata.
+
+    This is the case when users created the datasets manually, pointing them to dbt
+    models, but still want to sync exposures back to dbt.
+    """
+    client = mocker.MagicMock()
+    modified_dataset_response = copy.deepcopy(dataset_response)
+    modified_dataset_response["result"]["extra"] = None  # type: ignore
+    client.get_dataset.return_value = modified_dataset_response
+
+    key = ModelKey("public", "messages_channels")
+    depends_on = get_chart_depends_on(
+        client,
+        chart_response["result"],
+        {key: "ref(messages_channels)"},
+    )
+    assert depends_on == ["ref(messages_channels)"]
+
+
+def test_get_dashboard_depends_on_from_dataset(mocker: MockerFixture) -> None:
+    """
+    Test ``get_dashboard_depends_on`` when dataset don't have model metadata.
+    """
+    client = mocker.MagicMock()
+    modified_dataset_response = copy.deepcopy(dataset_response)
+    modified_dataset_response["result"]["extra"] = None  # type: ignore
+    client.get_dataset.return_value = modified_dataset_response
+    session = client.auth.get_session()
+    session.get().json.return_value = datasets_response
+
+    key = ModelKey("public", "messages_channels")
+    depends_on = get_dashboard_depends_on(
+        client,
+        dashboard_response["result"],
+        {key: "ref(messages_channels)"},
+    )
+    assert depends_on == ["ref(messages_channels)"]

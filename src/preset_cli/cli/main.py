@@ -103,7 +103,7 @@ workspace_role_identifiers = {
 @click.option("--loglevel", default="INFO")
 @click.version_option()
 @click.pass_context
-def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-arguments
+def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-arguments, too-many-statements
     ctx: click.core.Context,
     baseurl: str,
     api_token: Optional[str],
@@ -153,7 +153,10 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                 api_token = input("API token: ")
                 api_secret = getpass.getpass("API secret: ")
                 store_credentials(
-                    api_token, api_secret, manager_api_url, credentials_path
+                    api_token,
+                    api_secret,
+                    manager_api_url,
+                    credentials_path,
                 )
 
         api_token = cast(str, api_token)
