@@ -163,9 +163,94 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
         sync_exposures(client, Path(exposures), datasets)
 
 
+def get_account_id(client: DBTClient) -> int:
+    """
+    Prompt used for an account ID.
+    """
+    accounts = client.get_accounts()
+    if not accounts:
+        click.echo(click.style("No accounts available", fg="bright_red"))
+        sys.exit(1)
+    if len(accounts) == 1:
+        return accounts[0]["id"]
+    click.echo("Choose an account:")
+    for i, account in enumerate(accounts):
+        click.echo(f'({i+1}) {account["name"]}')
+
+    while True:
+        try:
+            choice = int(input("> "))
+        except Exception:  # pylint: disable=broad-except
+            choice = -1
+        if 0 < choice <= len(accounts):
+            return accounts[choice - 1]["id"]
+        click.echo("Invalid choice")
+
+
+def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
+    """
+    Prompt user for a project id.
+    """
+    if account_id is None:
+        account_id = get_account_id(client)
+
+    projects = client.get_projects(account_id)
+    if not projects:
+        click.echo(click.style("No project available", fg="bright_red"))
+        sys.exit(1)
+    if len(projects) == 1:
+        return projects[0]["id"]
+    click.echo("Choose a project:")
+    for i, project in enumerate(projects):
+        click.echo(f'({i+1}) {project["name"]}')
+
+    while True:
+        try:
+            choice = int(input("> "))
+        except Exception:  # pylint: disable=broad-except
+            choice = -1
+        if 0 < choice <= len(projects):
+            return projects[choice - 1]["id"]
+        click.echo("Invalid choice")
+
+
+def get_job_id(
+    client: DBTClient,
+    account_id: Optional[int] = None,
+    project_id: Optional[int] = None,
+) -> int:
+    """
+    Prompt users for a job ID.
+    """
+    if account_id is None:
+        account_id = get_account_id(client)
+    if project_id is None:
+        project_id = get_project_id(client, account_id)
+
+    jobs = client.get_jobs(account_id, project_id)
+    if not jobs:
+        click.echo(click.style("No jobs available", fg="bright_red"))
+        sys.exit(1)
+    if len(jobs) == 1:
+        return jobs[0]["id"]
+
+    click.echo("Choose a job:")
+    for i, job in enumerate(jobs):
+        click.echo(f'({i+1}) {job["name"]}')
+
+    while True:
+        try:
+            choice = int(input("> "))
+        except Exception:  # pylint: disable=broad-except
+            choice = -1
+        if 0 < choice <= len(jobs):
+            return jobs[choice - 1]["id"]
+        click.echo("Invalid choice")
+
+
 @click.command()
 @click.argument("token")
-@click.argument("job_id", type=click.INT)
+@click.argument("job_id", type=click.INT, required=False, default=None)
 @click.option(
     "--disallow-edits",
     is_flag=True,
@@ -189,9 +274,9 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
     token: str,
-    job_id: int,
     select: Tuple[str, ...],
     exclude: Tuple[str, ...],
+    job_id: Optional[int] = None,
     disallow_edits: bool = True,
     external_url_prefix: str = "",
 ) -> None:
@@ -205,6 +290,9 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     dbt_auth = TokenAuth(token)
     dbt_client = DBTClient(dbt_auth)
 
+    if job_id is None:
+        job_id = get_job_id(dbt_client)
+
     # with dbt cloud the database must already exist
     database_name = dbt_client.get_database_name(job_id)
     databases = superset_client.get_databases(database_name=database_name)
@@ -214,7 +302,9 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     if len(databases) > 1:
         raise Exception("More than one database with the same name found")
 
-    database = databases[0]
+    # need to get the database by itself so the response has the SQLAlchemy URI
+    database = superset_client.get_database(databases[0]["id"])["result"]
+
     models = dbt_client.get_models(job_id)
     models = apply_select(models, select, exclude)
     metrics = dbt_client.get_metrics(job_id)
