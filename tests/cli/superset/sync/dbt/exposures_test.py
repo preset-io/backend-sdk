@@ -501,7 +501,7 @@ def test_get_dashboard_depends_on(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     client.get_dataset.return_value = dataset_response
-    session = client.auth.get_session()
+    session = client.auth.session
     session.get().json.return_value = datasets_response
 
     depends_on = get_dashboard_depends_on(client, dashboard_response["result"], {})
@@ -516,7 +516,7 @@ def test_get_dashboard_depends_on_no_extra(mocker: MockerFixture) -> None:
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = None  # type: ignore
     client.get_dataset.return_value = modified_dataset_response
-    session = client.auth.get_session()
+    session = client.auth.session
     session.get().json.return_value = datasets_response
 
     depends_on = get_dashboard_depends_on(client, dashboard_response["result"], {})
@@ -531,7 +531,7 @@ def test_get_dashboard_depends_on_invalid_extra(mocker: MockerFixture) -> None:
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = "{[("  # type: ignore
     client.get_dataset.return_value = modified_dataset_response
-    session = client.auth.get_session()
+    session = client.auth.session
     session.get().json.return_value = datasets_response
 
     depends_on = get_dashboard_depends_on(client, dashboard_response["result"], {})
@@ -574,7 +574,7 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     client.baseurl = URL("https://superset.example.org/")
     client.get_chart.return_value = chart_response
     client.get_dashboard.return_value = dashboard_response
-    session = client.auth.get_session()
+    session = client.auth.session
     session.get().json.return_value = related_objects_response
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.exposures.get_dashboard_depends_on",
@@ -631,7 +631,7 @@ def test_sync_exposures_no_charts_no_dashboards(
 
     client = mocker.MagicMock()
     client.baseurl = URL("https://superset.example.org/")
-    session = client.auth.get_session()
+    session = client.auth.session
     no_related_objects_response = copy.deepcopy(related_objects_response)
     no_related_objects_response["charts"]["result"] = []
     no_related_objects_response["dashboards"]["result"] = []
@@ -677,7 +677,7 @@ def test_get_dashboard_depends_on_from_dataset(mocker: MockerFixture) -> None:
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = None  # type: ignore
     client.get_dataset.return_value = modified_dataset_response
-    session = client.auth.get_session()
+    session = client.auth.session
     session.get().json.return_value = datasets_response
 
     key = ModelKey("public", "messages_channels")
