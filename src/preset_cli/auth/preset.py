@@ -11,6 +11,12 @@ from preset_cli.auth.lib import get_access_token, get_credentials_path
 from preset_cli.auth.main import Auth
 
 
+class JWTTokenError(Exception):
+    """
+    Exception raised when fetching the JWT fails.
+    """
+
+
 class PresetAuth(Auth):  # pylint: disable=too-few-public-methods
     """
     Auth via Preset access token and secret.
@@ -33,7 +39,10 @@ class PresetAuth(Auth):  # pylint: disable=too-few-public-methods
         """
         Fetch the JWT and store it.
         """
-        self.token = get_access_token(self.baseurl, self.api_token, self.api_secret)
+        try:
+            self.token = get_access_token(self.baseurl, self.api_token, self.api_secret)
+        except Exception as ex:  # pylint: disable=broad-except
+            raise JWTTokenError("Unable to fetch JWT") from ex
 
     @classmethod
     def from_stored_credentials(cls) -> "PresetAuth":
