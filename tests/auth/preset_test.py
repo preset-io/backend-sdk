@@ -44,7 +44,6 @@ def test_preset_auth_reauth(mocker: MockerFixture, requests_mock: Mocker) -> Non
     )
 
     auth = PresetAuth(URL("https:/api.app.preset.io/"), "TOKEN", "SECRET")
-    print(auth.get_headers())
     assert auth.get_headers() == {"Authorization": "Bearer JWT_TOKEN1"}
     response = auth.session.get("https://api.app.preset.io/")
     assert response.status_code == 200
