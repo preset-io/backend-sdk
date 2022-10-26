@@ -111,7 +111,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         False,
         "",
     )
-    sync_exposures.assert_called_with(client, exposures, sync_datasets())
+    sync_exposures.assert_called_with(client, exposures, sync_datasets(), models)
 
 
 def test_dbt_core_dbt_project(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -289,7 +289,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         False,
         "",
     )
-    sync_exposures.assert_called_with(client, exposures, sync_datasets())
+    sync_exposures.assert_called_with(client, exposures, sync_datasets(), models)
 
 
 def test_dbt_core_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:

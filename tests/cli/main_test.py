@@ -274,7 +274,9 @@ def test_cmd_handling_failed_creds(
     )
     assert result.exit_code == 1
     get_access_token.assert_called_with(
-        URL("https://api.app.preset.io/"), "API_TOKEN", "API_SECRET"
+        URL("https://api.app.preset.io/"),
+        "API_TOKEN",
+        "API_SECRET",
     )
 
 
