@@ -6,14 +6,16 @@ import getpass
 import importlib.util
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, Iterator, Tuple
 from zipfile import ZipFile
 
+import backoff
 import click
+import requests
 import yaml
 from jinja2 import Template
 from sqlalchemy.engine import create_engine
@@ -194,8 +196,6 @@ def import_resources_individually(
     configs: Dict[Path, AssetConfig],
     client: SupersetClient,
     overwrite: bool,
-    retries: int = 3,
-    retry_wait: timedelta = timedelta(seconds=5),
 ) -> None:
     """
     Import contents individually.
@@ -224,25 +224,7 @@ def import_resources_individually(
 
             _logger.info("Importing %s", path.relative_to("bundle"))
             contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-
-            # use retries, since when importing assets individually there's a higher
-            # chance that a request will fail
-            for retry in range(retries + 1):
-                if retry > 0:
-                    _logger.info("Retrying (%d/%d)", retry, retries)
-                try:
-                    import_resources(contents, client, overwrite)
-                    break
-                except ConnectionError:
-                    if retry < retries:
-                        _logger.warning(
-                            "Failed to connect, will retry in %d seconds",
-                            retry_wait.total_seconds(),
-                        )
-            else:
-                _logger.error("Failed to connect, no more retries left... giving up")
-                raise Exception("Unable to connect")
-
+            import_resources(contents, client, overwrite)
             related_configs[config["uuid"]] = asset_configs
 
 
@@ -290,6 +272,13 @@ def prompt_for_passwords(path: Path, config: Dict[str, Any]) -> None:
         )
 
 
+@backoff.on_exception(
+    backoff.expo,
+    (requests.exceptions.ConnectionError, requests.exceptions.Timeout),
+    max_time=60,
+    max_tries=5,
+    logger=__name__,
+)
 def import_resources(
     contents: Dict[str, str],
     client: SupersetClient,

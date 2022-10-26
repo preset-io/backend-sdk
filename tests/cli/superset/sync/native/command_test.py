@@ -9,6 +9,7 @@ from unittest import mock
 from zipfile import ZipFile
 
 import pytest
+import requests
 import yaml
 from click.testing import CliRunner
 from freezegun import freeze_time
@@ -589,43 +590,35 @@ def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
 
-def test_import_resources_individually_retries(mocker: MockerFixture) -> None:
+def test_import_resources_individually_retries(
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     Test retries in ``import_resources_individually``.
     """
-    client = mocker.MagicMock()
-    _logger = mocker.patch("preset_cli.cli.superset.sync.native.command._logger")
+    # prevent test from actually waiting between tries
+    monkeypatch.setattr("time.sleep", lambda x: None)
 
-    mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.import_resources",
-        side_effect=[
-            ConnectionError("Connection aborted."),
-            ConnectionError("Connection aborted."),
-            None,
-        ],
-    )
+    client = mocker.MagicMock()
+
+    client.import_zip.side_effect = [
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+        None,
+    ]
     contents = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
     }
     import_resources_individually(contents, client, overwrite=True)
-    _logger.warning.assert_has_calls(
-        [
-            mocker.call("Failed to connect, will retry in %d seconds", 5),
-            mocker.call("Failed to connect, will retry in %d seconds", 5),
-        ],
-    )
 
-    mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.import_resources",
-        side_effect=[
-            ConnectionError("Connection aborted."),
-            ConnectionError("Connection aborted."),
-            None,
-        ],
-    )
+    client.import_zip.side_effect = [
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+    ]
     with pytest.raises(Exception) as excinfo:
-        import_resources_individually(contents, client, overwrite=True, retries=1)
-    _logger.error.assert_called_with(
-        "Failed to connect, no more retries left... giving up",
-    )
-    assert str(excinfo.value) == "Unable to connect"
+        import_resources_individually(contents, client, overwrite=True)
+    assert str(excinfo.value) == "Connection aborted."
