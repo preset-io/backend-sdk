@@ -296,7 +296,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Run a dimensional query.
         """
-        dataset = self.get_dataset(dataset_id)["result"]
+        dataset = self.get_dataset(dataset_id)
 
         if time_column is None:
             time_columns = [
@@ -394,7 +394,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         response = self.session.get(url)
         validate_response(response)
 
-        resource = response.json()
+        resource = response.json()["result"]
 
         return resource
 

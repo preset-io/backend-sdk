@@ -34,7 +34,7 @@ def get_chart_depends_on(
 
     query_context = json.loads(chart["query_context"])
     dataset_id = query_context["datasource"]["id"]
-    dataset = client.get_dataset(dataset_id)["result"]
+    dataset = client.get_dataset(dataset_id)
     extra = json.loads(dataset["extra"] or "{}")
     if "depends_on" in extra:
         return [extra["depends_on"]]
@@ -66,7 +66,7 @@ def get_dashboard_depends_on(
 
     depends_on = []
     for dataset in payload["result"]:
-        full_dataset = client.get_dataset(int(dataset["id"]))["result"]
+        full_dataset = client.get_dataset(int(dataset["id"]))
         try:
             extra = json.loads(full_dataset["extra"] or "{}")
         except json.decoder.JSONDecodeError:
@@ -114,7 +114,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
             dashboards_ids.add(dashboard["id"])
 
     for chart_id in charts_ids:
-        chart = client.get_chart(chart_id)["result"]
+        chart = client.get_chart(chart_id)
         first_owner = chart["owners"][0]
         exposure = {
             "name": chart["slice_name"] + " [chart]",
@@ -135,7 +135,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
         exposures.append(exposure)
 
     for dashboard_id in dashboards_ids:
-        dashboard = client.get_dashboard(dashboard_id)["result"]
+        dashboard = client.get_dashboard(dashboard_id)
         first_owner = dashboard["owners"][0]
         exposure = {
             "name": dashboard["dashboard_title"] + " [dashboard]",

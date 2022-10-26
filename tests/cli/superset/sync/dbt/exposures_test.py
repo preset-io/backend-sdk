@@ -500,7 +500,7 @@ def test_get_dashboard_depends_on(mocker: MockerFixture) -> None:
     Test ``get_dashboard_depends_on``.
     """
     client = mocker.MagicMock()
-    client.get_dataset.return_value = dataset_response
+    client.get_dataset.return_value = dataset_response["result"]
     session = client.auth.session
     session.get().json.return_value = datasets_response
 
@@ -515,7 +515,7 @@ def test_get_dashboard_depends_on_no_extra(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = None  # type: ignore
-    client.get_dataset.return_value = modified_dataset_response
+    client.get_dataset.return_value = modified_dataset_response["result"]
     session = client.auth.session
     session.get().json.return_value = datasets_response
 
@@ -530,7 +530,7 @@ def test_get_dashboard_depends_on_invalid_extra(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = "{[("  # type: ignore
-    client.get_dataset.return_value = modified_dataset_response
+    client.get_dataset.return_value = modified_dataset_response["result"]
     session = client.auth.session
     session.get().json.return_value = datasets_response
 
@@ -543,7 +543,7 @@ def test_get_chart_depends_on(mocker: MockerFixture) -> None:
     Test ``get_chart_depends_on``.
     """
     client = mocker.MagicMock()
-    client.get_dataset.return_value = dataset_response
+    client.get_dataset.return_value = dataset_response["result"]
 
     depends_on = get_chart_depends_on(client, chart_response["result"], {})
     assert depends_on == ["ref('messages_channels')"]
@@ -556,7 +556,7 @@ def test_get_chart_depends_on_no_extra(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = None  # type: ignore
-    client.get_dataset.return_value = modified_dataset_response
+    client.get_dataset.return_value = modified_dataset_response["result"]
 
     depends_on = get_chart_depends_on(client, chart_response["result"], {})
     assert not depends_on
@@ -572,8 +572,8 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     client = mocker.MagicMock()
     client.baseurl = URL("https://superset.example.org/")
-    client.get_chart.return_value = chart_response
-    client.get_dashboard.return_value = dashboard_response
+    client.get_chart.return_value = chart_response["result"]
+    client.get_dashboard.return_value = dashboard_response["result"]
     session = client.auth.session
     session.get().json.return_value = related_objects_response
     mocker.patch(
@@ -658,7 +658,7 @@ def test_get_chart_depends_on_from_dataset(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = None  # type: ignore
-    client.get_dataset.return_value = modified_dataset_response
+    client.get_dataset.return_value = modified_dataset_response["result"]
 
     key = ModelKey("public", "messages_channels")
     depends_on = get_chart_depends_on(
@@ -676,7 +676,7 @@ def test_get_dashboard_depends_on_from_dataset(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     modified_dataset_response = copy.deepcopy(dataset_response)
     modified_dataset_response["result"]["extra"] = None  # type: ignore
-    client.get_dataset.return_value = modified_dataset_response
+    client.get_dataset.return_value = modified_dataset_response["result"]
     session = client.auth.session
     session.get().json.return_value = datasets_response
 
