@@ -6,7 +6,7 @@ import getpass
 import importlib.util
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
@@ -194,6 +194,8 @@ def import_resources_individually(
     configs: Dict[Path, AssetConfig],
     client: SupersetClient,
     overwrite: bool,
+    retries: int = 3,
+    retry_wait: timedelta = timedelta(seconds=5),
 ) -> None:
     """
     Import contents individually.
@@ -213,14 +215,35 @@ def import_resources_individually(
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
     for resource_name, get_related_uuids in imports:
         for path, config in configs.items():
-            if path.parts[1] == resource_name:
-                asset_configs = {path: config}
-                for uuid in get_related_uuids(config):
-                    asset_configs.update(related_configs[uuid])
-                _logger.info("Importing %s", path.relative_to("bundle"))
-                contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                import_resources(contents, client, overwrite)
-                related_configs[config["uuid"]] = asset_configs
+            if path.parts[1] != resource_name:
+                continue
+
+            asset_configs = {path: config}
+            for uuid in get_related_uuids(config):
+                asset_configs.update(related_configs[uuid])
+
+            _logger.info("Importing %s", path.relative_to("bundle"))
+            contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
+
+            # use retries, since when importing assets individually there's a higher
+            # chance that a request will fail
+            for retry in range(retries + 1):
+                if retry > 0:
+                    _logger.info("Retrying (%d/%d)", retry, retries)
+                try:
+                    import_resources(contents, client, overwrite)
+                    break
+                except ConnectionError:
+                    if retry < retries:
+                        _logger.warning(
+                            "Failed to connect, will retry in %d seconds",
+                            retry_wait.total_seconds(),
+                        )
+            else:
+                _logger.error("Failed to connect, no more retries left... giving up")
+                raise Exception("Unable to connect")
+
+            related_configs[config["uuid"]] = asset_configs
 
 
 def get_charts_uuids(config: AssetConfig) -> Iterator[str]:

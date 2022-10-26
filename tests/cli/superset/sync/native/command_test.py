@@ -20,6 +20,7 @@ from sqlalchemy.engine.url import URL
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     import_resources,
+    import_resources_individually,
     load_user_modules,
     prompt_for_passwords,
     raise_helper,
@@ -586,3 +587,45 @@ def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             ),
         ],
     )
+
+
+def test_import_resources_individually_retries(mocker: MockerFixture) -> None:
+    """
+    Test retries in ``import_resources_individually``.
+    """
+    client = mocker.MagicMock()
+    _logger = mocker.patch("preset_cli.cli.superset.sync.native.command._logger")
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+        side_effect=[
+            ConnectionError("Connection aborted."),
+            ConnectionError("Connection aborted."),
+            None,
+        ],
+    )
+    contents = {
+        Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
+    }
+    import_resources_individually(contents, client, overwrite=True)
+    _logger.warning.assert_has_calls(
+        [
+            mocker.call("Failed to connect, will retry in %d seconds", 5),
+            mocker.call("Failed to connect, will retry in %d seconds", 5),
+        ],
+    )
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+        side_effect=[
+            ConnectionError("Connection aborted."),
+            ConnectionError("Connection aborted."),
+            None,
+        ],
+    )
+    with pytest.raises(Exception) as excinfo:
+        import_resources_individually(contents, client, overwrite=True, retries=1)
+    _logger.error.assert_called_with(
+        "Failed to connect, no more retries left... giving up",
+    )
+    assert str(excinfo.value) == "Unable to connect"
