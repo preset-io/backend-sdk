@@ -1,7 +1,7 @@
 """
 Tests for ``preset_cli.cli.main``.
 """
-# pylint: disable=unused-argument, invalid-name, redefined-outer-name
+# pylint: disable=unused-argument, invalid-name, redefined-outer-name, too-many-lines
 
 from pathlib import Path
 from typing import Any, Dict
@@ -219,7 +219,7 @@ def test_auth_overwrite_expired_credentials(
         return_value=credentials_path,
     )
     get_access_token = mocker.patch(
-        "preset_cli.cli.main.get_access_token",
+        "preset_cli.auth.preset.get_access_token",
         side_effect=Exception("Unable to get access token"),
     )
 
@@ -256,7 +256,7 @@ def test_cmd_handling_failed_creds(
         return_value=credentials_path,
     )
     get_access_token = mocker.patch(
-        "preset_cli.cli.main.get_access_token",
+        "preset_cli.auth.preset.get_access_token",
         side_effect=Exception("Unable to get access token"),
     )
 
@@ -296,13 +296,17 @@ def test_jwt_token_credentials_exist(
         "preset_cli.cli.main.get_credentials_path",
         return_value=credentials_path,
     )
-    mocker.patch("preset_cli.cli.main.get_access_token", return_value="JWT_TOKEN")
-    JWTAuth = mocker.patch("preset_cli.cli.main.JWTAuth")
+    mocker.patch("preset_cli.auth.preset.get_access_token", return_value="JWT_TOKEN")
+    PresetAuth = mocker.patch("preset_cli.cli.main.PresetAuth")
 
     runner = CliRunner()
     result = runner.invoke(preset_cli, ["superset", "--help"], catch_exceptions=False)
     assert result.exit_code == 1
-    JWTAuth.assert_called_with("JWT_TOKEN")
+    PresetAuth.assert_called_with(
+        URL("https://api.app.preset.io/"),
+        "API_TOKEN",
+        "API_SECRET",
+    )
 
 
 def test_jwt_token_invalid_credentials(
@@ -321,7 +325,7 @@ def test_jwt_token_invalid_credentials(
         "preset_cli.cli.main.get_credentials_path",
         return_value=credentials_path,
     )
-    mocker.patch("preset_cli.cli.main.get_access_token", return_value="JWT_TOKEN")
+    mocker.patch("preset_cli.auth.preset.get_access_token", return_value="JWT_TOKEN")
 
     runner = CliRunner()
     result = runner.invoke(preset_cli, ["superset", "--help"], catch_exceptions=False)
@@ -345,13 +349,17 @@ def test_jwt_token_prompt_for_credentials(
     getpass = mocker.patch("preset_cli.cli.main.getpass")
     getpass.getpass.return_value = "API_SECRET"
     mocker.patch("preset_cli.cli.main.store_credentials")
-    mocker.patch("preset_cli.cli.main.get_access_token", return_value="JWT_TOKEN")
-    JWTAuth = mocker.patch("preset_cli.cli.main.JWTAuth")
+    mocker.patch("preset_cli.auth.preset.get_access_token", return_value="JWT_TOKEN")
+    PresetAuth = mocker.patch("preset_cli.cli.main.PresetAuth")
 
     runner = CliRunner()
     result = runner.invoke(preset_cli, ["superset", "--help"], catch_exceptions=False)
     assert result.exit_code == 1
-    JWTAuth.assert_called_with("JWT_TOKEN")
+    PresetAuth.assert_called_with(
+        URL("https://api.app.preset.io/"),
+        "API_TOKEN",
+        "API_SECRET",
+    )
 
 
 def test_jwt_token_credentials_passed(
@@ -361,8 +369,8 @@ def test_jwt_token_credentials_passed(
     """
     Test the command when the credentials are stored.
     """
-    mocker.patch("preset_cli.cli.main.get_access_token", return_value="JWT_TOKEN")
-    JWTAuth = mocker.patch("preset_cli.cli.main.JWTAuth")
+    mocker.patch("preset_cli.auth.preset.get_access_token", return_value="JWT_TOKEN")
+    PresetAuth = mocker.patch("preset_cli.cli.main.PresetAuth")
 
     runner = CliRunner()
     result = runner.invoke(
@@ -378,7 +386,11 @@ def test_jwt_token_credentials_passed(
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    JWTAuth.assert_called_with("JWT_TOKEN")
+    PresetAuth.assert_called_with(
+        URL("https://api.app.preset.io/"),
+        "API_TOKEN",
+        "API_SECRET",
+    )
 
 
 def test_workspaces(mocker: MockerFixture) -> None:

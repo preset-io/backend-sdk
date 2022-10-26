@@ -7,7 +7,7 @@ from typing import Dict
 from preset_cli.auth.main import Auth
 
 
-class TokenAuth(Auth):  # pylint: disable=too-few-public-methods
+class TokenAuth(Auth):  # pylint: disable=too-few-public-methods, abstract-method
     """
     Auth via a token.
     """

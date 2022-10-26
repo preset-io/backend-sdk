@@ -8,7 +8,7 @@ from preset_cli.auth.lib import get_access_token, get_credentials_path
 from preset_cli.auth.token import TokenAuth
 
 
-class JWTAuth(TokenAuth):  # pylint: disable=too-few-public-methods
+class JWTAuth(TokenAuth):  # pylint: disable=too-few-public-methods, abstract-method
     """
     Auth via JWT.
     """

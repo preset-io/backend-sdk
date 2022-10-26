@@ -9,6 +9,7 @@ from unittest import mock
 from zipfile import ZipFile
 
 import pytest
+import requests
 import yaml
 from click.testing import CliRunner
 from freezegun import freeze_time
@@ -20,6 +21,7 @@ from sqlalchemy.engine.url import URL
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     import_resources,
+    import_resources_individually,
     load_user_modules,
     prompt_for_passwords,
     raise_helper,
@@ -586,3 +588,37 @@ def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             ),
         ],
     )
+
+
+def test_import_resources_individually_retries(
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Test retries in ``import_resources_individually``.
+    """
+    # prevent test from actually waiting between tries
+    monkeypatch.setattr("time.sleep", lambda x: None)
+
+    client = mocker.MagicMock()
+
+    client.import_zip.side_effect = [
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+        None,
+    ]
+    contents = {
+        Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
+    }
+    import_resources_individually(contents, client, overwrite=True)
+
+    client.import_zip.side_effect = [
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+        requests.exceptions.ConnectionError("Connection aborted."),
+    ]
+    with pytest.raises(Exception) as excinfo:
+        import_resources_individually(contents, client, overwrite=True)
+    assert str(excinfo.value) == "Connection aborted."

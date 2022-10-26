@@ -38,7 +38,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         self.baseurl = URL(baseurl)
         self.auth = auth
 
-        self.session = auth.get_session()
+        self.session = auth.session
         self.session.headers.update(auth.get_headers())
         self.session.headers["User-Agent"] = "Preset CLI"
         self.session.headers["X-Client-Version"] = __version__

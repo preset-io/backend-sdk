@@ -57,7 +57,7 @@ def get_dashboard_depends_on(
 
     url = client.baseurl / "api/v1/dashboard" / str(dashboard["id"]) / "datasets"
 
-    session = client.auth.get_session()
+    session = client.auth.session
     headers = client.auth.get_headers()
     response = session.get(url, headers=headers)
     response.raise_for_status()
@@ -102,7 +102,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
     for dataset in datasets:
         url = client.baseurl / "api/v1/dataset" / str(dataset["id"]) / "related_objects"
 
-        session = client.auth.get_session()
+        session = client.auth.session
         headers = client.auth.get_headers()
         response = session.get(url, headers=headers)
         response.raise_for_status()

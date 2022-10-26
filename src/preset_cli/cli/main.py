@@ -16,12 +16,8 @@ from yarl import URL
 from preset_cli.api.clients.preset import PresetClient
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.jwt import JWTAuth
-from preset_cli.auth.lib import (
-    get_access_token,
-    get_credentials_path,
-    store_credentials,
-)
-from preset_cli.auth.main import Auth
+from preset_cli.auth.lib import get_credentials_path, store_credentials
+from preset_cli.auth.preset import JWTTokenError, PresetAuth
 from preset_cli.cli.superset.main import superset
 from preset_cli.lib import setup_logging, split_comma
 
@@ -126,7 +122,9 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
         # The user is trying to auth themselves, so skip anything auth-related
         return
 
-    if jwt_token is None:
+    if jwt_token:
+        ctx.obj["AUTH"] = JWTAuth(jwt_token)
+    else:
         if api_token is None or api_secret is None:
             # check for stored credentials
             credentials_path = get_credentials_path()
@@ -161,10 +159,9 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
 
         api_token = cast(str, api_token)
         api_secret = cast(str, api_secret)
-
         try:
-            jwt_token = get_access_token(manager_api_url, api_token, api_secret)
-        except Exception:  # pylint: disable=broad-except
+            ctx.obj["AUTH"] = PresetAuth(manager_api_url, api_token, api_secret)
+        except JWTTokenError:
             click.echo(
                 click.style(
                     "Failed to auth using the provided credentials."
@@ -173,9 +170,6 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                 ),
             )
             sys.exit(1)
-
-    # store auth in context so it's used by the Superset SDK
-    ctx.obj["AUTH"] = JWTAuth(jwt_token) if jwt_token else Auth()
 
     if not workspaces and ctx.invoked_subcommand == "superset" and not is_help():
         client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])

@@ -581,7 +581,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         self.graphql_client = GraphqlClient(endpoint=GRAPHQL_ENDPOINT)
         self.baseurl = REST_ENDPOINT
 
-        self.session = auth.get_session()
+        self.session = auth.session
         self.session.headers.update(auth.get_headers())
         self.session.headers["User-Agent"] = "Preset CLI"
         self.session.headers["X-Client-Version"] = __version__
