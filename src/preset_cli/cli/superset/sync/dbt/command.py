@@ -303,7 +303,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         raise Exception("More than one database with the same name found")
 
     # need to get the database by itself so the response has the SQLAlchemy URI
-    database = superset_client.get_database(databases[0]["id"])["result"]
+    database = superset_client.get_database(databases[0]["id"])
 
     models = dbt_client.get_models(job_id)
     models = apply_select(models, select, exclude)

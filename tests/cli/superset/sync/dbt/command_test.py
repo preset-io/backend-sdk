@@ -462,7 +462,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     dbt_client.get_metrics.return_value = metrics
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
-    superset_client.get_database.return_value = {"result": database}
+    superset_client.get_database.return_value = database
 
     runner = CliRunner()
     result = runner.invoke(
@@ -532,7 +532,7 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
     dbt_client.get_jobs.return_value = [{"id": 123, "name": "My job"}]
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
-    superset_client.get_database.return_value = {"result": database}
+    superset_client.get_database.return_value = database
 
     runner = CliRunner()
     result = runner.invoke(

@@ -695,7 +695,7 @@ def test_get_resource(requests_mock: Mocker) -> None:
     # the payload schema is irrelevant, since it's passed through unmodified
     requests_mock.get(
         "https://superset.example.org/api/v1/database/1",
-        json={"Hello": "world"},
+        json={"result": {"Hello": "world"}},
     )
 
     auth = Auth()
