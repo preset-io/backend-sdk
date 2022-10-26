@@ -13,7 +13,9 @@ from types import ModuleType
 from typing import Any, Dict, Iterator, Tuple
 from zipfile import ZipFile
 
+import backoff
 import click
+import requests
 import yaml
 from jinja2 import Template
 from sqlalchemy.engine import create_engine
@@ -213,14 +215,17 @@ def import_resources_individually(
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
     for resource_name, get_related_uuids in imports:
         for path, config in configs.items():
-            if path.parts[1] == resource_name:
-                asset_configs = {path: config}
-                for uuid in get_related_uuids(config):
-                    asset_configs.update(related_configs[uuid])
-                _logger.info("Importing %s", path.relative_to("bundle"))
-                contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                import_resources(contents, client, overwrite)
-                related_configs[config["uuid"]] = asset_configs
+            if path.parts[1] != resource_name:
+                continue
+
+            asset_configs = {path: config}
+            for uuid in get_related_uuids(config):
+                asset_configs.update(related_configs[uuid])
+
+            _logger.info("Importing %s", path.relative_to("bundle"))
+            contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
+            import_resources(contents, client, overwrite)
+            related_configs[config["uuid"]] = asset_configs
 
 
 def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
@@ -267,6 +272,13 @@ def prompt_for_passwords(path: Path, config: Dict[str, Any]) -> None:
         )
 
 
+@backoff.on_exception(
+    backoff.expo,
+    (requests.exceptions.ConnectionError, requests.exceptions.Timeout),
+    max_time=60,
+    max_tries=5,
+    logger=__name__,
+)
 def import_resources(
     contents: Dict[str, str],
     client: SupersetClient,
