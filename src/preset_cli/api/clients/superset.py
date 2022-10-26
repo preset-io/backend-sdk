@@ -221,7 +221,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         self.baseurl = URL(baseurl)
         self.auth = auth
 
-        self.session = auth.get_session()
+        self.session = auth.session
         self.session.headers.update(auth.get_headers())
         self.session.headers["Referer"] = str(self.baseurl)
         self.session.headers["User-Agent"] = f"Apache Superset Client ({__version__})"

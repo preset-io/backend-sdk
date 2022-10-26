@@ -44,10 +44,6 @@ def test_jwt_auth_from_stored_credentials(mocker: MockerFixture) -> None:
         api_secret="SECRET",
     )
 
-    # can also pass a URL
-    auth = JWTAuth.from_stored_credentials()
-    assert auth.token == "JWT_TOKEN"
-
     # test for error
     get_credentials_path().exists.return_value = False
     with pytest.raises(Exception) as excinfo:
