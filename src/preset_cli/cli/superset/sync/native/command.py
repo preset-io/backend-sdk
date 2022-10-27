@@ -221,7 +221,7 @@ def import_resources_individually(
         related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
         for resource_name, get_related_uuids in imports:
             for path, config in configs.items():
-                if path.parts[1] != resource_name or path in imported:
+                if path.parts[1] != resource_name:
                     continue
 
                 asset_configs = {path: config}
@@ -230,12 +230,13 @@ def import_resources_individually(
 
                 _logger.info("Importing %s", path.relative_to("bundle"))
                 contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                import_resources(contents, client, overwrite)
-                related_configs[config["uuid"]] = asset_configs
+                if path not in imported:
+                    import_resources(contents, client, overwrite)
+                    imported.add(path)
+                    log.write(str(path) + "\n")
+                    log.flush()
 
-                imported.add(path)
-                log.write(str(path) + "\n")
-                log.flush()
+                related_configs[config["uuid"]] = asset_configs
 
     os.unlink(checkpoint_path)
 
