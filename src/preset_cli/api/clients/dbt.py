@@ -31,7 +31,7 @@ class PostelSchema(Schema):
     """
     Be liberal in what you accept, and conservative in what you send.
 
-    A schema that allows unknown fields. This way if they API returns new fields that
+    A schema that allows unknown fields. This way if the API returns new fields that
     the client is not expecting no errors will be thrown when validating the payload.
     """
 

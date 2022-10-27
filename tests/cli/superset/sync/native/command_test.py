@@ -607,10 +607,10 @@ def test_import_resources_individually_retries(
         requests.exceptions.ConnectionError("Connection aborted."),
         None,
     ]
-    contents = {
+    configs = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
     }
-    import_resources_individually(contents, client, overwrite=True)
+    import_resources_individually(configs, client, overwrite=True)
 
     client.import_zip.side_effect = [
         requests.exceptions.ConnectionError("Connection aborted."),
@@ -620,5 +620,75 @@ def test_import_resources_individually_retries(
         requests.exceptions.ConnectionError("Connection aborted."),
     ]
     with pytest.raises(Exception) as excinfo:
-        import_resources_individually(contents, client, overwrite=True)
+        import_resources_individually(configs, client, overwrite=True)
     assert str(excinfo.value) == "Connection aborted."
+
+
+def test_import_resources_individually_checkpoint(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,  # pylint: disable=unused-argument
+) -> None:
+    """
+    Test checkpoint in ``import_resources_individually``.
+    """
+    client = mocker.MagicMock()
+    configs = {
+        Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
+        Path("bundle/databases/psql.yaml"): {
+            "name": "my other database",
+            "uuid": "uuid2",
+        },
+    }
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    import_resources.side_effect = [None, Exception("An error occurred!"), None]
+
+    with pytest.raises(Exception) as excinfo:
+        import_resources_individually(configs, client, overwrite=True)
+    assert str(excinfo.value) == "An error occurred!"
+
+    import_resources.assert_has_calls(
+        [
+            mocker.call(
+                {
+                    "bundle/databases/gsheets.yaml": yaml.dump(
+                        {"name": "my database", "uuid": "uuid1"},
+                    ),
+                },
+                client,
+                True,
+            ),
+            mocker.call(
+                {
+                    "bundle/databases/psql.yaml": yaml.dump(
+                        {"name": "my other database", "uuid": "uuid2"},
+                    ),
+                },
+                client,
+                True,
+            ),
+        ],
+    )
+
+    with open("checkpoint.log", encoding="utf-8") as log:
+        assert log.read() == "bundle/databases/gsheets.yaml\n"
+
+    # retry
+    import_resources.mock_reset()
+    import_resources_individually(configs, client, overwrite=True)
+    import_resources.assert_has_calls(
+        [
+            mock.call(
+                {
+                    "bundle/databases/psql.yaml": yaml.dump(
+                        {"name": "my other database", "uuid": "uuid2"},
+                    ),
+                },
+                client,
+                True,
+            ),
+        ],
+    )
+
+    assert not Path("checkpoint.log").exists()
