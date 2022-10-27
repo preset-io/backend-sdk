@@ -204,28 +204,40 @@ def import_resources_individually(
     database info, since it's needed), then charts, on so on. It helps troubleshoot
     problematic exports and large imports.
     """
-    asset_configs: Dict[Path, AssetConfig]
+    # store progress in case the import stops midway
+    checkpoint_path = Path("checkpoint.log")
+    if not checkpoint_path.exists():
+        checkpoint_path.touch()
 
-    imports = [
-        ("databases", lambda config: []),
-        ("datasets", lambda config: [config["database_uuid"]]),
-        ("charts", lambda config: [config["dataset_uuid"]]),
-        ("dashboards", get_charts_uuids),
-    ]
-    related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
-    for resource_name, get_related_uuids in imports:
-        for path, config in configs.items():
-            if path.parts[1] != resource_name:
-                continue
+    with open(checkpoint_path, "r+", encoding="utf-8") as log:
+        imported = {Path(path.strip()) for path in log.readlines()}
+        asset_configs: Dict[Path, AssetConfig]
+        imports = [
+            ("databases", lambda config: []),
+            ("datasets", lambda config: [config["database_uuid"]]),
+            ("charts", lambda config: [config["dataset_uuid"]]),
+            ("dashboards", get_charts_uuids),
+        ]
+        related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
+        for resource_name, get_related_uuids in imports:
+            for path, config in configs.items():
+                if path.parts[1] != resource_name or path in imported:
+                    continue
 
-            asset_configs = {path: config}
-            for uuid in get_related_uuids(config):
-                asset_configs.update(related_configs[uuid])
+                asset_configs = {path: config}
+                for uuid in get_related_uuids(config):
+                    asset_configs.update(related_configs[uuid])
 
-            _logger.info("Importing %s", path.relative_to("bundle"))
-            contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-            import_resources(contents, client, overwrite)
-            related_configs[config["uuid"]] = asset_configs
+                _logger.info("Importing %s", path.relative_to("bundle"))
+                contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
+                import_resources(contents, client, overwrite)
+                related_configs[config["uuid"]] = asset_configs
+
+                imported.add(path)
+                log.write(str(path) + "\n")
+                log.flush()
+
+    os.unlink(checkpoint_path)
 
 
 def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
