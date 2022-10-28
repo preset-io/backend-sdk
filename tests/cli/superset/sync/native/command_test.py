@@ -208,6 +208,62 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     import_resources.assert_has_calls([mock.call(contents, client, False)])
 
 
+def test_native_params_as_str(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``native`` command when dataset ``params`` are a string.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "uuid1",
+    }
+    dataset_config = {
+        "table_name": "test",
+        "is_managed_externally": False,
+        "params": '{"hello": "world"}',
+    }
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+    fs.create_file(
+        root / "datasets/gsheets/test.yaml",
+        contents=yaml.dump(dataset_config),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_uuids.return_value = {}
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(root)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    contents = {
+        "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+        "bundle/datasets/gsheets/test.yaml": yaml.dump(
+            {
+                "table_name": "test",
+                "is_managed_externally": False,
+                "params": {"hello": "world"},
+            },
+        ),
+    }
+    import_resources.assert_has_calls([mock.call(contents, client, False)])
+
+
 def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``native`` command with databases that have masked passwords.

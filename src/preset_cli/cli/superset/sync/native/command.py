@@ -4,6 +4,7 @@ A command to sync Superset exports into a Superset instance.
 
 import getpass
 import importlib.util
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -188,6 +189,10 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
             ):
                 prompt_for_passwords(relative_path, config)
                 verify_db_connectivity(config)
+            if relative_path.parts[0] == "datasets" and isinstance(
+                config.get("params"), str,
+            ):
+                config["params"] = json.loads(config["params"])
 
             configs["bundle" / relative_path] = config
 
