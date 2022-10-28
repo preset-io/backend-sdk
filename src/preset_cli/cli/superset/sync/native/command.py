@@ -149,6 +149,9 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
 
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
+    # collecting existing database UUIDs so we know if we're creating or updating
+    existing_databases = {str(uuid) for uuid in client.get_uuids("database").values()}
+
     # env for Jinja2 templating
     env = dict(pair.split("=", 1) for pair in option if "=" in pair)  # type: ignore
     env["instance"] = url
@@ -179,7 +182,10 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
                 config["external_url"] = str(
                     base_url / str(relative_path),
                 )
-            if relative_path.parts[0] == "databases":
+            if (
+                relative_path.parts[0] == "databases"
+                and config["uuid"] not in existing_databases
+            ):
                 prompt_for_passwords(relative_path, config)
                 verify_db_connectivity(config)
 
