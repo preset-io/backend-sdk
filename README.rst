@@ -337,7 +337,32 @@ If you're using dbt Cloud you can instead pass a job ID and a `service account a
 
 The token only needs access to the "Metadata only" permission set for your project. You can see the job ID by going to the project URL in dbt Cloud and looking at the last ID in the URL. For example, if the URL is https://cloud.getdbt.com/#/accounts/12345/projects/567890/jobs/ the job ID is 567890.
 
-Before running the command you need to have a database already created in the Preset workspace, and the database should have the same name as the dbt Cloud database. You can run the command before creating the database to see what the name should be.
+By default, the CLI sync would create a new database on the destination workspace using below name structure:
+
+.. code-block:: python
+
+    f"{project_name}_{target_name}")
+
+If you want to sync data to an existing database connection on the workspace instead, you can specify the database name on the profiles YAML file. Add below structure under the ``<target-name>``:
+
+.. code-block:: yaml
+    
+    meta:
+      superset:
+        database_name: my DB name # <= specify the database name used on the workspace
+        
+Example:
+
+.. code-block:: yaml
+
+    jaffle_shop:
+      outputs:
+        dev:
+          meta:
+            superset:
+              database_name: Postgres - Production
+              
+You'll need to use the ``--overwrite`` flag (since the database already exists) and you'll be prompted to enter the DB password.
 
 Selecting models
 ~~~~~~~~~~~~~~~~
