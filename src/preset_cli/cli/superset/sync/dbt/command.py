@@ -18,7 +18,7 @@ from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
-from preset_cli.cli.superset.sync.dbt.exposures import sync_exposures
+from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
 from preset_cli.cli.superset.sync.dbt.lib import apply_select
 from preset_cli.exceptions import DatabaseNotFoundError
 
@@ -62,6 +62,12 @@ from preset_cli.exceptions import DatabaseNotFoundError
     help="Models to exclude",
     multiple=True,
 )
+@click.option(
+    "--exposures-only",
+    is_flag=True,
+    default=False,
+    help="Do not sync models to datasets and only fetch exposures instead",
+)
 @click.pass_context
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
@@ -75,6 +81,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     import_db: bool = False,
     disallow_edits: bool = True,
     external_url_prefix: str = "",
+    exposures_only: bool = True,
 ) -> None:
     """
     Sync models/metrics from dbt Core to Superset and charts/dashboards to dbt exposures.
@@ -114,21 +121,6 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
         )
         sys.exit(1)
 
-    try:
-        database = sync_database(
-            client,
-            Path(profiles),
-            project,
-            profile,
-            target,
-            import_db,
-            disallow_edits,
-            external_url_prefix,
-        )
-    except DatabaseNotFoundError:
-        click.echo("No database was found, pass --import-db to create")
-        return
-
     with open(manifest, encoding="utf-8") as input_:
         configs = yaml.load(input_, Loader=yaml.SafeLoader)
 
@@ -141,26 +133,53 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             config["children"] = configs["child_map"][unique_id]
             models.append(model_schema.load(config, unknown=EXCLUDE))
     models = apply_select(models, select, exclude)
+    model_map = {
+        ModelKey(model["schema"], model["name"]): f'ref({model["name"]})'
+        for model in models
+    }
 
-    metrics = []
-    metric_schema = MetricSchema()
-    for config in configs["metrics"].values():
-        # conform to the same schema that dbt Cloud uses for metrics
-        config["dependsOn"] = config["depends_on"]["nodes"]
-        config["uniqueID"] = config["unique_id"]
-        metrics.append(metric_schema.load(config, unknown=EXCLUDE))
+    if exposures_only:
+        datasets = [
+            dataset
+            for dataset in client.get_datasets()
+            if ModelKey(dataset["schema"], dataset["table_name"]) in model_map
+        ]
+    else:
+        metrics = []
+        metric_schema = MetricSchema()
+        for config in configs["metrics"].values():
+            # conform to the same schema that dbt Cloud uses for metrics
+            config["dependsOn"] = config["depends_on"]["nodes"]
+            config["uniqueID"] = config["unique_id"]
+            metrics.append(metric_schema.load(config, unknown=EXCLUDE))
 
-    datasets = sync_datasets(
-        client,
-        models,
-        metrics,
-        database,
-        disallow_edits,
-        external_url_prefix,
-    )
+        try:
+            database = sync_database(
+                client,
+                Path(profiles),
+                project,
+                profile,
+                target,
+                import_db,
+                disallow_edits,
+                external_url_prefix,
+            )
+        except DatabaseNotFoundError:
+            click.echo("No database was found, pass --import-db to create")
+            return
+
+        datasets = sync_datasets(
+            client,
+            models,
+            metrics,
+            database,
+            disallow_edits,
+            external_url_prefix,
+        )
+
     if exposures:
         exposures = os.path.expanduser(exposures)
-        sync_exposures(client, Path(exposures), datasets, models)
+        sync_exposures(client, Path(exposures), datasets, model_map)
 
 
 def get_account_id(client: DBTClient) -> int:
@@ -257,6 +276,11 @@ def get_job_id(
     default=False,
     help="Mark resources as managed externally to prevent edits",
 )
+@click.option(
+    "--exposures",
+    help="Path to file where exposures will be written",
+    type=click.Path(exists=False),
+)
 @click.option("--external-url-prefix", default="", help="Base URL for resources")
 @click.option(
     "--select",
@@ -270,15 +294,23 @@ def get_job_id(
     help="Models to exclude",
     multiple=True,
 )
+@click.option(
+    "--exposures-only",
+    is_flag=True,
+    default=False,
+    help="Do not sync models to datasets and only fetch exposures instead",
+)
 @click.pass_context
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
     token: str,
     select: Tuple[str, ...],
     exclude: Tuple[str, ...],
+    exposures: Optional[str] = None,
     job_id: Optional[int] = None,
     disallow_edits: bool = True,
     external_url_prefix: str = "",
+    exposures_only: bool = True,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
@@ -307,13 +339,28 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
 
     models = dbt_client.get_models(job_id)
     models = apply_select(models, select, exclude)
+    model_map = {
+        ModelKey(model["schema"], model["name"]): f'ref({model["name"]})'
+        for model in models
+    }
     metrics = dbt_client.get_metrics(job_id)
 
-    sync_datasets(
-        superset_client,
-        models,
-        metrics,
-        database,
-        disallow_edits,
-        external_url_prefix,
-    )
+    if exposures_only:
+        datasets = [
+            dataset
+            for dataset in superset_client.get_datasets()
+            if ModelKey(dataset["schema"], dataset["table_name"]) in model_map
+        ]
+    else:
+        datasets = sync_datasets(
+            superset_client,
+            models,
+            metrics,
+            database,
+            disallow_edits,
+            external_url_prefix,
+        )
+
+    if exposures:
+        exposures = os.path.expanduser(exposures)
+        sync_exposures(superset_client, Path(exposures), datasets, model_map)
