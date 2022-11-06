@@ -3,7 +3,6 @@ Main entry point for the CLI.
 """
 
 import getpass
-import json
 import logging
 import sys
 import webbrowser
