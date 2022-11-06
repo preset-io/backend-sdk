@@ -115,6 +115,7 @@ The following commands are currently available:
 - ``preset-cli auth``: store authentication credentials.
 - ``preset-cli invite-users``: invite users to Preset.
 - ``preset-cli import-users``: automatically add users to Preset.
+- ``preset-cli list-group-membership``: List SCIM groups from a team and their memberships.
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
 - ``preset-cli superset export-assets``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
 - ``preset-cli superset export-ownership``: export resource ownership (UUID -> email) into a YAML file.
@@ -470,3 +471,7 @@ Exporting ownership
 ~~~~~~~~~~~~~~~~~~~
 
 The ``preset-cli superset export-ownership`` command generates a YAML file with information about ownership of different resources. The file maps resource UUIDs to user email address, and in the future will be used to recreate ownership on a different instance of Superset.
+
+Listing SCIM Groups
+~~~~~~~~~~~~~~~~~~~
+The ``preset-cli list-group-membership`` command prints all SCIM groups (including membership) associated with a Preset team. Instead of printing the results on the terminal (whcih can be useful for quick troulbehsooting), it's possible to use ``--save-report=yaml`` or ``--save-report=csv`` to write results to a file. The file name would be ``{TeamSlug}__user_group_membership.{FileExtension}``.

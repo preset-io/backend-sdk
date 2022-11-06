@@ -234,3 +234,17 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         Return the base URL for API calls.
         """
         return self.baseurl / version
+
+    def get_group_membership(
+        self,
+        team_name: str,
+        page: int,
+    ) -> json:
+        """
+        Lists all user/SCIM groups associated with a team
+        """ 
+        url = f'{self.get_base_url()}/teams/{team_name}/scim/v2/Groups?startIndex={page}'
+        self.session.headers["Accept"] = "application/scim+json"
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
+        return response.json()
