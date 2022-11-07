@@ -81,7 +81,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     import_db: bool = False,
     disallow_edits: bool = True,
     external_url_prefix: str = "",
-    exposures_only: bool = True,
+    exposures_only: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Core to Superset and charts/dashboards to dbt exposures.
@@ -310,7 +310,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     job_id: Optional[int] = None,
     disallow_edits: bool = True,
     external_url_prefix: str = "",
-    exposures_only: bool = True,
+    exposures_only: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
