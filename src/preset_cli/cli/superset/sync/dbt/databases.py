@@ -31,7 +31,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
     profiles = load_profiles(profiles_path, project_name, profile_name, target_name)
-    project = profiles[project_name]
+    project = profiles[profile_name]
     outputs = project["outputs"]
     if target_name is None:
         target_name = project["target"]

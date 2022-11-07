@@ -56,3 +56,5 @@ MANIFEST
 .pyre/
 .pyre_configuration
 .watchmanconfig
+
+venv/
