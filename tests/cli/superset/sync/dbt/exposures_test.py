@@ -586,7 +586,7 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
     datasets = [dataset_response["result"]]
-    sync_exposures(client, exposures, datasets, [])
+    sync_exposures(client, exposures, datasets, {})
 
     with open(exposures, encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -638,7 +638,7 @@ def test_sync_exposures_no_charts_no_dashboards(
     session.get().json.return_value = no_related_objects_response
 
     datasets = [dataset_response["result"]]
-    sync_exposures(client, exposures, datasets, [])
+    sync_exposures(client, exposures, datasets, {})
 
     with open(exposures, encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
