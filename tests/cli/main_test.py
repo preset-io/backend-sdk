@@ -999,3 +999,168 @@ def test_sync_user_role_to_workspace(mocker: MockerFixture) -> None:
         1001,
         "PresetGamma",
     )
+
+
+def test_list_group_membership_specified_team(mocker: MockerFixture) -> None:
+    """
+    Test the ``list_group_membership`` command when a team is specified.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_group_membership.return_value = {
+        "Resources": [
+        {
+            "displayName": "SCIM First Test Group",
+            "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
+            "members": [
+            {
+                "display": "Test Account 01",
+                "value": "samlp|example|testaccount01@example.com"
+            },
+            {
+                "display": "Test Account 02",
+                "value": "samlp|example|testaccount02@example.com"
+            }],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        },
+        {
+            "displayName": "SCIM Second Test Group",
+            "id": "fba067fc-506a-452b-8cf4-7d98f6960a6b",
+            "members": [
+            {
+                "display": "Test Account 02",
+                "value": "samlp|example|testaccount02@example.com"
+            }],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        }],
+        "itemsPerPage": 100,
+        "schemas": [
+            "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+        ],
+        "startIndex": 1,
+        "totalResults": 2
+    }
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["list-group-membership", "--teams=team1"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    client.get_group_membership.assert_called_with(
+        "team1", 1
+    )
+
+
+def test_list_group_membership_no_teams(mocker: MockerFixture) -> None:
+    """
+    Test the ``list_group_membership`` command when no teams are available.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = []
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["list-group-membership"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+
+
+def test_list_group_membership_incorrect_export(mocker: MockerFixture) -> None:
+    """
+    Test the ``list_group_membership`` command when using an incorrect value for the --export-report parameter.
+    """
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["list-group-membership", "--teams=botafogo", "--save-report=invalid"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+
+def test_list_group_membership_csv(mocker: MockerFixture) -> None:
+    """
+    Test the ``list_group_membership`` command and setting --export-report=csv.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+
+    client.get_group_membership.return_value = {
+        "Resources": [
+        {
+            "displayName": "SCIM First Test Group",
+            "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
+            "members": [
+            {
+                "display": "Test Account 01",
+                "value": "samlp|example|testaccount01@example.com"
+            },
+            {
+                "display": "Test Account 02",
+                "value": "samlp|example|testaccount02@example.com"
+            }],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        },
+        {
+            "displayName": "SCIM Second Test Group",
+            "id": "fba067fc-506a-452b-8cf4-7d98f6960a6b",
+            "members": [
+            {
+                "display": "Test Account 02",
+                "value": "samlp|example|testaccount02@example.com"
+            }],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        }],
+        "itemsPerPage": 100,
+        "schemas": [
+            "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+        ],
+        "startIndex": 1,
+        "totalResults": 2
+    }
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["list-group-membership", "--teams=botafogo", "--save-report=csv"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+
+    client.get_group_membership.assert_called_with(
+        "botafogo", 1
+    )
