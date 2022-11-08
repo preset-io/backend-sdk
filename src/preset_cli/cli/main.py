@@ -345,7 +345,13 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
     
     # in case --save-report was used, confirm if a valid option was used before sending requests
     if save_report and save_report != 'yaml' and save_report != 'csv':
-        click.echo('Invalid option. Please use --save-report=csv or --save-report=yaml')
+        click.echo(
+            click.style(
+                'Invalid option. Please use --save-report=csv or --save-report=yaml',
+                fg="bright_red",
+            ),
+        )
+        sys.exit(1)
     
     else:
         for team in teams:
@@ -407,7 +413,6 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
 
                 # increment start_at in case a new page is needed
                 start_at = start_at + 100
-        
 
 @click.command()
 @click.option("--teams", callback=split_comma)
