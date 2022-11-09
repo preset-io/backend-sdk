@@ -190,7 +190,8 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
                 prompt_for_passwords(relative_path, config)
                 verify_db_connectivity(config)
             if relative_path.parts[0] == "datasets" and isinstance(
-                config.get("params"), str,
+                config.get("params"),
+                str,
             ):
                 config["params"] = json.loads(config["params"])
 
