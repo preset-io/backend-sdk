@@ -1007,6 +1007,7 @@ def test_list_group_membership_specified_team(mocker: MockerFixture) -> None:
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.assert_not_called()
     client.get_group_membership.return_value = {
         "Resources": [
         {
@@ -1059,6 +1060,7 @@ def test_list_group_membership_specified_team(mocker: MockerFixture) -> None:
         ["list-group-membership", "--teams=team1"],
         catch_exceptions=False,
     )
+
     assert result.exit_code == 0
 
     client.get_group_membership.assert_called_with(

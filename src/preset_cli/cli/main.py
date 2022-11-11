@@ -334,7 +334,7 @@ def invite_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
     help="Save results to a YAML or CSV file instead of priting on the terminal"
 )
 @click.pass_context
-def list_group_membership(ctx: click.core.Context, teams: List[str], save_report: bool = False) -> None:
+def list_group_membership(ctx: click.core.Context, teams: List[str], save_report: str) -> None:
     """
     List SCIM/user groups from Preset team(s)
     """
@@ -344,7 +344,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
         teams = get_teams(client)
     
     # in case --save-report was used, confirm if a valid option was used before sending requests
-    if save_report and save_report != 'yaml' and save_report != 'csv':
+    if save_report and save_report.casefold() != 'yaml' and save_report.casefold() != 'csv':
         click.echo(
             click.style(
                 'Invalid option. Please use --save-report=csv or --save-report=yaml',
