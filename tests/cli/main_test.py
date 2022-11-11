@@ -1060,6 +1060,8 @@ def test_list_group_membership_specified_team(mocker: MockerFixture) -> None:
         ["list-group-membership", "--teams=team1"],
         catch_exceptions=False,
     )
+    
+    print(result)
 
     assert result.exit_code == 0
 
