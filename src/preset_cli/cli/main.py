@@ -351,7 +351,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
                 fg="bright_red",
             ),
         )
-        sys.exit(1)
+        #sys.exit(1)
     
     else:
         for team in teams:
