@@ -351,7 +351,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
                 fg="bright_red",
             ),
         )
-        #sys.exit(1)
+        sys.exit(1)
     
     else:
         for team in teams:
@@ -374,12 +374,12 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
                     # print groups in console
                     if not save_report:
                         for group in groups['Resources']:
-                            click.echo(f'\nName: {group["displayName"]} ID: {group["id"]}')
+                            #click.echo(f'\nName: {group["displayName"]} ID: {group["id"]}')
                             if group.get('members'):
                                 for member in group['members']:
-                                    click.echo(f'# User: {member["display"]} Username: {member["value"]}')
+                                    #click.echo(f'# User: {member["display"]} Username: {member["value"]}')
                             else:
-                                click.echo('# Group with no users.')
+                                #click.echo('# Group with no users.')
                     
                     # write report to a file
                     else:
