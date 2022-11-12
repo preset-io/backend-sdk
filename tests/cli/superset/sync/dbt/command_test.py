@@ -111,7 +111,12 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         False,
         "",
     )
-    sync_exposures.assert_called_with(client, exposures, sync_datasets(), models)
+    sync_exposures.assert_called_with(
+        client,
+        exposures,
+        sync_datasets(),
+        {("public", "messages_channels"): "ref(messages_channels)"},
+    )
 
 
 def test_dbt_core_dbt_project(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -289,7 +294,12 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         False,
         "",
     )
-    sync_exposures.assert_called_with(client, exposures, sync_datasets(), models)
+    sync_exposures.assert_called_with(
+        client,
+        exposures,
+        sync_datasets(),
+        {("public", "messages_channels"): "ref(messages_channels)"},
+    )
 
 
 def test_dbt_core_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -731,3 +741,147 @@ def test_dbt_cloud_multiple_databases(mocker: MockerFixture) -> None:
             catch_exceptions=False,
         )
     assert str(excinfo.value) == "More than one database with the same name found"
+
+
+def test_dbt_core_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``--exposures-only`` option with dbt core.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+    exposures = root / "models/exposures.yml"
+    fs.create_file(exposures)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_datasets.return_value = [
+        {"schema": "public", "table_name": "messages_channels"},
+        {"schema": "public", "table_name": "some_other_table"},
+    ]
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+    )
+    sync_exposures = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--exposures",
+            str(exposures),
+            "--exposures-only",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_database.assert_not_called()
+    sync_datasets.assert_not_called()
+    sync_exposures.assert_called_with(
+        client,
+        exposures,
+        [
+            {"schema": "public", "table_name": "messages_channels"},
+        ],
+        {("public", "messages_channels"): "ref(messages_channels)"},
+    )
+
+
+def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``--exposures-only`` option with dbt cloud.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    exposures = root / "models/exposures.yml"
+    fs.create_file(exposures)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    superset_client.get_datasets.return_value = [
+        {"schema": "public", "table_name": "messages_channels"},
+        {"schema": "public", "table_name": "some_other_table"},
+    ]
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+    )
+    sync_exposures = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
+    )
+    models = [
+        {
+            "database": "examples_dev",
+            "description": "",
+            "meta": {},
+            "name": "messages_channels",
+            "schema": "public",
+            "unique_id": "model.superset_examples.messages_channels",
+        },
+    ]
+    dbt_client.get_models.return_value = models
+    metrics = [
+        {
+            "depends_on": ["model.superset_examples.messages_channels"],
+            "description": "",
+            "filters": [],
+            "label": "",
+            "meta": {},
+            "name": "cnt",
+            "sql": "*",
+            "type": "count",
+        },
+    ]
+    dbt_client.get_metrics.return_value = metrics
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "123",
+            "--exposures",
+            str(exposures),
+            "--exposures-only",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_datasets.assert_not_called()
+    sync_exposures.assert_called_with(
+        superset_client,
+        exposures,
+        [
+            {"schema": "public", "table_name": "messages_channels"},
+        ],
+        {("public", "messages_channels"): "ref(messages_channels)"},
+    )
