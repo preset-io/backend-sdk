@@ -1057,7 +1057,7 @@ def test_list_group_membership_specified_team(mocker: MockerFixture) -> None:
     runner = CliRunner()
     result = runner.invoke(
         preset_cli,
-        ["list-group-membership", "--teams=team1"],
+        ["--jwt-token=XXX", "list-group-membership", "--teams=team1"],
         catch_exceptions=False,
     )
     
@@ -1159,7 +1159,7 @@ def test_list_group_membership_csv(mocker: MockerFixture) -> None:
     runner = CliRunner()
     result = runner.invoke(
         preset_cli,
-        ["list-group-membership", "--teams=botafogo", "--save-report=csv"],
+        ["--jwt-token=XXX", "list-group-membership", "--teams=botafogo", "--save-report=csv"],
         catch_exceptions=False,
     )
 
