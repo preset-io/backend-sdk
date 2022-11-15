@@ -5,7 +5,7 @@ Tests for ``preset_cli.cli.main``.
 
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import call, mock_open, patch
+from unittest.mock import call
 
 import csv
 import os
@@ -1037,6 +1037,7 @@ def test_list_group_membership_specified_team(mocker: MockerFixture) -> None:
     )
     assert result.output == 'Team team1 has no SCIM groups\n\n'
 
+
 def test_list_group_membership_multiple_teams(mocker: MockerFixture) -> None:
     """
     Test the ``list_group_membership`` command when specifying two teams.
@@ -1260,6 +1261,7 @@ def test_list_group_membership_incorrect_export(mocker: MockerFixture) -> None:
 
     client = PresetClient()
     client.get_teams.assert_not_called()
+    client.get_group_membership.not_called = ()
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1268,62 +1270,6 @@ def test_list_group_membership_incorrect_export(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-
-def test_list_group_membership_csv(mocker: MockerFixture) -> None:
-    """
-    Test the ``list_group_membership`` command setting --export-report=csv.
-    """
-    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
-    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
-
-    client = PresetClient()
-    client.get_teams.assert_not_called()
-    client.get_group_membership.return_value = {
-        "Resources": [
-        {
-            "displayName": "SCIM Test Group",
-            "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
-            "members": [
-            {
-                "display": "Test Account 01",
-                "value": "samlp|example|testaccount01@example.com"
-            }],
-            "meta":
-            {
-                "resourceType": "Group"
-            },
-            "schemas": [
-                "urn:ietf:params:scim:schemas:core:2.0:Group"
-            ]
-        }],
-        "itemsPerPage": 100,
-        "schemas": [
-            "urn:ietf:params:scim:api:messages:2.0:ListResponse"
-        ],
-        "startIndex": 1,
-        "totalResults": 1
-    }
-
-    runner = CliRunner()
-    result = runner.invoke(
-        preset_cli,
-        ["--jwt-token=XXX", "list-group-membership", "--teams=team1", "--save-report=csv"],
-        catch_exceptions=False,
-    )
-
-    assert result.exit_code == 0
-
-    client.get_group_membership.assert_called_with(
-        "team1", 1
-    )
-
-    with open('team1_user_group_membership.csv', 'r') as csv_test_output:
-        file_content = csv.reader(csv_test_output)
-        assert next(file_content) == ['Group Name', 'Group ID', 'User', 'Username']
-        for row in file_content:
-            assert row == ['SCIM Test Group', 'b2a691ca-0ef8-464c-9601-9c50158c5426', 'Test Account 01', 'samlp|example|testaccount01@example.com']
-        
-        os.remove('team1_user_group_membership.csv')
 
 
 def test_list_group_membership_yaml(mocker: MockerFixture) -> None:
@@ -1358,7 +1304,7 @@ def test_list_group_membership_yaml(mocker: MockerFixture) -> None:
             "urn:ietf:params:scim:api:messages:2.0:ListResponse"
         ],
         "startIndex": 1,
-        "totalResults": 1
+        "totalResults": 2
     }
 
     runner = CliRunner()
@@ -1397,7 +1343,225 @@ def test_list_group_membership_yaml(mocker: MockerFixture) -> None:
                 "urn:ietf:params:scim:api:messages:2.0:ListResponse"
             ],
             "startIndex": 1,
-            "totalResults": 1
+            "totalResults": 2
         }
 
         os.remove('team1_user_group_membership.yaml')
+
+
+def test_list_group_membership_csv(mocker: MockerFixture) -> None:
+    """
+    Test the ``list_group_membership`` command setting --export-report=csv.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+
+    client = PresetClient()
+    client.get_teams.assert_not_called()
+    client.get_group_membership.return_value = {
+        "Resources": [
+        {
+            "displayName": "SCIM Test Group",
+            "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
+            "members": [
+            {
+                "display": "Test Account 01",
+                "value": "samlp|example|testaccount01@example.com"
+            }],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        },
+        {
+            "displayName": "SCIM Test Group 02",
+            "id": "b2a691ca-0ef8-464c-9601-9c50158c5537",
+            "members": [
+            {
+                "display": "Test Account 02",
+                "value": "samlp|example|testaccount02@example.com"
+            }],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        }],
+        "itemsPerPage": 100,
+        "schemas": [
+            "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+        ],
+        "startIndex": 1,
+        "totalResults": 2
+    }
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "list-group-membership", "--teams=team1", "--save-report=CSV"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+
+    client.get_group_membership.assert_called_with(
+        "team1", 1
+    )
+
+    data = [
+        ['SCIM Test Group', 'b2a691ca-0ef8-464c-9601-9c50158c5426', 'Test Account 01', 'samlp|example|testaccount01@example.com'],
+        ['SCIM Test Group 02', 'b2a691ca-0ef8-464c-9601-9c50158c5537', 'Test Account 02', 'samlp|example|testaccount02@example.com']
+    ]
+    i = 0
+
+    with open('team1_user_group_membership.csv', 'r') as csv_test_output:
+        file_content = csv.reader(csv_test_output)
+        assert next(file_content) == ['Group Name', 'Group ID', 'User', 'Username']
+        for row in file_content:
+            assert row == data[i]
+            i+=1
+
+        os.remove('team1_user_group_membership.csv')
+
+def test_list_group_membership_csv_empty_group(mocker: MockerFixture) -> None:
+    """
+    Test the ``list_group_membership`` command setting --export-report=csv with an empty group.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+
+    client = PresetClient()
+    client.get_teams.assert_not_called()
+    client.get_group_membership.return_value = {
+        "Resources": [
+        {
+            "displayName": "SCIM Test Group",
+            "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
+            "members": [],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        }],
+        "itemsPerPage": 100,
+        "schemas": [
+            "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+        ],
+        "startIndex": 1,
+        "totalResults": 1
+    }
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "list-group-membership", "--teams=team1", "--save-report=csv"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+
+    client.get_group_membership.assert_called_with(
+        "team1", 1
+    )
+
+
+def test_list_group_membership_csv_pagination(mocker: MockerFixture) -> None:
+    """
+    Test the ``list_group_membership`` command setting --export-report=CSV and with more than 100 groups.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
+
+    client = PresetClient()
+    client.get_teams.assert_not_called()
+    client.get_group_membership.side_effect = [
+        {
+            "Resources": [
+        {
+            "displayName": "SCIM Test Group",
+            "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
+            "members": [
+            {
+                "display": "Test Account 01",
+                "value": "samlp|example|testaccount01@example.com"
+            }],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        }],
+            "itemsPerPage": 100,
+            "schemas": [
+                "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+            ],
+            "startIndex": 1,
+            "totalResults": 101
+        },
+        {
+            "Resources": [
+        {
+            "displayName": "SCIM Test Group 02",
+            "id": "b2a691ca-0ef8-464c-9601-9c50158c5537",
+            "members": [
+            {
+                "display": "Test Account 02",
+                "value": "samlp|example|testaccount02@example.com"
+            }],
+            "meta":
+            {
+                "resourceType": "Group"
+            },
+            "schemas": [
+                "urn:ietf:params:scim:schemas:core:2.0:Group"
+            ]
+        }],
+            "itemsPerPage": 100,
+            "schemas": [
+                "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+            ],
+            "startIndex": 101,
+            "totalResults": 101
+        }
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "list-group-membership", "--teams=team1", "--save-report=csv"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+
+    expected_calls = [call('team1', 1), call('team1', 101)]
+    
+    client.get_group_membership.assert_has_calls(
+        expected_calls, 
+        any_order = False
+    )
+
+    data = [
+        ['SCIM Test Group', 'b2a691ca-0ef8-464c-9601-9c50158c5426', 'Test Account 01', 'samlp|example|testaccount01@example.com'],
+        ['SCIM Test Group 02', 'b2a691ca-0ef8-464c-9601-9c50158c5537', 'Test Account 02', 'samlp|example|testaccount02@example.com']
+    ]
+    i = 0
+
+    with open('team1_user_group_membership.csv', 'r') as csv_test_output:
+        file_content = csv.reader(csv_test_output)
+        assert next(file_content) == ['Group Name', 'Group ID', 'User', 'Username']
+        for row in file_content:
+            assert row == data[i]
+            i+=1
+
+        os.remove('team1_user_group_membership.csv')

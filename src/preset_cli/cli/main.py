@@ -354,7 +354,9 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
         sys.exit(1)
     
     else:
+    
         for team in teams:
+            
             # print the team name in case multiple teams were provided and it's not an export
             if not save_report and len(teams) > 1:
                 click.echo(f'## Team {team} ##')
@@ -364,7 +366,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
             group_count = 100
 
             # account for pagination
-            while start_at < group_count:
+            while start_at <= group_count:
                 
                 groups = client.get_group_membership(team, start_at)
                 group_count = groups['totalResults']
@@ -381,33 +383,30 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
                             else:
                                 click.echo('# Group with no users\n')
                     
-                    # write report to a file
+                    # write report to a YAML file
+                    elif save_report.casefold() == "yaml":
+                        yaml_name = team + '_user_group_membership.yaml'
+                        with open(yaml_name, 'a+', encoding='UTF8') as yaml_creator:
+                            yaml.dump(groups, yaml_creator)
+
+                    # write report to a CSV file
                     else:
-                        
-                        # write YAML
-                        if save_report.casefold() == "yaml":
-                            yaml_name = team + '_user_group_membership.yaml'
-                            with open(yaml_name, 'a+', encoding='UTF8') as yaml_creator:
-                                yaml.dump(groups, yaml_creator)
+                        csv_name = team + '_user_group_membership.csv'
+                        for group in groups['Resources']:
 
-                        # write CSV
-                        elif save_report.casefold() == "csv":
-                            csv_name = team + '_user_group_membership.csv'
-                            for group in groups['Resources']:
+                            # CSV report would include a group only in case it has members
+                            if group.get('members'):
 
-                                # CSV report would include a group only in case it has members
-                                if group.get('members'):
+                                # Due to pagination, we're going to touch the file more than once, but we only want to write headers once
+                                file_exists = os.path.isfile(csv_name)
 
-                                    # Due to pagination, we're going to touch the file more than once, but we only want to write headers once
-                                    file_exists = os.path.isfile(csv_name)
-
-                                    with open(csv_name, 'a+', encoding='UTF8') as csv_writer:
-                                        writer = csv.DictWriter(csv_writer, delimiter=',', fieldnames=['Group Name', 'Group ID', 'User', 'Username'])
-                                        if not file_exists:
-                                            writer.writeheader()
-                                        for member in group['members']:
-                                            writer.writerow({'Group Name': group["displayName"], 'Group ID': group["id"], 'User': member["display"], 'Username': member["value"]})
-
+                                with open(csv_name, 'a+', encoding='UTF8') as csv_writer:
+                                    writer = csv.DictWriter(csv_writer, delimiter=',', fieldnames=['Group Name', 'Group ID', 'User', 'Username'])
+                                    if not file_exists:
+                                        writer.writeheader()
+                                    for member in group['members']:
+                                        writer.writerow({'Group Name': group["displayName"], 'Group ID': group["id"], 'User': member["display"], 'Username': member["value"]})
+                
                 else:
                     click.echo(f'Team {team} has no SCIM groups\n')
 
