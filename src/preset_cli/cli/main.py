@@ -357,7 +357,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
         for team in teams:
             # print the team name in case multiple teams were provided and it's not an export
             if not save_report and len(teams) > 1:
-                click.echo(f'\n## Team {team} ##')
+                click.echo(f'## Team {team} ##')
 
             # defining default start_at and group_count to execute it at least once
             start_at = 1    
@@ -379,7 +379,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
                                 for member in group['members']:
                                     click.echo(f'# User: {member["display"]} Username: {member["value"]}')
                             else:
-                                click.echo('# Group with no users.')
+                                click.echo('# Group with no users\n')
                     
                     # write report to a file
                     else:
@@ -409,7 +409,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
                                             writer.writerow({'Group Name': group["displayName"], 'Group ID': group["id"], 'User': member["display"], 'Username': member["value"]})
 
                 else:
-                    click.echo(f'Team {team} has no SCIM groups.')
+                    click.echo(f'Team {team} has no SCIM groups\n')
 
                 # increment start_at in case a new page is needed
                 start_at = start_at + 100
