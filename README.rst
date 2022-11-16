@@ -474,4 +474,4 @@ The ``preset-cli superset export-ownership`` command generates a YAML file with 
 
 Listing SCIM Groups
 ~~~~~~~~~~~~~~~~~~~
-The ``preset-cli list-group-membership`` command prints all SCIM groups (including membership) associated with a Preset team. Instead of printing the results on the terminal (whcih can be useful for quick troulbehsooting), it's possible to use ``--save-report=yaml`` or ``--save-report=csv`` to write results to a file. The file name would be ``{TeamSlug}__user_group_membership.{FileExtension}``.
+The ``preset-cli list-group-membership`` command prints all SCIM groups (including membership) associated with a Preset team. Instead of printing the results on the terminal (whcih can be useful for quick troubleshooting), it's possible to use ``--save-report=yaml`` or ``--save-report=csv`` to write results to a file. The file name would be ``{TeamSlug}__user_group_membership.{FileExtension}``.
