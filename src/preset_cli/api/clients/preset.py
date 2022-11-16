@@ -247,7 +247,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         self,
         team_name: str,
         page: int,
-    ) -> json:
+    ) -> Dict[str, Any]:
         """
         Lists all user/SCIM groups associated with a team
         """ 
