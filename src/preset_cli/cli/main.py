@@ -411,7 +411,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
                     click.echo(f'Team {team} has no SCIM groups\n')
 
                 # increment start_at in case a new page is needed
-                start_at = start_at + 100
+                start_at += 100
 
 @click.command()
 @click.option("--teams", callback=split_comma)
