@@ -344,7 +344,7 @@ def list_group_membership(ctx: click.core.Context, teams: List[str], save_report
         teams = get_teams(client)
     
     # in case --save-report was used, confirm if a valid option was used before sending requests
-    if save_report and save_report.casefold() != 'yaml' and save_report.casefold() != 'csv':
+    if save_report and save_report.casefold() not in {"yaml", "csv"}:
         click.echo(
             click.style(
                 'Invalid option. Please use --save-report=csv or --save-report=yaml',
