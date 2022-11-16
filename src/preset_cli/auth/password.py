@@ -24,7 +24,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         self.password = password
         self.auth()
 
-    def get_headers(self) -> Dict[str, str]:  # pylint: disable=no-self-use
+    def get_headers(self) -> Dict[str, str]:
         return {"X-CSRFToken": self.csrf_token} if self.csrf_token else {}
 
     def auth(self) -> None:

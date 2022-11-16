@@ -30,4 +30,5 @@ jobs:
         python -m pip install -r dev-requirements.txt
     - name: Test with pytest
       run: |
+        pre-commit run --all-files
         pytest --cov-fail-under=100 --cov=src/preset_cli -vv tests/

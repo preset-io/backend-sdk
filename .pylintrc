@@ -1,12 +1,6 @@
 [MESSAGES CONTROL]
-disable =
-  duplicate-code
-  use-implicit-booleaness-not-comparison
-  fixme
+disable = duplicate-code,use-implicit-booleaness-not-comparison,fixme
 
 [MASTER]
 ignore=templates,docs
-disable =
-  duplicate-code
-  use-implicit-booleaness-not-comparison
-  fixme
+disable = duplicate-code,use-implicit-booleaness-not-comparison,fixme
