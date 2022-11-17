@@ -29,4 +29,4 @@ jobs:
         python -m pip install -e '.[testing]'
     - name: Test with pytest
       run: |
-        pytest -s --cov-fail-under=100 --cov=src/preset_cli -vv tests/cli/main_test.py::test_list_group_membership_specified_team
+        pytest --cov-fail-under=100 --cov=src/preset_cli -vv tests/
