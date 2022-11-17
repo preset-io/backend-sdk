@@ -194,8 +194,16 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                 }
                 self.session.headers["Content-Type"] = "application/scim+json"
                 self.session.headers["Accept"] = "application/scim+json"
+                _logger.info("Importing %s", user["email"])
                 _logger.debug("POST %s\n%s", url, json.dumps(payload, indent=4))
                 response = self.session.post(url, json=payload)
+
+                # ignore existing users
+                if response.status_code == 409:
+                    payload = response.json()
+                    _logger.info(payload["detail"])
+                    continue
+
                 validate_response(response)
 
     def change_team_role(self, team_name: str, user_id: int, role_id: int) -> None:

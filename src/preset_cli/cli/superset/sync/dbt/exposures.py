@@ -8,7 +8,6 @@ from typing import Any, Dict, List, NamedTuple, Optional
 
 import yaml
 
-from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient
 
 # XXX: DashboardResponseType and DatasetResponseType
@@ -85,7 +84,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
     client: SupersetClient,
     exposures_path: Path,
     datasets: List[Any],
-    models: List[ModelSchema],
+    model_map: Dict[ModelKey, str],
 ) -> None:
     """
     Write dashboards back to dbt as exposures.
@@ -93,11 +92,6 @@ def sync_exposures(  # pylint: disable=too-many-locals
     exposures = []
     charts_ids = set()
     dashboards_ids = set()
-
-    model_map = {
-        ModelKey(model["schema"], model["name"]): f'ref({model["name"]})'
-        for model in models
-    }
 
     for dataset in datasets:
         url = client.baseurl / "api/v1/dataset" / str(dataset["id"]) / "related_objects"

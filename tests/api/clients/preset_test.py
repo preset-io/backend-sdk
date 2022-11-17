@@ -229,6 +229,43 @@ def test_preset_client_import_users(requests_mock: Mocker) -> None:
     }
 
 
+def test_preset_client_import_users_idempotency(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test the ``import_users`` method when a user already exists.
+    """
+    _logger = mocker.patch("preset_cli.api.clients.preset._logger")
+    requests_mock.post(
+        "https://ws.preset.io/v1/teams/team1/scim/v2/Users",
+        status_code=409,
+        json={
+            "detail": "User already exists in the database and team.",
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
+            "status": "409",
+        },
+    )
+
+    auth = Auth()
+    client = PresetClient("https://ws.preset.io/", auth)
+    client.import_users(
+        ["team1"],
+        [
+            {
+                "id": 1,
+                "username": "adoe",
+                "role": [],
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "email": "adoe@example.com",
+            },
+        ],
+    )
+
+    _logger.info.assert_called_with("User already exists in the database and team.")
+
+
 def test_get_team_members(requests_mock: Mocker) -> None:
     """
     Test the ``get_team_members`` method.

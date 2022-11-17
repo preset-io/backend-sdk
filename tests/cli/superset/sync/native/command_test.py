@@ -155,6 +155,7 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "database_name": "GSheets",
         "sqlalchemy_uri": "gsheets://",
         "is_managed_externally": False,
+        "uuid": "uuid1",
     }
     dataset_config = {"table_name": "test", "is_managed_externally": False}
     fs.create_file(
@@ -182,6 +183,7 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
+    client.get_uuids.return_value = {}
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -206,6 +208,111 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     import_resources.assert_has_calls([mock.call(contents, client, False)])
 
 
+def test_native_params_as_str(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``native`` command when dataset ``params`` are a string.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "uuid1",
+    }
+    dataset_config = {
+        "table_name": "test",
+        "is_managed_externally": False,
+        "params": '{"hello": "world"}',
+    }
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+    fs.create_file(
+        root / "datasets/gsheets/test.yaml",
+        contents=yaml.dump(dataset_config),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_uuids.return_value = {}
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(root)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    contents = {
+        "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+        "bundle/datasets/gsheets/test.yaml": yaml.dump(
+            {
+                "table_name": "test",
+                "is_managed_externally": False,
+                "params": {"hello": "world"},
+            },
+        ),
+    }
+    import_resources.assert_has_calls([mock.call(contents, client, False)])
+
+
+def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``native`` command with databases that have masked passwords.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "Postgres",
+        "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/dbname",
+        "is_managed_externally": False,
+        "uuid": "uuid1",
+    }
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_uuids.return_value = {}
+    mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    prompt_for_passwords = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.prompt_for_passwords",
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(root)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    prompt_for_passwords.assert_called()
+
+    prompt_for_passwords.reset_mock()
+    client.get_uuids.return_value = {"1": "uuid1"}
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(root)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    prompt_for_passwords.assert_not_called()
+
+
 def test_native_load_env(
     mocker: MockerFixture,
     fs: FakeFilesystem,
@@ -222,6 +329,7 @@ def test_native_load_env(
         "database_name": "Postgres",
         "sqlalchemy_uri": '{{ env["SQLALCHEMY_URI"] }}',
         "is_managed_externally": False,
+        "uuid": "uuid1",
     }
     fs.create_file(
         root / "databases/postgres.yaml",
@@ -232,6 +340,7 @@ def test_native_load_env(
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
+    client.get_uuids.return_value = {}
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -256,6 +365,7 @@ def test_native_load_env(
                 "database_name": "Postgres",
                 "sqlalchemy_uri": "postgres://host1",
                 "is_managed_externally": False,
+                "uuid": "uuid1",
             },
         ),
     }
@@ -273,6 +383,7 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "sqlalchemy_uri": "gsheets://",
         "external_url": "https://repo.example.com/databases/gsheets.yaml",
         "is_managed_externally": True,
+        "uuid": "uuid1",
     }
     dataset_config = {
         "table_name": "test",
@@ -292,6 +403,7 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
+    client.get_uuids.return_value = {}
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -378,6 +490,7 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
         "database_name": "GSheets",
         "sqlalchemy_uri": "gsheets://",
         "test": "{{ filepath }}",
+        "uuid": "uuid1",
     }
     fs.create_file(
         root / "databases/gsheets.yaml",
@@ -388,6 +501,7 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
+    client.get_uuids.return_value = {}
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -407,6 +521,7 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 "is_managed_externally": False,
                 "sqlalchemy_uri": "gsheets://",
                 "test": "/path/to/root/databases/gsheets.yaml",
+                "uuid": "uuid1",
             },
         ),
     }
