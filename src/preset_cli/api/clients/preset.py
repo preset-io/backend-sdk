@@ -5,7 +5,7 @@ A simple client for interacting with the Preset API.
 import json
 import logging
 from enum import Enum
-from typing import Any, Iterator, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 from bs4 import BeautifulSoup
 from yarl import URL
@@ -250,8 +250,14 @@ class PresetClient:  # pylint: disable=too-few-public-methods
     ) -> Dict[str, Any]:
         """
         Lists all user/SCIM groups associated with a team
-        """ 
-        url = f'{self.get_base_url()}/teams/{team_name}/scim/v2/Groups?startIndex={page}'
+        """
+        url = (
+            self.get_base_url()
+            / "teams"
+            / team_name
+            / "scim/v2/Groups"
+            % {"startIndex": str(page)}
+        )
         self.session.headers["Accept"] = "application/scim+json"
         _logger.debug("GET %s", url)
         response = self.session.get(url)

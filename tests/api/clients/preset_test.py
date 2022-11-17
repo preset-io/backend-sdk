@@ -362,6 +362,7 @@ def test_change_workspace_role(requests_mock: Mocker) -> None:
         "user_id": 2,
     }
 
+
 def test_get_group_membership(requests_mock: Mocker) -> None:
     """
     Test the ``get_groups`` method.
@@ -369,49 +370,50 @@ def test_get_group_membership(requests_mock: Mocker) -> None:
     requests_mock.get(
         "https://ws.preset.io/v1/teams/testSlug/scim/v2/Groups",
         json={
-                "Resources": [
+            "Resources": [
                 {
                     "displayName": "SCIM First Test Group",
                     "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
                     "members": [
-                    {
-                        "display": "Test Account 01",
-                        "value": "samlp|example|testaccount01@example.com"
-                    },
-                    {
-                        "display": "Test Account 02",
-                        "value": "samlp|example|testaccount02@example.com"
-                    }],
-                    "meta":
-                    {
-                        "resourceType": "Group"
+                        {
+                            "display": "Test Account 01",
+                            "value": "samlp|example|testaccount01@example.com",
+                        },
+                        {
+                            "display": "Test Account 02",
+                            "value": "samlp|example|testaccount02@example.com",
+                        },
+                    ],
+                    "meta": {
+                        "resourceType": "Group",
                     },
                     "schemas": [
-                        "urn:ietf:params:scim:schemas:core:2.0:Group"
-                    ]
+                        "urn:ietf:params:scim:schemas:core:2.0:Group",
+                    ],
                 },
                 {
                     "displayName": "SCIM Second Test Group",
                     "id": "fba067fc-506a-452b-8cf4-7d98f6960a6b",
                     "members": [
-                    {
-                        "display": "Test Account 02",
-                        "value": "samlp|example|testaccount02@example.com"
-                    }],
-                    "meta":
-                    {
-                        "resourceType": "Group"
+                        {
+                            "display": "Test Account 02",
+                            "value": "samlp|example|testaccount02@example.com",
+                        },
+                    ],
+                    "meta": {
+                        "resourceType": "Group",
                     },
                     "schemas": [
-                        "urn:ietf:params:scim:schemas:core:2.0:Group"
-                    ]
-                }],
+                        "urn:ietf:params:scim:schemas:core:2.0:Group",
+                    ],
+                },
+            ],
             "itemsPerPage": 100,
             "schemas": [
-                "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+                "urn:ietf:params:scim:api:messages:2.0:ListResponse",
             ],
             "startIndex": 1,
-            "totalResults": 2
+            "totalResults": 2,
         },
     )
 
@@ -419,46 +421,47 @@ def test_get_group_membership(requests_mock: Mocker) -> None:
     client = PresetClient("https://ws.preset.io/", auth)
     assert client.get_group_membership("testSlug", 1) == {
         "Resources": [
-        {
-            "displayName": "SCIM First Test Group",
-            "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
-            "members": [
             {
-                "display": "Test Account 01",
-                "value": "samlp|example|testaccount01@example.com"
+                "displayName": "SCIM First Test Group",
+                "id": "b2a691ca-0ef8-464c-9601-9c50158c5426",
+                "members": [
+                    {
+                        "display": "Test Account 01",
+                        "value": "samlp|example|testaccount01@example.com",
+                    },
+                    {
+                        "display": "Test Account 02",
+                        "value": "samlp|example|testaccount02@example.com",
+                    },
+                ],
+                "meta": {
+                    "resourceType": "Group",
+                },
+                "schemas": [
+                    "urn:ietf:params:scim:schemas:core:2.0:Group",
+                ],
             },
             {
-                "display": "Test Account 02",
-                "value": "samlp|example|testaccount02@example.com"
-            }],
-            "meta":
-            {
-                "resourceType": "Group"
+                "displayName": "SCIM Second Test Group",
+                "id": "fba067fc-506a-452b-8cf4-7d98f6960a6b",
+                "members": [
+                    {
+                        "display": "Test Account 02",
+                        "value": "samlp|example|testaccount02@example.com",
+                    },
+                ],
+                "meta": {
+                    "resourceType": "Group",
+                },
+                "schemas": [
+                    "urn:ietf:params:scim:schemas:core:2.0:Group",
+                ],
             },
-            "schemas": [
-                "urn:ietf:params:scim:schemas:core:2.0:Group"
-            ]
-        },
-        {
-            "displayName": "SCIM Second Test Group",
-            "id": "fba067fc-506a-452b-8cf4-7d98f6960a6b",
-            "members": [
-            {
-                "display": "Test Account 02",
-                "value": "samlp|example|testaccount02@example.com"
-            }],
-            "meta":
-            {
-                "resourceType": "Group"
-            },
-            "schemas": [
-                "urn:ietf:params:scim:schemas:core:2.0:Group"
-            ]
-        }],
+        ],
         "itemsPerPage": 100,
         "schemas": [
-            "urn:ietf:params:scim:api:messages:2.0:ListResponse"
+            "urn:ietf:params:scim:api:messages:2.0:ListResponse",
         ],
         "startIndex": 1,
-        "totalResults": 2
+        "totalResults": 2,
     }
