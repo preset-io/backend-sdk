@@ -1424,7 +1424,7 @@ def test_print_group_membership_group_with_no_members(capfd) -> None:
     }
 
     print_group_membership(groups)
-    out = capfd.readouterr()
+    out = capfd.readouterr().out
     assert (
         out
         == """
@@ -1462,7 +1462,7 @@ def test_print_group_membership_group_with_members(capfd) -> None:
     }
 
     print_group_membership(groups)
-    out = capfd.readouterr()
+    out = capfd.readouterr().out
     assert (
         out
         == """
