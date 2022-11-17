@@ -16,7 +16,7 @@ class Auth:  # pylint: disable=too-few-public-methods
         self.session = Session()
         self.session.hooks["response"].append(self.reauth)
 
-    def get_headers(self) -> Dict[str, str]:  # pylint: disable=no-self-use
+    def get_headers(self) -> Dict[str, str]:
         """
         Return headers for auth.
         """

@@ -1875,7 +1875,7 @@ def test_get_uuids(requests_mock: Mocker) -> None:
             with bundle.open("metadata.yaml", "w") as output:
                 output.write(b"Hello!")
             with bundle.open(name, "w") as output:
-                output.write(yaml.dump({"uuid": uuid}).encode())
+                output.write(yaml.dump({"uuid": uuid}).encode())  # type: ignore
         buf.seek(0)
 
         requests_mock.get(
