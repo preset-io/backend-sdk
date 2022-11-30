@@ -101,6 +101,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             "name": "cnt",
             "sql": "*",
             "type": "count",
+            "unique_id": "metric.superset_examples.cnt",
         },
     ]
     sync_datasets.assert_called_with(
@@ -284,6 +285,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             "name": "cnt",
             "sql": "*",
             "type": "count",
+            "unique_id": "metric.superset_examples.cnt",
         },
     ]
     sync_datasets.assert_called_with(
@@ -467,6 +469,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
             "name": "cnt",
             "sql": "*",
             "type": "count",
+            "unique_id": "metric.superset_examples.cnt",
         },
     ]
     dbt_client.get_metrics.return_value = metrics
@@ -534,6 +537,7 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
             "name": "cnt",
             "sql": "*",
             "type": "count",
+            "unique_id": "metric.superset_examples.cnt",
         },
     ]
     dbt_client.get_metrics.return_value = metrics
@@ -853,6 +857,7 @@ def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> 
             "name": "cnt",
             "sql": "*",
             "type": "count",
+            "unique_id": "metric.superset_examples.cnt",
         },
     ]
     dbt_client.get_metrics.return_value = metrics

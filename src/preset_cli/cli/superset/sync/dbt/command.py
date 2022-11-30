@@ -150,7 +150,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
         for config in configs["metrics"].values():
             # conform to the same schema that dbt Cloud uses for metrics
             config["dependsOn"] = config["depends_on"]["nodes"]
-            config["uniqueID"] = config["unique_id"]
+            config["uniqueId"] = config["unique_id"]
             metrics.append(metric_schema.load(config, unknown=EXCLUDE))
 
         try:
