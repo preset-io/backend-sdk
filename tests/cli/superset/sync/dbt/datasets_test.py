@@ -58,6 +58,12 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     client.get_datasets.return_value = []
     client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
 
     sync_datasets(
         client=client,
@@ -109,6 +115,11 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "is_dttm": False,
+                    },
+                    {
+                        "column_name": "ts",
+                        "is_dttm": True,
                     },
                 ],
             ),
@@ -123,6 +134,9 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     client.get_datasets.return_value = []
     client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [{"column_name": "id", "is_dttm": False}],
+    }
 
     sync_datasets(
         client=client,
@@ -160,6 +174,7 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "is_dttm": False,
                     },
                 ],
             ),
@@ -201,6 +216,9 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
+    client.get_dataset.return_value = {
+        "columns": [{"column_name": "id", "is_dttm": False}],
+    }
 
     sync_datasets(
         client=client,
@@ -248,6 +266,7 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "is_dttm": False,
                     },
                 ],
             ),
@@ -280,6 +299,9 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
+    client.get_dataset.return_value = {
+        "columns": [{"column_name": "id", "is_dttm": False}],
+    }
 
     sync_datasets(
         client=client,
@@ -331,6 +353,7 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "is_dttm": False,
                     },
                 ],
             ),
