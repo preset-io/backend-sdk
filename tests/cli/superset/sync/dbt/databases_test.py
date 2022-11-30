@@ -20,7 +20,7 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
-        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
@@ -33,7 +33,7 @@ def test_sync_database_new(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
-        profile_name="my_project",
+        profile_name="default",
         target_name="dev",
         import_db=True,
         disallow_edits=False,
@@ -57,7 +57,7 @@ def test_sync_database_new_default_target(
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
-        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}, "target": "dev"}}),
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}, "target": "dev"}}),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
@@ -70,7 +70,7 @@ def test_sync_database_new_default_target(
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
-        profile_name="my_project",
+        profile_name="default",
         target_name=None,
         import_db=True,
         disallow_edits=False,
@@ -96,7 +96,7 @@ def test_sync_database_new_custom_sqlalchemy_uri(
         "/path/to/.dbt/profiles.yml",
         contents=yaml.dump(
             {
-                "my_project": {
+                "default": {
                     "outputs": {
                         "dev": {
                             "meta": {
@@ -124,7 +124,7 @@ def test_sync_database_new_custom_sqlalchemy_uri(
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
-        profile_name="my_project",
+        profile_name="default",
         target_name="dev",
         import_db=True,
         disallow_edits=False,
@@ -153,7 +153,7 @@ def test_sync_database_env_var(
         "/path/to/.dbt/profiles.yml",
         contents=yaml.dump(
             {
-                "my_project": {
+                "default": {
                     "outputs": {
                         "dev": {
                             "meta": {
@@ -181,7 +181,7 @@ def test_sync_database_env_var(
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
-        profile_name="my_project",
+        profile_name="default",
         target_name="dev",
         import_db=True,
         disallow_edits=False,
@@ -202,7 +202,7 @@ def test_sync_database_no_project(mocker: MockerFixture, fs: FakeFilesystem) -> 
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
-        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}}}),
     )
     client = mocker.MagicMock()
     client.get_databases.return_value = []
@@ -230,7 +230,7 @@ def test_sync_database_no_target(mocker: MockerFixture, fs: FakeFilesystem) -> N
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
-        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}}}),
     )
     client = mocker.MagicMock()
     client.get_databases.return_value = []
@@ -240,7 +240,7 @@ def test_sync_database_no_target(mocker: MockerFixture, fs: FakeFilesystem) -> N
             client=client,
             profiles_path=Path("/path/to/.dbt/profiles.yml"),
             project_name="my_project",
-            profile_name="my_project",
+            profile_name="default",
             target_name="prod",
             import_db=True,
             disallow_edits=False,
@@ -263,7 +263,7 @@ def test_sync_database_multiple_databases(
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
-        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
@@ -280,7 +280,7 @@ def test_sync_database_multiple_databases(
             client=client,
             profiles_path=Path("/path/to/.dbt/profiles.yml"),
             project_name="my_project",
-            profile_name="my_project",
+            profile_name="default",
             target_name="dev",
             import_db=True,
             disallow_edits=False,
@@ -298,7 +298,7 @@ def test_sync_database_external_url_prefix(
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
-        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
@@ -311,7 +311,7 @@ def test_sync_database_external_url_prefix(
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
-        profile_name="my_project",
+        profile_name="default",
         target_name="dev",
         import_db=True,
         disallow_edits=True,
@@ -333,7 +333,7 @@ def test_sync_database_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
-        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
@@ -348,7 +348,7 @@ def test_sync_database_existing(mocker: MockerFixture, fs: FakeFilesystem) -> No
         client=client,
         profiles_path=Path("/path/to/.dbt/profiles.yml"),
         project_name="my_project",
-        profile_name="my_project",
+        profile_name="default",
         target_name="dev",
         import_db=True,
         disallow_edits=False,
@@ -370,7 +370,7 @@ def test_sync_database_new_no_import(mocker: MockerFixture, fs: FakeFilesystem) 
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
-        contents=yaml.dump({"my_project": {"outputs": {"dev": {}}}}),
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}}}),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
@@ -384,7 +384,7 @@ def test_sync_database_new_no_import(mocker: MockerFixture, fs: FakeFilesystem) 
             client=client,
             profiles_path=Path("/path/to/.dbt/profiles.yml"),
             project_name="my_project",
-            profile_name="my_project",
+            profile_name="default",
             target_name="dev",
             import_db=False,
             disallow_edits=False,
