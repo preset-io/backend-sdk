@@ -2,8 +2,10 @@
 Main entry point for the CLI.
 """
 
+import csv
 import getpass
 import logging
+import os.path
 import sys
 import webbrowser
 from collections import defaultdict
@@ -327,6 +329,138 @@ def invite_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
 
 @click.command()
 @click.option("--teams", callback=split_comma)
+@click.option(
+    "--save-report",
+    help="Save results to a YAML or CSV file instead of priting on the terminal",
+)
+@click.pass_context
+def list_group_membership(
+    ctx: click.core.Context,
+    teams: List[str],
+    save_report: str,
+) -> None:
+    """
+    List SCIM/user groups from Preset team(s)
+    """
+    client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
+    if not teams:
+        # prompt the user to specify the team(s), in case not specified via the `--teams` option
+        teams = get_teams(client)
+
+    # in case --save-report was used, confirm if a valid option was used before sending requests
+    if save_report and save_report.casefold() not in {"yaml", "csv"}:
+        click.echo(
+            click.style(
+                "Invalid option. Please use --save-report=csv or --save-report=yaml",
+                fg="bright_red",
+            ),
+        )
+        sys.exit(1)
+
+    for team in teams:
+
+        # print the team name in case multiple teams were provided and it's not an export
+        if not save_report and len(teams) > 1:
+            click.echo(f"## Team {team} ##")
+
+        # defining default start_at and group_count to execute it at least once
+        start_at = 1
+        group_count = 100
+
+        # account for pagination
+        while start_at <= group_count:
+
+            groups = client.get_group_membership(team, start_at)
+            group_count = groups["totalResults"]
+
+            if group_count > 0:
+
+                # print groups in console
+                if not save_report:
+                    print_group_membership(groups)
+
+                # write report to a YAML file
+                elif save_report.casefold() == "yaml":
+                    export_group_membership_yaml(groups, team)
+
+                # write report to a CSV file
+                else:
+                    export_group_membership_csv(groups, team)
+
+            else:
+                click.echo(f"Team {team} has no SCIM groups\n")
+
+            # increment start_at in case a new page is needed
+            start_at += 100
+
+
+def print_group_membership(groups: Dict[str, Any]) -> None:
+    """
+    Print group membership on the terminal
+    """
+    for group in groups["Resources"]:
+        click.echo(f'\nName: {group["displayName"]} ID: {group["id"]}')
+        if group.get("members"):
+            for member in group["members"]:
+                click.echo(
+                    f'# User: {member["display"]} Username: {member["value"]}',
+                )
+        else:
+            click.echo("# Group with no users\n")
+
+
+def export_group_membership_yaml(groups: Dict[str, Any], team: str) -> None:
+    """
+    Export group membership to a YAML file
+    """
+    yaml_name = team + "_user_group_membership.yaml"
+    with open(
+        yaml_name,
+        "a+",
+        encoding="UTF8",
+    ) as yaml_creator:
+        yaml.dump(groups, yaml_creator)
+
+
+def export_group_membership_csv(groups: Dict[str, Any], team: str) -> None:
+    """
+    Export group membership to a CSV file
+    """
+    csv_name = team + "_user_group_membership.csv"
+    for group in groups["Resources"]:
+
+        # CSV report would include a group only in case it has members
+        if group.get("members"):
+
+            # Assure we just write headers once
+            file_exists = os.path.isfile(csv_name)
+
+            with open(csv_name, "a+", encoding="UTF8") as csv_writer:
+                writer = csv.DictWriter(
+                    csv_writer,
+                    delimiter=",",
+                    fieldnames=[
+                        "Group Name",
+                        "Group ID",
+                        "User",
+                        "Username",
+                    ],
+                )
+                if not file_exists:
+                    writer.writeheader()
+                for member in group["members"]:
+                    writer.writerow(
+                        {
+                            "Group Name": group["displayName"],
+                            "Group ID": group["id"],
+                            "User": member["display"],
+                            "Username": member["value"],
+                        },
+                    )
+
+
+@click.command()
+@click.option("--teams", callback=split_comma)
 @click.argument(
     "path",
     type=click.Path(resolve_path=True),
@@ -503,3 +637,4 @@ preset_cli.add_command(invite_users)
 preset_cli.add_command(import_users)
 preset_cli.add_command(sync_roles)
 preset_cli.add_command(superset)
+preset_cli.add_command(list_group_membership)
