@@ -153,14 +153,23 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             client.update_dataset(dataset["id"], override_columns=False, **update)
 
         # update column descriptions
-        update = {
-            "columns": [
-                {"column_name": name, "description": column.get("description", "")}
-                for name, column in model.get("columns", {}).items()
-            ],
-        }
-        if update["columns"]:
-            client.update_dataset(dataset["id"], override_columns=True, **update)
+        if columns := model.get("columns"):
+            current_columns = client.get_dataset(dataset["id"])["columns"]
+            for column in current_columns:
+                name = column["column_name"]
+                if name in columns:
+                    column["description"] = columns[name].get("description", "")
+
+                # remove columns that are not part of the update payload
+                for key in ("changed_on", "created_on", "type_generic"):
+                    if key in column:
+                        del column[key]
+
+            client.update_dataset(
+                dataset["id"],
+                override_columns=True,
+                columns=current_columns,
+            )
 
         datasets.append(dataset)
 
