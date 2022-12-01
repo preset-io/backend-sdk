@@ -6,12 +6,15 @@ This module is used to convert dbt metrics into Superset metrics.
 
 # pylint: disable=consider-using-f-string
 
+import logging
 from functools import partial
 from typing import Dict, List
 
 from jinja2 import Template
 
-from preset_cli.api.clients.dbt import FilterSchema, MetricSchema
+from preset_cli.api.clients.dbt import FilterSchema, MetricSchema, ModelSchema
+
+_logger = logging.getLogger(__name__)
 
 
 def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) -> str:
@@ -22,8 +25,16 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
         raise Exception(f"Invalid metric {metric_name}")
 
     metric = metrics[metric_name]
-    type_ = metric["type"]
-    sql = metric["sql"]
+    if "calculation_method" in metric:
+        # dbt >= 1.3
+        type_ = metric["calculation_method"]
+        sql = metric["expression"]
+        expression = "derived"
+    else:
+        # dbt < 1.3
+        type_ = metric["type"]
+        sql = metric["sql"]
+        expression = "expression"
 
     if metric.get("filters"):
         sql = apply_filters(sql, metric["filters"])
@@ -43,7 +54,7 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
     if type_ == "count_distinct":
         return f"COUNT(DISTINCT {sql})"
 
-    if type_ == "expression":
+    if type_ == expression:
         template = Template(sql)
         return template.render(metric=partial(get_metric_expression, metrics=metrics))
 
@@ -59,3 +70,47 @@ def apply_filters(sql: str, filters: List[FilterSchema]) -> str:
         "{field} {operator} {value}".format(**filter_) for filter_ in filters
     )
     return f"CASE WHEN {condition} THEN {sql} END"
+
+
+def is_derived(metric: MetricSchema) -> bool:
+    """
+    Return if the metric is derived.
+    """
+    return (
+        metric.get("calculation_method") == "derived"  # dbt >= 1.3
+        or metric.get("type") == "expression"  # dbt < 1.3
+    )
+
+
+def get_metrics_for_model(
+    model: ModelSchema,
+    metrics: List[MetricSchema],
+) -> List[MetricSchema]:
+    """
+    Given a list of metrics, return those that are based on a given model.
+    """
+    metric_map = {metric["unique_id"]: metric for metric in metrics}
+    related_metrics = []
+
+    for metric in metrics:
+        parents = set()
+        queue = [metric]
+        while queue:
+            node = queue.pop()
+            depends_on = node["depends_on"]
+            if is_derived(node):
+                queue.extend(metric_map[parent] for parent in depends_on)
+            else:
+                parents.update(depends_on)
+
+        if len(parents) > 1:
+            _logger.warning(
+                "Metric %s cannot be calculated because it depends on multiple models",
+                metric["name"],
+            )
+            break
+
+        if model["unique_id"] == parents.pop():
+            related_metrics.append(metric)
+
+    return related_metrics

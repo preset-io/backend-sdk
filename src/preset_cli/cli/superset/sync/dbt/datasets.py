@@ -16,7 +16,10 @@ from yarl import URL
 from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.api.operators import OneToMany
-from preset_cli.cli.superset.sync.dbt.metrics import get_metric_expression
+from preset_cli.cli.superset.sync.dbt.metrics import (
+    get_metric_expression,
+    get_metrics_for_model,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -109,9 +112,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
 
         dataset_metrics = []
         model_metrics = {
-            metric["name"]: metric
-            for metric in metrics
-            if model["unique_id"] in metric["depends_on"]
+            metric["name"]: metric for metric in get_metrics_for_model(model, metrics)
         }
         for name, metric in model_metrics.items():
             meta = metric.get("meta", {})
@@ -120,7 +121,10 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                 {
                     "expression": get_metric_expression(name, model_metrics),
                     "metric_name": name,
-                    "metric_type": metric["type"],
+                    "metric_type": (
+                        metric.get("type")  # dbt < 1.3
+                        or metric.get("calculation_method")  # dbt >= 1.3
+                    ),
                     "verbose_name": metric.get("label", name),
                     "description": metric.get("description", ""),
                     "extra": json.dumps(meta),
