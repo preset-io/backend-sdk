@@ -10,7 +10,6 @@ from typing import Optional, Tuple
 
 import click
 import yaml
-from marshmallow import EXCLUDE
 from yarl import URL
 
 from preset_cli.api.clients.dbt import DBTClient, MetricSchema, ModelSchema
@@ -131,7 +130,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             # conform to the same schema that dbt Cloud uses for models
             unique_id = config["uniqueId"] = config["unique_id"]
             config["children"] = configs["child_map"][unique_id]
-            models.append(model_schema.load(config, unknown=EXCLUDE))
+            models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
     model_map = {
         ModelKey(model["schema"], model["name"]): f'ref({model["name"]})'
@@ -151,7 +150,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             # conform to the same schema that dbt Cloud uses for metrics
             config["dependsOn"] = config["depends_on"]["nodes"]
             config["uniqueId"] = config["unique_id"]
-            metrics.append(metric_schema.load(config, unknown=EXCLUDE))
+            metrics.append(metric_schema.load(config))
 
         try:
             database = sync_database(
