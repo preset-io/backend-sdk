@@ -155,10 +155,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         {
             "label": "",
             "sql": "*",
-            "depends_on": {
-                "macros": [],
-                "nodes": ["model.superset_examples.messages_channels"],
-            },
+            "depends_on": ["model.superset_examples.messages_channels"],
             "meta": {},
             "description": "",
             "name": "cnt",
@@ -415,10 +412,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     metrics = [
         {
             "meta": {},
-            "depends_on": {
-                "macros": [],
-                "nodes": ["model.superset_examples.messages_channels"],
-            },
+            "depends_on": ["model.superset_examples.messages_channels"],
             "unique_id": "metric.superset_examples.cnt",
             "label": "",
             "sql": "*",
