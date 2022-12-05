@@ -1,7 +1,7 @@
 """
 Tests for the dbt import command.
 """
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name, too-many-lines
 
 import os
 from pathlib import Path
@@ -82,26 +82,100 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     models = [
         {
             "database": "examples_dev",
-            "description": "",
+            "columns": {},
             "meta": {},
+            "description": "",
             "name": "messages_channels",
+            "tags": [],
             "schema": "public",
             "unique_id": "model.superset_examples.messages_channels",
-            "tags": [],
-            "columns": {},
+            "created_at": 1642628933.004452,
+            "children": ["metric.superset_examples.cnt"],
+            "depends_on": {
+                "macros": [],
+                "nodes": [
+                    "source.superset_examples.public.channels",
+                    "source.superset_examples.public.messages",
+                ],
+            },
+            "unrendered_config": {"materialized": "view"},
+            "resource_type": "model",
+            "path": "slack/messages_channels.sql",
+            "extra_ctes": [],
+            "package_name": "superset_examples",
+            "alias": "messages_channels",
+            "relation_name": '"examples_dev"."public"."messages_channels"',
+            "config": {
+                "enabled": True,
+                "alias": None,
+                "schema": None,
+                "database": None,
+                "tags": [],
+                "meta": {},
+                "materialized": "view",
+                "persist_docs": {},
+                "quoting": {},
+                "column_types": {},
+                "full_refresh": None,
+                "on_schema_change": "ignore",
+                "post-hook": [],
+                "pre-hook": [],
+            },
+            "patch_path": None,
+            "compiled_sql": (
+                "SELECT messages.ts, channels.name, messages.text "
+                'FROM "examples_dev"."public"."messages" messages '
+                'JOIN "examples_dev"."public"."channels" channels '
+                "ON messages.channel_id = channels.id"
+            ),
+            "extra_ctes_injected": True,
+            "deferred": False,
+            "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+            "original_file_path": "models/slack/messages_channels.sql",
+            "refs": [],
+            "fqn": ["superset_examples", "slack", "messages_channels"],
+            "raw_sql": (
+                "SELECT messages.ts, channels.name, messages.text "
+                "FROM {{ source ('public', 'messages') }} messages "
+                "JOIN {{ source ('public', 'channels') }} channels "
+                "ON messages.channel_id = channels.id"
+            ),
+            "build_path": None,
+            "sources": [["public", "channels"], ["public", "messages"]],
+            "checksum": {
+                "name": "sha256",
+                "checksum": "b4ce232b28280daa522b37e12c36b67911e2a98456b8a3b99440075ec5564609",
+            },
+            "docs": {"show": True},
+            "compiled_path": "target/compiled/superset_examples/models/slack/messages_channels.sql",
+            "compiled": True,
         },
     ]
     metrics = [
         {
-            "depends_on": ["model.superset_examples.messages_channels"],
-            "description": "",
-            "filters": [],
             "label": "",
-            "meta": {},
-            "name": "cnt",
             "sql": "*",
+            "depends_on": ["model.superset_examples.messages_channels"],
+            "meta": {},
+            "description": "",
+            "name": "cnt",
             "type": "count",
+            "filters": [],
             "unique_id": "metric.superset_examples.cnt",
+            "created_at": 1642630986.1942852,
+            "package_name": "superset_examples",
+            "sources": [],
+            "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+            "path": "slack/schema.yml",
+            "resource_type": "metric",
+            "original_file_path": "models/slack/schema.yml",
+            "model": "ref('messages_channels')",
+            "timestamp": None,
+            "fqn": ["superset_examples", "slack", "cnt"],
+            "time_grains": [],
+            "tags": [],
+            "refs": [["messages_channels"]],
+            "dimensions": [],
         },
     ]
     sync_datasets.assert_called_with(
@@ -265,27 +339,101 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     models = [
         {
-            "database": "examples_dev",
-            "description": "",
             "meta": {},
-            "name": "messages_channels",
-            "schema": "public",
-            "unique_id": "model.superset_examples.messages_channels",
             "tags": [],
             "columns": {},
+            "schema": "public",
+            "name": "messages_channels",
+            "database": "examples_dev",
+            "description": "",
+            "unique_id": "model.superset_examples.messages_channels",
+            "extra_ctes": [],
+            "compiled_path": "target/compiled/superset_examples/models/slack/messages_channels.sql",
+            "build_path": None,
+            "path": "slack/messages_channels.sql",
+            "docs": {"show": True},
+            "relation_name": '"examples_dev"."public"."messages_channels"',
+            "depends_on": {
+                "macros": [],
+                "nodes": [
+                    "source.superset_examples.public.channels",
+                    "source.superset_examples.public.messages",
+                ],
+            },
+            "children": ["metric.superset_examples.cnt"],
+            "original_file_path": "models/slack/messages_channels.sql",
+            "sources": [["public", "channels"], ["public", "messages"]],
+            "resource_type": "model",
+            "compiled_sql": (
+                "SELECT messages.ts, channels.name, messages.text "
+                'FROM "examples_dev"."public"."messages" messages '
+                'JOIN "examples_dev"."public"."channels" channels '
+                "ON messages.channel_id = channels.id"
+            ),
+            "config": {
+                "enabled": True,
+                "alias": None,
+                "schema": None,
+                "database": None,
+                "tags": [],
+                "meta": {},
+                "materialized": "view",
+                "persist_docs": {},
+                "quoting": {},
+                "column_types": {},
+                "full_refresh": None,
+                "on_schema_change": "ignore",
+                "post-hook": [],
+                "pre-hook": [],
+            },
+            "compiled": True,
+            "fqn": ["superset_examples", "slack", "messages_channels"],
+            "deferred": False,
+            "alias": "messages_channels",
+            "checksum": {
+                "name": "sha256",
+                "checksum": "b4ce232b28280daa522b37e12c36b67911e2a98456b8a3b99440075ec5564609",
+            },
+            "created_at": 1642628933.004452,
+            "raw_sql": (
+                "SELECT messages.ts, channels.name, messages.text "
+                "FROM {{ source ('public', 'messages') }} messages "
+                "JOIN {{ source ('public', 'channels') }} channels "
+                "ON messages.channel_id = channels.id"
+            ),
+            "patch_path": None,
+            "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+            "extra_ctes_injected": True,
+            "package_name": "superset_examples",
+            "unrendered_config": {"materialized": "view"},
+            "refs": [],
         },
     ]
     metrics = [
         {
-            "depends_on": ["model.superset_examples.messages_channels"],
-            "description": "",
-            "filters": [],
-            "label": "",
             "meta": {},
-            "name": "cnt",
+            "depends_on": ["model.superset_examples.messages_channels"],
+            "unique_id": "metric.superset_examples.cnt",
+            "label": "",
             "sql": "*",
             "type": "count",
-            "unique_id": "metric.superset_examples.cnt",
+            "name": "cnt",
+            "description": "",
+            "filters": [],
+            "model": "ref('messages_channels')",
+            "sources": [],
+            "original_file_path": "models/slack/schema.yml",
+            "resource_type": "metric",
+            "tags": [],
+            "path": "slack/schema.yml",
+            "created_at": 1642630986.1942852,
+            "fqn": ["superset_examples", "slack", "cnt"],
+            "package_name": "superset_examples",
+            "timestamp": None,
+            "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+            "time_grains": [],
+            "refs": [["messages_channels"]],
+            "dimensions": [],
         },
     ]
     sync_datasets.assert_called_with(

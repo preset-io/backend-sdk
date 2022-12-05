@@ -110,7 +110,7 @@ def get_metrics_for_model(
             )
             break
 
-        if model["unique_id"] == parents.pop():
+        if parents == {model["unique_id"]}:
             related_metrics.append(metric)
 
     return related_metrics

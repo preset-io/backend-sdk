@@ -561,6 +561,9 @@ class MetricSchema(PostelSchema):
     sql = fields.String()
     type = fields.String()
     unique_id = fields.String(data_key="uniqueId")
+    # dbt >= 1.3
+    calculation_method = fields.String()
+    expression = fields.String()
 
 
 class DataResponse(TypedDict):
