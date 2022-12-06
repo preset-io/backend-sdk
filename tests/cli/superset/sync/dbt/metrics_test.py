@@ -41,7 +41,7 @@ def test_get_metric_expression() -> None:
         "three": metric_schema.load(
             {
                 "type": "expression",
-                "sql": "{{metric('one')}} - {{metric('two')}}",
+                "sql": "one - two",
             },
         ),
         "four": metric_schema.load(
