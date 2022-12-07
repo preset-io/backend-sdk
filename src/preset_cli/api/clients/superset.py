@@ -789,6 +789,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     user_email_map[int(option.attrs["value"])]
                     for option in soup.find("select", id="user").find_all("option")
                     if "selected" in option.attrs
+                    and int(option.attrs["value"]) in user_email_map
                 ]
 
                 yield {
