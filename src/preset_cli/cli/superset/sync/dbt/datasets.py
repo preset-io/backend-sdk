@@ -1,5 +1,5 @@
 """
-Sync dbt datasets/etrics to Superset.
+Sync dbt datasets/metrics to Superset.
 """
 
 # pylint: disable=consider-using-f-string

@@ -342,7 +342,7 @@ By default, the CLI sync would create a new database on the destination workspac
 
 .. code-block:: python
 
-    f"{project_name}_{target_name}")
+    f"{project_name}_{target_name}"
 
 If you want to sync data to an existing database connection on the workspace instead, you can specify the database name on the profiles YAML file. Add below structure under the ``<target-name>``:
 
@@ -363,8 +363,6 @@ Example:
             superset:
               database_name: Postgres - Production
               
-You'll need to use the ``--overwrite`` flag (since the database already exists) and you'll be prompted to enter the DB password.
-
 Selecting models
 ~~~~~~~~~~~~~~~~
 
