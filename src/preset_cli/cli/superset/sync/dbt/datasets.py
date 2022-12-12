@@ -165,6 +165,11 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                     if key in column:
                         del column[key]
 
+                # for some reason this is being sent as null sometimes
+                # https://github.com/preset-io/backend-sdk/issues/163
+                if "is_active" in column and column["is_active"] is None:
+                    del column["is_active"]
+
             client.update_dataset(
                 dataset["id"],
                 override_columns=True,

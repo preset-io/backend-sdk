@@ -217,7 +217,7 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
     client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
     client.get_dataset.return_value = {
-        "columns": [{"column_name": "id", "is_dttm": False}],
+        "columns": [{"column_name": "id", "is_dttm": False, "is_active": None}],
     }
 
     sync_datasets(
