@@ -858,6 +858,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
     def import_role(self, role: RoleType) -> None:
         """
         Import a given role.
+
+        Note: this only works with Preset workspaces for now, since it translates the
+        Superset permissions to the Preset permissions.
         """
         user_id_map = {user["email"]: user["id"] for user in self.export_users()}
         user_ids = [
@@ -894,6 +897,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
             if permission in permission_id_map:
                 permission_ids.append(permission_id_map[permission])
+            else:
+                _logger.warning("Permission %s not found in target", permission)
 
         data = {
             "name": role["name"],

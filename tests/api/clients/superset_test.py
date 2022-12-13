@@ -5,6 +5,7 @@ Tests for ``preset_cli.api.clients.superset``.
 
 import json
 from io import BytesIO
+from unittest import mock
 from urllib.parse import unquote_plus
 from uuid import UUID
 from zipfile import ZipFile, is_zipfile
@@ -1926,6 +1927,7 @@ def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
     Test the ``import_role`` method.
     """
+    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
     requests_mock.get(
         "https://superset.example.org/roles/add",
         text="""
@@ -1965,6 +1967,18 @@ def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
         requests_mock.last_request.text
         == "name=Admin&user=1&user=2&permissions=1&permissions=2"
     )
+
+    assert _logger.warning.mock_calls == [
+        mock.call(
+            "Permission %s not found in target",
+            "can do something that is not in Preset",
+        ),
+        mock.call("Permission %s not found in target", "Database access on Not added"),
+        mock.call(
+            "Permission %s not found in target",
+            "Dataset access on Not added.nope",
+        ),
+    ]
 
 
 def test_import_rls(requests_mock: Mocker) -> None:
