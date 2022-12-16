@@ -19,11 +19,11 @@ clean:
 spellcheck:
 	codespell -S "*.json" src/preset_cli docs/*rst tests templates
 
-requirements.txt: .python-version requirements.in
+requirements.txt: .python-version requirements.in setup.cfg
 	pip install --upgrade pip
 	pip-compile --no-annotate
 
-dev-requirements.txt: dev-requirements.in
+dev-requirements.txt: dev-requirements.in setup.cfg
 	pip-compile dev-requirements.in --no-annotate
 
 check:
