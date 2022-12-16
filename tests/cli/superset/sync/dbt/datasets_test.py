@@ -462,6 +462,7 @@ def test_create_dataset_virtual(mocker: MockerFixture) -> None:
         schema="public",
         table_name="messages_channels",
         sql="SELECT * FROM examples_dev.public.messages_channels",
+        owners=[],
     )
 
 

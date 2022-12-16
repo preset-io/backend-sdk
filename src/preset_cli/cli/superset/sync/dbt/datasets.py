@@ -51,6 +51,7 @@ def create_dataset(
             "database": database["id"],
             "schema": model["schema"],
             "table_name": model["name"],
+            "owners": [],
         }
     else:
         engine = create_engine(url)
@@ -61,6 +62,7 @@ def create_dataset(
             "schema": model["schema"],
             "table_name": model["name"],
             "sql": f"SELECT * FROM {source}",
+            "owners": [],
         }
 
     return client.create_dataset(**kwargs)
