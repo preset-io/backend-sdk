@@ -3,6 +3,7 @@ Sync Superset dashboards as dbt exposures.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional
 
@@ -92,7 +93,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
     exposures = []
     charts_ids = set()
     dashboards_ids = set()
-
+    
     for dataset in datasets:
         url = client.baseurl / "api/v1/dataset" / str(dataset["id"]) / "related_objects"
 
@@ -111,7 +112,8 @@ def sync_exposures(  # pylint: disable=too-many-locals
         chart = client.get_chart(chart_id)
         first_owner = chart["owners"][0]
         exposure = {
-            "name": chart["slice_name"] + " [chart]",
+            "name": re.sub('[^a-zA-Z0-9\n\.]', '_', chart["slice_name"]) + " [chart]",
+            "label" : chart["slice_name"],
             "type": "analysis",
             "maturity": "high" if chart["certified_by"] else "low",
             "url": str(
