@@ -122,7 +122,7 @@ The following commands are currently available:
 - ``preset-cli superset export-rls``: export RLS rules into a YAML file.
 - ``preset-cli superset export-roles``: export user roles into a YAML file.
 - ``preset-cli superset export-users``: export users (name, username, email, roles) into a YAML file.
-- ``preset-cli superset sync native`` (alternateively, ``preset-cli superset import-assets``): synchronize the workspace from a directory of templated configuration files.
+- ``preset-cli superset sync native`` (alternatively, ``preset-cli superset import-assets``): synchronize the workspace from a directory of templated configuration files.
 - ``preset-cli superset sync dbt-core``: synchronize the workspace from a dbt Core project.
 - ``preset-cli superset sync dbt-cloud``: synchronize the workspace from a dbt Cloud project.
 
@@ -427,6 +427,7 @@ Use ``--asset-type`` to export all assets from a given type. Available options:
 * ``database``
 
 For example, running below command would export all dashboards from this Workspace (datasets, charts and DB connections wouldn't be included):
+
 .. code-block:: bash
 
     % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
@@ -439,6 +440,7 @@ Use ``--asset-ids`` to filter for specific assets. Available options:
 * ``database-ids``
 
 For example, running below command would export specified dashboards from this Workspace (datasets, charts and DB connections would be included):
+
 .. code-block:: bash
 
     % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
