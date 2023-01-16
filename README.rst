@@ -421,12 +421,13 @@ To export resources from a Preset workspace:
 It's also possible to use the CLI to export specific resources:
 
 Use ``--asset-type`` to export all assets from a given type. Available options:
-* ``dashboard``
-* ``chart``
-* ``dataset``
-* ``database``
 
-For example, running below command would export all dashboards from this Workspace (datasets, charts and DB connections wouldn't be included):
+- ``dashboard``
+- ``chart``
+- ``dataset``
+- ``database``
+
+For example, running below command would export all dashboards from this workspace (datasets, charts and DB connections wouldn't be included):
 
 .. code-block:: bash
 
@@ -434,12 +435,13 @@ For example, running below command would export all dashboards from this Workspa
     > superset export /path/to/directory --asset-type=dashboard
     
 Use ``--asset-ids`` to filter for specific assets. Available options:
-* ``dashboard-ids``
-* ``chart-ids``
-* ``dataset-ids``
-* ``database-ids``
 
-For example, running below command would export specified dashboards from this Workspace (datasets, charts and DB connections would be included):
+- ``dashboard-ids``
+- ``chart-ids``
+- ``dataset-ids``
+- ``database-ids``
+
+For example, running below command would export specified dashboards from this workspace (datasets, charts and DB connections would be included):
 
 .. code-block:: bash
 
