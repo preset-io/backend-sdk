@@ -855,7 +855,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     },
                 )
 
-    def import_role(self, role: RoleType) -> None:
+    def import_role(self, role: RoleType) -> None:  # pylint: disable=too-many-locals
         """
         Import a given role.
 
@@ -905,6 +905,32 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             "user": user_ids,
             "permissions": permission_ids,
         }
+
+        # update if existing
+        search_url = self.baseurl / "roles/list/" % {"_flt_3_name": role["name"]}
+        _logger.debug("GET %s", search_url)
+        response = self.session.get(search_url)
+        soup = BeautifulSoup(response.text, features="html.parser")
+        tables = soup.find_all("table")
+        if len(tables) == 2:
+            table = tables[1]
+            trs = table.find_all("tr")
+            if len(trs) == 2:
+                tr = trs[1]  # pylint: disable=invalid-name
+                tds = tr.find_all("td")
+
+                td = tds[0]  # pylint: disable=invalid-name
+                if td.find("a"):
+                    role_id = int(td.find("a").attrs["href"].split("/")[-1])
+                else:
+                    role_id = int(td.find("input").attrs["id"])
+
+                update_url = self.baseurl / "roles/edit" / str(role_id)
+                _logger.debug("POST %s\n%s", update_url, json.dumps(data, indent=4))
+                response = self.session.post(update_url, data=data)
+                validate_response(response)
+                return
+
         _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
         response = self.session.post(url, data=data)
         validate_response(response)
