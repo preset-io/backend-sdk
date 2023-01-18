@@ -117,12 +117,12 @@ The following commands are currently available:
 - ``preset-cli import-users``: automatically add users to Preset.
 - ``preset-cli list-group-membership``: List SCIM groups from a team and their memberships.
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
-- ``preset-cli superset export-assets``: export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
+- ``preset-cli superset export-assets`` (alternatively, ``preset-cli superset export``): export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
 - ``preset-cli superset export-ownership``: export resource ownership (UUID -> email) into a YAML file.
 - ``preset-cli superset export-rls``: export RLS rules into a YAML file.
 - ``preset-cli superset export-roles``: export user roles into a YAML file.
 - ``preset-cli superset export-users``: export users (name, username, email, roles) into a YAML file.
-- ``preset-cli superset sync native``: synchronize the workspace from a directory of templated configuration files.
+- ``preset-cli superset sync native`` (alternatively, ``preset-cli superset import-assets``): synchronize the workspace from a directory of templated configuration files.
 - ``preset-cli superset sync dbt-core``: synchronize the workspace from a dbt Core project.
 - ``preset-cli superset sync dbt-cloud``: synchronize the workspace from a dbt Cloud project.
 
@@ -401,9 +401,9 @@ The command above synchronizes "my_model" and its children, as long as the model
 Exporting resources
 -------------------
 
-The CLI can also be used to export all resources (databases, datasets, charts, and dashboards) from a given Preset workspace (using ``preset-cli``) or Superset instance (using ``superset-cli``). This is useful for migrating resources between workspaces, from an existing Superset installation to Preset, or even from Preset to Superset (one of the advantages of Preset is no vendor lock in!).
+The CLI can also be used to export resources (databases, datasets, charts, and dashboards) from a given Preset workspace (using ``preset-cli``) or Superset instance (using ``superset-cli``). This is useful for migrating resources between workspaces, from an existing Superset installation to Preset, or even from Preset to Superset (one of the advantages of Preset is no vendor lock in!).
 
-The run the command on a self-hosted Superset instance:
+To export resources from a self-hosted Superset instance:
 
 .. code-block:: bash
 
@@ -417,6 +417,36 @@ To export resources from a Preset workspace:
 
     % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
     > superset export /path/to/directory
+
+It's also possible to use the CLI to export specific resources:
+
+Use ``--asset-type`` to export all assets from a given type. Available options:
+
+- ``dashboard``
+- ``chart``
+- ``dataset``
+- ``database``
+
+For example, running below command would export all dashboards from this workspace (datasets, charts and DB connections wouldn't be included):
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > superset export /path/to/directory --asset-type=dashboard
+    
+Use ``--asset-ids`` to filter for specific assets. Available options:
+
+- ``dashboard-ids``
+- ``chart-ids``
+- ``dataset-ids``
+- ``database-ids``
+
+For example, running below command would export specified dashboards from this workspace (datasets, charts and DB connections would be included):
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > superset export /path/to/directory --dashboard-ids=9,10
 
 To import the exported resources into a Preset workspace:
 
