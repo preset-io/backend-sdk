@@ -1938,6 +1938,20 @@ def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """,
     )
     requests_mock.post("https://superset.example.org/roles/add")
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_3_name=Admin",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+  </body>
+</html>
+        """,
+    )
     mocker.patch.object(
         SupersetClient,
         "export_users",
@@ -1979,6 +1993,137 @@ def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
             "Dataset access on Not added.nope",
         ),
     ]
+
+
+def test_import_role_update(mocker: MockerFixture, requests_mock: Mocker) -> None:
+    """
+    Test the ``import_role`` method on updates.
+    """
+    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+    requests_mock.get(
+        "https://superset.example.org/roles/add",
+        text="""
+<select id="permissions">
+    <option value="1">All database access</option>
+    <option value="2">Schema access on Google Sheets.main</option>
+</select>
+    """,
+    )
+    requests_mock.post("https://superset.example.org/roles/add")
+    requests_mock.post("https://superset.example.org/roles/edit/1")
+    requests_mock.post("https://superset.example.org/roles/edit/2")
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_3_name=Admin",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+      <tr>
+        <td><input id="1" /></td>
+        <td>Admin</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_3_name=Public",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Name</th>
+      </tr>
+      <tr>
+        <td><a href="/roles/edit/2">Edit</a></td>
+        <td>Public</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/roles/list/?_flt_3_name=Other",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table></table>
+  </body>
+</html>
+        """,
+    )
+    mocker.patch.object(
+        SupersetClient,
+        "export_users",
+        return_value=[
+            {"id": 1, "email": "admin@example.com"},
+            {"id": 2, "email": "adoe@example.com"},
+        ],
+    )
+
+    role: RoleType = {
+        "name": "Admin",
+        "permissions": [
+            "can do something that is not in Preset",
+            "all database access on all_database_access",
+            "schema access on [Google Sheets].[main]",
+            "database access on [Not added].(id:1)",
+            "datasource access on [Not added].[nope](id:42)",
+        ],
+        "users": ["admin@example.com", "adoe@example.com", "bdoe@example.com"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_role(role)
+
+    assert (
+        requests_mock.last_request.text
+        == "name=Admin&user=1&user=2&permissions=1&permissions=2"
+    )
+
+    assert _logger.warning.mock_calls == [
+        mock.call(
+            "Permission %s not found in target",
+            "can do something that is not in Preset",
+        ),
+        mock.call("Permission %s not found in target", "Database access on Not added"),
+        mock.call(
+            "Permission %s not found in target",
+            "Dataset access on Not added.nope",
+        ),
+    ]
+
+    # extra tests
+    role["name"] = "Public"
+    client.import_role(role)
+    assert requests_mock.last_request.url == "https://superset.example.org/roles/edit/2"
+    role["name"] = "Other"
+    client.import_role(role)
+    assert requests_mock.last_request.url == "https://superset.example.org/roles/add"
 
 
 def test_import_rls(requests_mock: Mocker) -> None:
