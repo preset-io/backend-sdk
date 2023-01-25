@@ -306,7 +306,7 @@ Synchronizing to and from dbt
 
 The CLI also allows you to synchronize models, and metrics from a `dbt <https://www.getdbt.com/>`_ project.
 
-If you're using dbt Core you can point the CLI to your compiled manifest and your profiles file, so that all the database is automatically created, together with all the models and metrics. The full command is:
+If you're using dbt Core you can point the CLI to your compiled manifest and your profiles file, so that the database is automatically created, together with all the models and metrics. The full command is:
 
 .. code-block:: bash
 
@@ -327,30 +327,19 @@ Running this command will:
 
 The ``--external-url-prefix`` should point to your dbt docs, so that the resources in the workspace can point to the source of truth where they are being managed. Similar to the native sync, the dbt sync also supports the ``--disallow-edits`` flag.
 
-If you're using dbt Cloud you can instead pass a job ID and a `service account access token <https://cloud.getdbt.com/#/accounts/72449/settings/service-tokens/new/>`_:
-
-.. code-block:: bash
-
-    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
-    > superset sync dbt-cloud \
-    > $TOKEN $JOB_ID \
-    > --external-url-prefix=http://localhost:8080/
-
-The token only needs access to the "Metadata only" permission set for your project. You can see the job ID by going to the project URL in dbt Cloud and looking at the last ID in the URL. For example, if the URL is https://cloud.getdbt.com/#/accounts/12345/projects/567890/jobs/ the job ID is 567890.
-
 By default, the CLI sync would create a new database on the destination workspace using below name structure:
 
 .. code-block:: python
 
     f"{project_name}_{target_name}"
 
-If you want to sync data to an existing database connection on the workspace instead, you can specify the database name on the profiles YAML file. Add below structure under the ``<target-name>``:
+If you want to sync data to an existing database connection on the workspace instead, you can specify the database connection name on the profiles YAML file. Add below structure under the ``<target-name>``:
 
 .. code-block:: yaml
     
     meta:
       superset:
-        database_name: my DB name # <= specify the database name used on the workspace
+        database_name: my DB name # <= specify the database connection/display name used on the workspace
         
 Example:
 
@@ -362,6 +351,19 @@ Example:
           meta:
             superset:
               database_name: Postgres - Production
+
+If you're using dbt Cloud you can instead pass a job ID and a `service account access token <https://cloud.getdbt.com/#/accounts/72449/settings/service-tokens/new/>`_:
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > superset sync dbt-cloud \
+    > $TOKEN $JOB_ID \
+    > --external-url-prefix=http://localhost:8080/
+
+The token only needs access to the "Metadata only" permission set for your project. You can see the job ID by going to the project URL in dbt Cloud and looking at the last ID in the URL. For example, if the URL is https://cloud.getdbt.com/#/accounts/12345/projects/567890/jobs/ the job ID is 567890.
+
+When syncing from dbt Cloud, the database connection must already exist on the target workspace. The connection display name on the workspace must match the database name from dbt Cloud.
               
 Selecting models
 ~~~~~~~~~~~~~~~~
