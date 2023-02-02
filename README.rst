@@ -312,7 +312,7 @@ If you're using dbt Core you can point the CLI to your compiled manifest and you
 
    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
    > superset sync dbt-core /path/to/dbt/my_project/target/manifest.json \
-   > --project=my_project --target=dev --profile=${HOME}/.dbt/profiles.yml \
+   > --project=my_project --target=dev --profiles=${HOME}/.dbt/profiles.yml \
    > --exposures=/path/to/dbt/my_project/models/exposures.yaml \
    > --import-db \
    > --external-url-prefix=http://localhost:8080/
