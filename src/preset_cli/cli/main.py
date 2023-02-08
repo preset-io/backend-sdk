@@ -40,6 +40,7 @@ def get_status_icon(status: str) -> str:
         "UNKNOWN": "❓",
         "ERROR": "❗️",
         "UPGRADING": "⤴️",
+        "HIBERNATED": "💤",
     }
     return icons.get(status, "❓")
 
@@ -85,6 +86,7 @@ def is_help() -> bool:
 workspace_role_identifiers = {
     "workspace admin": "Admin",
     "primary contributor": "PresetAlpha",
+    "secondary contributor": "PresetBeta",
     "limited contributor": "PresetGamma",
     "viewer": "PresetReportsOnly",
     "dashboard viewer": "PresetDashboardsOnly",
