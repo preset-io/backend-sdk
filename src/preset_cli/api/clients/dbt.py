@@ -609,6 +609,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         payload = response.json()
 
+        if not response.ok:
+            raise Exception(payload["status"]["user_message"])
+
         account_schema = AccountSchema()
         return [account_schema.load(row) for row in payload["data"]]
 
@@ -621,6 +624,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         response = self.session.get(url)
 
         payload = response.json()
+
+        if not response.ok:
+            raise Exception(payload["status"]["user_message"])
 
         project_schema = ProjectSchema()
         projects = [project_schema.load(project) for project in payload["data"]]
@@ -641,6 +647,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         response = self.session.get(url, params=params)
 
         payload = response.json()
+
+        if not response.ok:
+            raise Exception(payload["status"]["user_message"])
 
         job_schema = JobSchema()
         jobs = [job_schema.load(job) for job in payload["data"]]
