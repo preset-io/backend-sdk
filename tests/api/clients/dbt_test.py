@@ -177,6 +177,15 @@ def test_dbt_client_get_accounts(requests_mock: Mocker) -> None:
         },
     ]
 
+    requests_mock.get(
+        "https://cloud.getdbt.com/api/v2/accounts/",
+        status_code=400,
+        json={"status": {"user_message": "A wild error appears!"}},
+    )
+    with pytest.raises(Exception) as excinfo:
+        client.get_accounts()
+    assert str(excinfo.value) == "A wild error appears!"
+
 
 def test_dbt_client_get_projects(requests_mock: Mocker) -> None:
     """
@@ -637,6 +646,15 @@ def test_dbt_client_get_projects(requests_mock: Mocker) -> None:
         },
     ]
 
+    requests_mock.get(
+        "https://cloud.getdbt.com/api/v2/accounts/72449/projects/",
+        status_code=400,
+        json={"status": {"user_message": "A wild error appears!"}},
+    )
+    with pytest.raises(Exception) as excinfo:
+        client.get_projects(72449)
+    assert str(excinfo.value) == "A wild error appears!"
+
 
 def test_dbt_client_get_jobs(requests_mock: Mocker) -> None:
     """
@@ -763,6 +781,15 @@ def test_dbt_client_get_jobs(requests_mock: Mocker) -> None:
             "name": "Test job",
         },
     ]
+
+    requests_mock.get(
+        "https://cloud.getdbt.com/api/v2/accounts/72449/jobs/",
+        status_code=400,
+        json={"status": {"user_message": "A wild error appears!"}},
+    )
+    with pytest.raises(Exception) as excinfo:
+        client.get_jobs(72449)
+    assert str(excinfo.value) == "A wild error appears!"
 
 
 def test_dbt_client_get_jobs_for_project(requests_mock: Mocker) -> None:
