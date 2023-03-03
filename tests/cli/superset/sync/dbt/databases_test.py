@@ -392,7 +392,10 @@ def test_sync_database_new_no_import(mocker: MockerFixture, fs: FakeFilesystem) 
         )
 
 
-def test_sync_database_reuse_connection(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+def test_sync_database_reuse_connection(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
     """
     Test ``sync_database`` when the connection already exists and --import-db wasn't passed.
     """

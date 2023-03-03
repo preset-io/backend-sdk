@@ -85,7 +85,9 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
     elif databases:
         _logger.info("Found an existing database connection, using it")
         database = databases[0]
-        database["sqlalchemy_uri"] = client.get_database(database["id"])["sqlalchemy_uri"]
+        database["sqlalchemy_uri"] = client.get_database(database["id"])[
+            "sqlalchemy_uri"
+        ]
 
     else:
         raise DatabaseNotFoundError()
