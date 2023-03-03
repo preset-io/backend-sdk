@@ -352,7 +352,7 @@ Example:
             superset:
               database_name: Postgres - Production
 
-If  ``--import-db`` was passed and a database connection was found on the Workspace, the operation would update the connection configuration with the dbt connection settings. 
+If  ``--import-db`` was passed and a database connection was found on the workspace, the operation would update the connection configuration with the dbt connection settings.
 
 If you're using dbt Cloud you can instead pass a job ID and a `service account access token <https://cloud.getdbt.com/#/accounts/72449/settings/service-tokens/new/>`_:
 
