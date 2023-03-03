@@ -390,3 +390,34 @@ def test_sync_database_new_no_import(mocker: MockerFixture, fs: FakeFilesystem) 
             disallow_edits=False,
             external_url_prefix="",
         )
+
+
+def test_sync_database_reuse_connection(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test ``sync_database`` when the connection already exists and --import-db wasn't passed.
+    """
+    fs.create_file(
+        "/path/to/.dbt/profiles.yml",
+        contents=yaml.dump({"default": {"outputs": {"dev": {}}}}),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.databases.build_sqlalchemy_params",
+        return_value={"sqlalchemy_uri": "dummy://"},
+    )
+    client = mocker.MagicMock()
+    client.get_databases.return_value = [
+        {"id": 1, "database_name": "my_project_dev", "sqlalchemy_uri": "dummy://"},
+    ]
+
+    sync_database(
+        client=client,
+        profiles_path=Path("/path/to/.dbt/profiles.yml"),
+        project_name="my_project",
+        profile_name="default",
+        target_name="dev",
+        import_db=False,
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+
+    client.get_database.assert_called_with(1)
