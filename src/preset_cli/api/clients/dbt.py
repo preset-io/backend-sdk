@@ -588,6 +588,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         self.session.headers.update(auth.get_headers())
         self.session.headers["User-Agent"] = "Preset CLI"
         self.session.headers["X-Client-Version"] = __version__
+        self.session.headers["X-dbt-partner-source"] = "preset"
 
     def execute(self, query: str, **variables: Any) -> DataResponse:
         """
