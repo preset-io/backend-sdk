@@ -50,7 +50,7 @@ def create_dataset(
         kwargs = {
             "database": database["id"],
             "schema": model["schema"],
-            "table_name": model["name"],
+            "table_name": model.get("alias") or model["name"],
         }
     else:
         engine = create_engine(url)
@@ -59,7 +59,7 @@ def create_dataset(
         kwargs = {
             "database": database["id"],
             "schema": model["schema"],
-            "table_name": model["name"],
+            "table_name": model.get("alias") or model["name"],
             "sql": f"SELECT * FROM {source}",
         }
 
@@ -85,7 +85,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         filters = {
             "database": OneToMany(database["id"]),
             "schema": model["schema"],
-            "table_name": model["name"],
+            "table_name": model.get("alias") or model["name"],
         }
         existing = client.get_datasets(**filters)
         if len(existing) > 1:

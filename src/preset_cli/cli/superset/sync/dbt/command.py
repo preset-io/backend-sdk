@@ -40,7 +40,7 @@ from preset_cli.exceptions import DatabaseNotFoundError
     "--import-db",
     is_flag=True,
     default=False,
-    help="Import database to Superset",
+    help="Import (or update) the database connection to Superset",
 )
 @click.option(
     "--disallow-edits",
