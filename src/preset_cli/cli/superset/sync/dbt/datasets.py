@@ -159,6 +159,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                 name = column["column_name"]
                 if name in columns:
                     column["description"] = columns[name].get("description", "")
+                    column["label"] = columns[name].get("label", "")
 
                 # remove columns that are not part of the update payload
                 for key in ("changed_on", "created_on", "type_generic"):

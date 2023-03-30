@@ -45,7 +45,7 @@ models: List[ModelSchema] = [
             "meta": {},
             "name": "messages_channels",
             "unique_id": "model.superset_examples.messages_channels",
-            "columns": {"id": {"description": "Primary key"}},
+            "columns": {"id": {"description": "Primary key", "label": "some label"}},
         },
     ),
 ]
@@ -115,6 +115,7 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "label": "some label",
                         "is_dttm": False,
                     },
                     {
@@ -205,6 +206,7 @@ def test_sync_datasets_with_alias(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "label": "",
                         "is_dttm": False,
                     },
                     {
@@ -264,6 +266,7 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "label": "some label",
                         "is_dttm": False,
                     },
                 ],
@@ -356,6 +359,7 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "label": "some label",
                         "is_dttm": False,
                     },
                 ],
@@ -443,6 +447,7 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
+                        "label": "some label",
                         "is_dttm": False,
                     },
                 ],
