@@ -115,8 +115,9 @@ def get_metrics_for_model(
 
         if len(parents) > 1:
             _logger.warning(
-                "Metric %s cannot be calculated because it depends on multiple models",
+                "Metric %s cannot be calculated because it depends on multiple models: %s",
                 metric["name"],
+                ", ".join(sorted(parents)),
             )
             break
 
