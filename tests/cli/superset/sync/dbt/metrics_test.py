@@ -159,8 +159,9 @@ def test_get_metrics_for_model(mocker: MockerFixture) -> None:
         },
     ]
     _logger.warning.assert_called_with(
-        "Metric %s cannot be calculated because it depends on multiple models",
+        "Metric %s cannot be calculated because it depends on multiple models: %s",
         "e",
+        "model.superset.other_table, model.superset.table",
     )
 
     model = {"unique_id": "model.superset.other_table"}
