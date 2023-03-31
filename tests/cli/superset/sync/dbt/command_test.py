@@ -82,7 +82,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     models = [
         {
             "database": "examples_dev",
-            "columns": {},
+            "columns": [],
             "meta": {},
             "description": "",
             "name": "messages_channels",
@@ -341,7 +341,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         {
             "meta": {},
             "tags": [],
-            "columns": {},
+            "columns": [],
             "schema": "public",
             "name": "messages_channels",
             "database": "examples_dev",
