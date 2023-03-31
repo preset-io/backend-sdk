@@ -172,3 +172,161 @@ def test_get_metrics_for_model(mocker: MockerFixture) -> None:
             "name": "c",
         },
     ]
+
+
+def test_get_metrics_derived_dbt_core() -> None:
+    """
+    Test derived metrics in dbt Core.
+    """
+
+    metrics = [
+        {
+            "name": "paying_customers",
+            "resource_type": "metric",
+            "package_name": "jaffle_shop",
+            "path": "schema.yml",
+            "original_file_path": "models/schema.yml",
+            "unique_id": "metric.jaffle_shop.paying_customers",
+            "fqn": ["jaffle_shop", "paying_customers"],
+            "description": "",
+            "label": "Customers who bought something",
+            "calculation_method": "count",
+            "expression": "customer_id",
+            "filters": [{"field": "number_of_orders", "operator": ">", "value": "0"}],
+            "time_grains": [],
+            "dimensions": [],
+            "timestamp": None,
+            "window": None,
+            "model": "ref('customers')",
+            "model_unique_id": None,
+            "meta": {},
+            "tags": [],
+            "config": {"enabled": True},
+            "unrendered_config": {},
+            "sources": [],
+            "depends_on": ["model.jaffle_shop.customers"],
+            "refs": [["customers"]],
+            "metrics": [],
+            "created_at": 1680229920.1190348,
+        },
+        {
+            "name": "total_customers",
+            "resource_type": "metric",
+            "package_name": "jaffle_shop",
+            "path": "schema.yml",
+            "original_file_path": "models/schema.yml",
+            "unique_id": "metric.jaffle_shop.total_customers",
+            "fqn": ["jaffle_shop", "total_customers"],
+            "description": "",
+            "label": "Total customers",
+            "calculation_method": "count",
+            "expression": "customer_id",
+            "filters": [],
+            "time_grains": [],
+            "dimensions": [],
+            "timestamp": None,
+            "window": None,
+            "model": "ref('customers')",
+            "model_unique_id": None,
+            "meta": {},
+            "tags": [],
+            "config": {"enabled": True},
+            "unrendered_config": {},
+            "sources": [],
+            "depends_on": ["model.jaffle_shop.customers"],
+            "refs": [["customers"]],
+            "metrics": [],
+            "created_at": 1680229920.122923,
+        },
+        {
+            "name": "ratio_of_paying_customers",
+            "resource_type": "metric",
+            "package_name": "jaffle_shop",
+            "path": "schema.yml",
+            "original_file_path": "models/schema.yml",
+            "unique_id": "metric.jaffle_shop.ratio_of_paying_customers",
+            "fqn": ["jaffle_shop", "ratio_of_paying_customers"],
+            "description": "",
+            "label": "Percentage of paying customers",
+            "calculation_method": "derived",
+            "expression": "paying_customers / total_customers",
+            "filters": [],
+            "time_grains": [],
+            "dimensions": [],
+            "timestamp": None,
+            "window": None,
+            "model": None,
+            "model_unique_id": None,
+            "meta": {},
+            "tags": [],
+            "config": {"enabled": True},
+            "unrendered_config": {},
+            "sources": [],
+            "depends_on": [
+                "metric.jaffle_shop.paying_customers",
+                "metric.jaffle_shop.total_customers",
+            ],
+            "refs": [],
+            "metrics": [["paying_customers"], ["total_customers"]],
+            "created_at": 1680230520.212716,
+        },
+    ]
+    model = {"unique_id": "model.jaffle_shop.customers"}
+    assert get_metrics_for_model(model, metrics) == metrics  # type: ignore
+
+
+def test_get_metrics_derived_dbt_cloud() -> None:
+    """
+    Test derived metrics in dbt Cloud.
+    """
+    metrics = [
+        {
+            "depends_on": ["model.jaffle_shop.customers"],
+            "description": "The number of paid customers using the product",
+            "filters": [{"field": "number_of_orders", "operator": "=", "value": "0"}],
+            "label": "New customers",
+            "meta": {},
+            "name": "new_customers",
+            "sql": "customer_id",
+            "type": "count",
+            "unique_id": "metric.jaffle_shop.new_customers",
+        },
+        {
+            "depends_on": ["model.jaffle_shop.customers"],
+            "description": "",
+            "filters": [{"field": "number_of_orders", "operator": ">", "value": "0"}],
+            "label": "Customers who bought something",
+            "meta": {},
+            "name": "paying_customers",
+            "sql": "customer_id",
+            "type": "count",
+            "unique_id": "metric.jaffle_shop.paying_customers",
+        },
+        {
+            "depends_on": [
+                "metric.jaffle_shop.paying_customers",
+                "metric.jaffle_shop.total_customers",
+            ],
+            "description": "",
+            "filters": [],
+            "label": "Percentage of paying customers",
+            "meta": {},
+            "name": "ratio_of_paying_customers",
+            "sql": "paying_customers / total_customers",
+            "type": "derived",
+            "unique_id": "metric.jaffle_shop.ratio_of_paying_customers",
+        },
+        {
+            "depends_on": ["model.jaffle_shop.customers"],
+            "description": "",
+            "filters": [],
+            "label": "Total customers",
+            "meta": {},
+            "name": "total_customers",
+            "sql": "customer_id",
+            "type": "count",
+            "unique_id": "metric.jaffle_shop.total_customers",
+        },
+    ]
+    model = {"unique_id": "model.jaffle_shop.customers"}
+    assert get_metrics_for_model(model, metrics) == metrics  # type: ignore
