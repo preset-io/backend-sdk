@@ -130,6 +130,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             # conform to the same schema that dbt Cloud uses for models
             unique_id = config["uniqueId"] = config["unique_id"]
             config["children"] = configs["child_map"][unique_id]
+            config["columns"] = list(config["columns"].values())
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
     model_map = {
