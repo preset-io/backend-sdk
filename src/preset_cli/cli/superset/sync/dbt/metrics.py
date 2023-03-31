@@ -89,6 +89,7 @@ def is_derived(metric: MetricSchema) -> bool:
     return (
         metric.get("calculation_method") == "derived"  # dbt >= 1.3
         or metric.get("type") == "expression"  # dbt < 1.3
+        or metric.get("type") == "derived"  # WTF dbt Cloud
     )
 
 
@@ -119,7 +120,7 @@ def get_metrics_for_model(
                 metric["name"],
                 ", ".join(sorted(parents)),
             )
-            break
+            continue
 
         if parents == {model["unique_id"]}:
             related_metrics.append(metric)
