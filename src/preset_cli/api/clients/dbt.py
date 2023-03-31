@@ -673,6 +673,10 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                     description
                     meta
                     tags
+                    columns {
+                        name
+                        description
+                    }
                 }
             }
         """

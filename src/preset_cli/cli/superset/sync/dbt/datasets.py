@@ -154,12 +154,13 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
 
         # update column descriptions
         if columns := model.get("columns"):
+            column_metadata = {column["name"]: column for column in columns}
             current_columns = client.get_dataset(dataset["id"])["columns"]
             for column in current_columns:
                 name = column["column_name"]
-                if name in columns:
-                    column["description"] = columns[name].get("description", "")
-                    column["label"] = columns[name].get("label", "")
+                if name in column_metadata:
+                    column["description"] = column_metadata[name].get("description", "")
+                    column["verbose_name"] = column_metadata[name].get("name", "")
 
                 # remove columns that are not part of the update payload
                 for key in ("changed_on", "created_on", "type_generic"):
