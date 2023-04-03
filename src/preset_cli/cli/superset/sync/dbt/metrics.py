@@ -29,12 +29,10 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
         # dbt >= 1.3
         type_ = metric["calculation_method"]
         sql = metric["expression"]
-        expression = "derived"
     else:
         # dbt < 1.3
         type_ = metric["type"]
         sql = metric["sql"]
-        expression = "expression"
 
     if metric.get("filters"):
         sql = apply_filters(sql, metric["filters"])
@@ -54,7 +52,7 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
     if type_ == "count_distinct":
         return f"COUNT(DISTINCT {sql})"
 
-    if type_ == expression:
+    if type_ in {"expression", "derived"}:
         statement = sqlparse.parse(sql)[0]
         tokens = statement.tokens[:]
         while tokens:

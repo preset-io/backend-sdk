@@ -50,6 +50,22 @@ def test_get_metric_expression() -> None:
                 "sql": "user_id",
             },
         ),
+        "load_fill_by_weight": metric_schema.load(
+            {
+                "depends_on": [
+                    "metric.breakthrough_dw.load_weight_lbs",
+                    "metric.breakthrough_dw.load_weight_capacity_lbs",
+                ],
+                "description": "The Load Fill by Weight",
+                "filters": [],
+                "label": "Load Fill by Weight",
+                "meta": {},
+                "name": "load_fill_by_weight",
+                "sql": "load_weight_lbs / load_weight_capacity_lbs",
+                "type": "derived",
+                "unique_id": "metric.breakthrough_dw.load_fill_by_weight",
+            },
+        ),
     }
     assert get_metric_expression("one", metrics) == (
         "COUNT(CASE WHEN is_paying is true AND lifetime_value >= 100 AND "
@@ -62,6 +78,11 @@ def test_get_metric_expression() -> None:
         "COUNT(CASE WHEN is_paying is true AND lifetime_value >= 100 AND "
         "company_name != 'Acme, Inc' AND signup_date >= '2020-01-01' THEN user_id END) "
         "- COUNT(DISTINCT user_id)"
+    )
+
+    assert (
+        get_metric_expression("load_fill_by_weight", metrics)
+        == "load_weight_lbs / load_weight_capacity_lbs"
     )
 
     with pytest.raises(Exception) as excinfo:
