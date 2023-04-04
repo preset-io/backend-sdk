@@ -49,10 +49,10 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
         meta["external_url"] = str(base_url.with_fragment("!/overview"))
 
     if import_db:
-        if "connection_params" in meta:
-            connection_params = meta.pop("connection_params")
-        else:
-            connection_params = build_sqlalchemy_params(target)
+        connection_params = meta.pop(
+            "connection_params",
+            build_sqlalchemy_params(target),
+        )
 
         if databases:
             _logger.info("Found an existing database connection, updating it")
