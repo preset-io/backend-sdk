@@ -73,6 +73,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     database: Any,
     disallow_edits: bool,
     external_url_prefix: str,
+    certification=None,
 ) -> List[Any]:
     """
     Read the dbt manifest and import models as datasets with metrics.
@@ -105,9 +106,8 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         extra = {
             "unique_id": model["unique_id"],
             "depends_on": "ref('{name}')".format(**model),
-            "certification": {
-                "details": "This table is produced by dbt",
-            },
+            "certification": certification
+            or {"details": "This table is produced by dbt"},
         }
 
         dataset_metrics = []
