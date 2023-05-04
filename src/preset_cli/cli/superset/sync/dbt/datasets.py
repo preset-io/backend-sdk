@@ -6,7 +6,7 @@ Sync dbt datasets/metrics to Superset.
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.engine import create_engine
 from sqlalchemy.engine.url import URL as SQLAlchemyURL
@@ -73,7 +73,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     database: Any,
     disallow_edits: bool,
     external_url_prefix: str,
-    certification=None,
+    certification: Optional[Dict[str, Any]] = None,
 ) -> List[Any]:
     """
     Read the dbt manifest and import models as datasets with metrics.
