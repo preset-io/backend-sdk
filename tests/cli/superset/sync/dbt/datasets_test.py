@@ -275,6 +275,65 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
     )
 
 
+def test_sync_datasets_custom_certification(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with a custom certification.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [{"column_name": "id", "is_dttm": False}],
+    }
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=[],
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+        certification={"details": "This dataset is synced from dbt Cloud"},
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="messages_channels"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {
+                            "details": "This dataset is synced from dbt Cloud",
+                        },
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                ],
+            ),
+        ],
+    )
+
+
 def test_sync_datasets_new_bq_error(mocker: MockerFixture) -> None:
     """
     Test ``sync_datasets`` when one of the sources is in a different BQ project.
