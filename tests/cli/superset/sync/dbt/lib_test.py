@@ -386,6 +386,12 @@ def test_filter_models() -> None:
         "unique_id": "model.three",
         "depends_on": ["source.zero"],
         "children": ["model.two"],
+        "config": {
+            "materialized": "view",
+            "persist_docs": {},
+            "quoting": {},
+            "column_types": {},
+        }
     }
     models: List[ModelSchema] = [one, two, three]  # type: ignore
 
@@ -405,6 +411,10 @@ def test_filter_models() -> None:
         "two",
         "three",
     }
+
+    # testing config filtering
+    assert {model["name"] for model in filter_models(models, "config.materialized:view")} == {"three"}
+
 
     with pytest.raises(NotImplementedError) as excinfo:
         filter_models(models, "invalid")
