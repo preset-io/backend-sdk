@@ -299,7 +299,7 @@ def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema
 
     if condition.startswith("config"):
         filtered_models = []
-        config_key, config_value = re.split(r'[.:]', condition)[1:]
+        config_key, config_value = re.split(r"[.:]", condition)[1:]
         for model in models:
             if model.get("config", {}).get(config_key) == config_value:
                 filtered_models.append(model)
