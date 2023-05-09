@@ -334,6 +334,7 @@ Becomes this:
 
 When performing the import, the CLI would load any templating syntax that isn't escaped, and remove escaping. However, this escaping syntax isn't compatible with UI imports. 
 To avoid issues when running migrations using both the CLI and the UI, you can use:
+
 - ``--disable-jinja-escaping`` flag with the ``export-assets`` command to disable the escaping (so that exported assets can be imported via the UI)
 - ``--disable-jinja-templating`` flag with the ``sync native`` command to disable jinja templating (so that assets exported via the UI can be imported via the CLI)
 
