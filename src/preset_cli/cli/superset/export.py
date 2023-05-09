@@ -102,7 +102,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
             )
 
 
-def export_resource(  # pylint: disable=too-many-arguments
+def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
     resource_name: str,
     requested_ids: Set[int],
     root: Path,

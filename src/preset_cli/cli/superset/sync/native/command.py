@@ -146,7 +146,7 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     help="Split imports into individual assets",
 )
 @click.pass_context
-def native(  # pylint: disable=too-many-locals, too-many-arguments
+def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
     ctx: click.core.Context,
     directory: str,
     option: Tuple[str, ...],
