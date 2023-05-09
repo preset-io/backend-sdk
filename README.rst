@@ -301,6 +301,43 @@ The function can then be called from any template the following way:
     params:
       ...
 
+Disabling Jinja Templating
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Both the CLI and Superset support Jinja templating. To prevent the CLI from loading Superset Jinja syntax, the export operation automatically escapes Jinja syntax from YAML files. As a consequence, this query:
+.. code-block:: yaml
+
+    sql: 'SELECT action, count(*) as times
+        FROM logs
+        {% if filter_values(''action_type'')|length %}
+            WHERE 1=1
+            {% for action in filter_values(''action_type'') %}
+                or action = ''{{ action }}''
+            {% endfor %}
+        {% endif %}
+        GROUP BY action'
+
+Becomes this:
+
+.. code-block:: yaml
+
+    sql: 'SELECT action, count(*) as times
+        FROM logs
+        {{ '{% if' }} filter_values(''action_type'')|length {{ '%}' }}
+            WHERE 1=1
+            {{ '{% for' }} action in filter_values(''action_type'') {{ '%}' }}
+                or action = ''{{ '{{' }} action {{ '}}' }}''
+            {{ '{% endfor %}' }}
+        {{ '{% endif %}' }}
+        GROUP BY action'
+
+When performing the import, the CLI would load any templating syntax that isn't escaped, and remove escaping. However, this escaping syntax isn't compatible with UI imports. 
+To avoid issues when running migrations using both the CLI and the UI, you can use:
+- ``--disable-jinja-escaping`` flag with the ``export-assets`` command to disable the escaping (so that exported assets can be imported via the UI)
+- ``--disable-jinja-templating`` flag with the ``sync native`` command to disable jinja templating (so that assets exported via the UI can be imported via the CLI)
+
+Note that using these flags would remove the ability to dynamically modify the content through the CLI. 
+
 Synchronizing to and from dbt
 -----------------------------
 
