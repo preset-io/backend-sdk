@@ -2,6 +2,7 @@
 A command to export Superset resources into a directory.
 """
 
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Set, Tuple
@@ -26,6 +27,12 @@ assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
     is_flag=True,
     default=False,
     help="Overwrite existing resources",
+)
+@click.option(
+    "--disable-jinja-escaping",
+    is_flag=True,
+    default=False,
+    help="Disable Jinja template escaping",
 )
 @click.option(
     "--asset-type",
@@ -62,6 +69,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     chart_ids: List[str],
     dashboard_ids: List[str],
     overwrite: bool = False,
+    disable_jinja_escaping: bool = False,
 ) -> None:
     """
     Export DBs/datasets/charts/dashboards to a directory.
@@ -89,6 +97,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
                 root,
                 client,
                 overwrite,
+                disable_jinja_escaping,
                 skip_related=not ids_requested,
             )
 
@@ -99,6 +108,7 @@ def export_resource(  # pylint: disable=too-many-arguments
     root: Path,
     client: SupersetClient,
     overwrite: bool,
+    disable_jinja_escaping: bool,
     skip_related: bool = True,
 ) -> None:
     """
@@ -131,19 +141,46 @@ def export_resource(  # pylint: disable=too-many-arguments
             target.parent.mkdir(parents=True, exist_ok=True)
 
         # escape any pre-existing Jinja2 templates
-        file_contents = file_contents.replace(
-            "{{",
-            f"{JINJA2_OPEN_MARKER} '{{{{' {JINJA2_CLOSE_MARKER}",
-        )
-        file_contents = file_contents.replace(
-            "}}",
-            f"{JINJA2_OPEN_MARKER} '}}}}' {JINJA2_CLOSE_MARKER}",
-        )
-        file_contents = file_contents.replace(JINJA2_OPEN_MARKER, "{{")
-        file_contents = file_contents.replace(JINJA2_CLOSE_MARKER, "}}")
+        if not disable_jinja_escaping:
+            file_contents = jinja_escaper(file_contents)
 
         with open(target, "w", encoding="utf-8") as output:
             output.write(file_contents)
+
+
+def jinja_escaper(value: str) -> str:
+    """
+    Escape Jinja macros and logical statements that shouldn't be handled by CLI
+    """
+    logical_statements_patterns = [
+        r"(\{%-?\s*if)",  # {%if || {% if || {%-if || {%- if
+        r"(\{%-?\s*elif)",  # {%elif || {% elif || {%-elif || {%- elif
+        r"(\{%-?\s*else)",  # {%else || {% else || {%-else || {%- else
+        r"(\{%-?\s*endif)",  # {%endif || {% endif || {%-endif || {%- endif
+        r"(\{%-?\s*for)",  # {%for || {% for || {%-for || {%- for
+        r"(\{%-?\s*endfor)",  # {%endfor || {% endfor || {%-endfor || {%- endfor
+        r"(%})",  # %}
+        r"(-%})",  # -%}
+    ]
+
+    for syntax in logical_statements_patterns:
+        replacement = JINJA2_OPEN_MARKER + " '" + r"\1" + "' " + JINJA2_CLOSE_MARKER
+        value = re.sub(syntax, replacement, value)
+
+    # escaping macros
+    value = value.replace(
+        "{{",
+        f"{JINJA2_OPEN_MARKER} '{{{{' {JINJA2_CLOSE_MARKER}",
+    )
+    value = value.replace(
+        "}}",
+        f"{JINJA2_OPEN_MARKER} '}}}}' {JINJA2_CLOSE_MARKER}",
+    )
+    value = value.replace(JINJA2_OPEN_MARKER, "{{")
+    value = value.replace(JINJA2_CLOSE_MARKER, "}}")
+    value = re.sub(r"' }} {{ '", " ", value)
+
+    return value
 
 
 @click.command()
