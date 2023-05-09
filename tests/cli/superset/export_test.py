@@ -40,7 +40,7 @@ def dataset_export() -> BytesIO:
 SELECT action, count(*) as times
 FROM logs
 {% if filter_values('action_type')|length %}
-    WHERE 1=1
+    WHERE action is null
     {% for action in filter_values('action_type') %}
         or action = '{{ action }}'
     {% endfor %}
@@ -100,7 +100,7 @@ def test_export_resource(
 SELECT action, count(*) as times
 FROM logs
 {{ '{% if' }} filter_values('action_type')|length {{ '%}' }}
-    WHERE 1=1
+    WHERE action is null
     {{ '{% for' }} action in filter_values('action_type') {{ '%}' }}
         or action = '{{ '{{' }} action {{ '}}' }}'
     {{ '{% endfor %}' }}
@@ -557,7 +557,7 @@ def test_export_resource_jinja_escaping_disabled(
 SELECT action, count(*) as times
 FROM logs
 {% if filter_values('action_type')|length %}
-    WHERE 1=1
+    WHERE action is null
     {% for action in filter_values('action_type') %}
         or action = '{{ action }}'
     {% endfor %}

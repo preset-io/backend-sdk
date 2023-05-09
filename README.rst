@@ -305,12 +305,13 @@ Disabling Jinja Templating
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Both the CLI and Superset support Jinja templating. To prevent the CLI from loading Superset Jinja syntax, the export operation automatically escapes Jinja syntax from YAML files. As a consequence, this query:
+
 .. code-block:: yaml
 
     sql: 'SELECT action, count(*) as times
         FROM logs
         {% if filter_values(''action_type'')|length %}
-            WHERE 1=1
+            WHERE action is null
             {% for action in filter_values(''action_type'') %}
                 or action = ''{{ action }}''
             {% endfor %}
@@ -324,7 +325,7 @@ Becomes this:
     sql: 'SELECT action, count(*) as times
         FROM logs
         {{ '{% if' }} filter_values(''action_type'')|length {{ '%}' }}
-            WHERE 1=1
+            WHERE action is null
             {{ '{% for' }} action in filter_values(''action_type'') {{ '%}' }}
                 or action = ''{{ '{{' }} action {{ '}}' }}''
             {{ '{% endfor %}' }}
