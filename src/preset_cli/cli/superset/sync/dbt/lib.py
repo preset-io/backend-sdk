@@ -297,6 +297,14 @@ def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema
         tag = condition.split(":", 1)[1]
         return [model for model in models if tag in model["tags"]]
 
+    if condition.startswith("config"):
+        filtered_models = []
+        config_key, config_value = re.split(r"[.:]", condition)[1:]
+        for model in models:
+            if model.get("config", {}).get(config_key) == config_value:
+                filtered_models.append(model)
+        return filtered_models
+
     # simple match by name
     model_names = {model["name"]: model for model in models}
     if condition in model_names:
