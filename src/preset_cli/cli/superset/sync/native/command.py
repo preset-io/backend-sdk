@@ -188,17 +188,19 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
         if path_name.is_dir() and not path_name.stem.startswith("."):
             queue.extend(path_name.glob("*"))
         elif is_yaml_config(relative_path):
-            if disable_jinja_templating:
-                config = load_yaml(path_name)
-            else:
-                config = render_yaml(path_name, env)
+            config = (
+                load_yaml(path_name)
+                if disable_jinja_templating
+                else render_yaml(path_name, env)
+            )
 
             overrides_path = path_name.with_suffix(".overrides" + path_name.suffix)
             if overrides_path.exists():
-                if disable_jinja_templating:
-                    overrides = load_yaml(overrides_path)
-                else:
-                    overrides = render_yaml(overrides_path, env)
+                overrides = (
+                    load_yaml(overrides_path)
+                    if disable_jinja_templating
+                    else render_yaml(overrides_path, env)
+                )
                 dict_merge(config, overrides)
 
             config["is_managed_externally"] = disallow_edits
