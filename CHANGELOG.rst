@@ -44,7 +44,7 @@ Version 0.2.0 - 2023-05-23
 - Large imports can be performed with the ``--split`` flag to prevent timeouts (`PR #124 <https://github.com/preset-io/backend-sdk/pull/124>`_). It also creates a ``checkpoint`` in case it fails so the retry would ignore already imported assets (`PR #137 <https://github.com/preset-io/backend-sdk/pull/137>`_ and `PR #139 <https://github.com/preset-io/backend-sdk/pull/139>`_).
 - Preset Manager requests updated to use ``api.app.preset.io`` (`PR #127 <https://github.com/preset-io/backend-sdk/pull/127>`_).
 - CLI now prompts user for job information if not specified when triggering a sync from dbt Cloud (`PR #128 <https://github.com/preset-io/backend-sdk/pull/128>`_).
-- dbt exposures now includes aseets that were created by manual datasets, based on the schema and table name (`PR #132 <https://github.com/preset-io/backend-sdk/pull/132>`_).
+- dbt exposures now includes assets that were created by manual datasets, based on the schema and table name (`PR #132 <https://github.com/preset-io/backend-sdk/pull/132>`_).
 - Added support for Python 3.11 (`PR #133 <https://github.com/preset-io/backend-sdk/pull/133>`_).
 - CLI now refreshes JWT token if needed (`PR #134 <https://github.com/preset-io/backend-sdk/pull/134>`_).
 - Import failures due to connection errors are automatically retried (`PR #135 <https://github.com/preset-io/backend-sdk/pull/135>`_).
@@ -54,7 +54,7 @@ Version 0.2.0 - 2023-05-23
 - CLI can be used to list SCIM groups and membership with the ``list-group-membership`` command (`PR #143 <https://github.com/preset-io/backend-sdk/pull/143>`_).
 - The dbt profile name is now used to look for an existing DB connection in the Workspace, instead of the project name (`PR #151 <https://github.com/preset-io/backend-sdk/pull/151>`_).
 - Added support for dbt derived metrics (`PR #154 <https://github.com/preset-io/backend-sdk/pull/154>`_, `PR #160 <https://github.com/preset-io/backend-sdk/pull/160>`_, `PR #196 <https://github.com/preset-io/backend-sdk/pull/196>`_, `PR #198 <https://github.com/preset-io/backend-sdk/pull/198>`_ and `PR #199 <https://github.com/preset-io/backend-sdk/pull/199>`_).
-- Fixed column configuration issues after a dbt sync (`PR #156 <https://github.com/preset-io/backend-sdk/pull/156>`_and `PR #165 <https://github.com/preset-io/backend-sdk/pull/165>`_).
+- Fixed column configuration issues after a dbt sync (`PR #156 <https://github.com/preset-io/backend-sdk/pull/156>`_ and `PR #165 <https://github.com/preset-io/backend-sdk/pull/165>`_).
 - Added support for dbt 1.3 (`PR #159 <https://github.com/preset-io/backend-sdk/pull/159>`_).
 - Improved the ``MetricSchema`` loading (`PR #159 <https://github.com/preset-io/backend-sdk/pull/159>`_).
 - Added support for Secondary Contributor Workspace Role (`PR #186 <https://github.com/preset-io/backend-sdk/pull/186>`_).
