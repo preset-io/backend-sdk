@@ -477,7 +477,17 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return a single database.
         """
-        return self.get_resource("database", database_id)
+        database = self.get_resource("database", database_id)
+        if "sqlalchemy_uri" in database:
+            return database
+
+        url = self.baseurl / "api/v1/database" / str(database_id) / "connection"
+        response = self.session.get(url)
+        validate_response(response)
+
+        resource = response.json()["result"]
+
+        return resource
 
     def get_databases(self, **kwargs: str) -> List[Any]:
         """
