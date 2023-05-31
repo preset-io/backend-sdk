@@ -5,7 +5,7 @@ Changelog
 Version 0.2.2 - TBD
 ==========================
 
-- Added the ability to sync ``certification`` and additional ``extra`` information from dbt models (`# <>`_).
+- Added the ability to sync ``certification`` and additional ``extra`` information from dbt models (`#213 <https://github.com/preset-io/backend-sdk/pull/213>`_).
 
 Version 0.2.1 - 2023-05-30
 ==========================
