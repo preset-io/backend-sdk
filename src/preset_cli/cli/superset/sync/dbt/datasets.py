@@ -83,11 +83,15 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     # add datasets
     datasets = []
     for model in models:
-        
+
         # load additional metadata from dbt model definition
         model_kwargs = model.get("meta", {}).pop("superset", {})
-        certification = model_kwargs.get("extra", {}).pop("certification") if "certification" in model_kwargs else certification or {"details": "This table is produced by dbt"}
-        
+        certification = (
+            model_kwargs.get("extra", {}).pop("certification")
+            if "certification" in model_kwargs
+            else certification or {"details": "This table is produced by dbt"}
+        )
+
         filters = {
             "database": OneToMany(database["id"]),
             "schema": model["schema"],
@@ -112,7 +116,10 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             "unique_id": model["unique_id"],
             "depends_on": "ref('{name}')".format(**model),
             "certification": certification,
-            **model_kwargs.pop("extra", {}) # include any additional or custom field specified in model.meta.superset.extra
+            **model_kwargs.pop(
+                "extra",
+                {},
+            ),  # include any additional or custom field specified in model.meta.superset.extra
         }
 
         dataset_metrics = []
@@ -133,7 +140,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                     "verbose_name": metric.get("label", name),
                     "description": metric.get("description", ""),
                     "extra": json.dumps(meta),
-                    **kwargs, # include additional metric metadata defined in metric.meta.superset
+                    **kwargs,  # include additional metric metadata defined in metric.meta.superset
                 },
             )
 
@@ -143,7 +150,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             "extra": json.dumps(extra),
             "is_managed_externally": disallow_edits,
             "metrics": [],
-            **model_kwargs, # include additional model metadata defined in model.meta.superset
+            **model_kwargs,  # include additional model metadata defined in model.meta.superset
         }
         if base_url:
             fragment = "!/model/{unique_id}".format(**model)

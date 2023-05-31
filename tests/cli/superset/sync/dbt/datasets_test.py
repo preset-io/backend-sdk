@@ -1,7 +1,7 @@
 """
 Tests for ``preset_cli.cli.superset.sync.dbt.datasets``.
 """
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name, too-many-lines
 
 import json
 from typing import List, cast
@@ -652,13 +652,7 @@ def test_sync_datasets_null_certification(mocker: MockerFixture) -> None:
                 "database": "examples_dev",
                 "schema": "public",
                 "description": "",
-                "meta": {
-                    "superset": {
-                        "extra": {
-                            "certification": None
-                        }
-                    }
-                },
+                "meta": {"superset": {"extra": {"certification": None}}},
                 "name": "messages_channels",
                 "unique_id": "model.superset_examples.messages_channels",
                 "columns": [{"name": "id", "description": "Primary key"}],
@@ -753,10 +747,10 @@ def test_sync_datasets_model_certification(mocker: MockerFixture) -> None:
                         "extra": {
                             "certification": {
                                 "details": "I declare this dataset certified",
-                                "certified_by": "Myself"
-                            }
-                        }
-                    }
+                                "certified_by": "Myself",
+                            },
+                        },
+                    },
                 },
                 "name": "messages_channels",
                 "unique_id": "model.superset_examples.messages_channels",
@@ -789,7 +783,7 @@ def test_sync_datasets_model_certification(mocker: MockerFixture) -> None:
                         "depends_on": "ref('messages_channels')",
                         "certification": {
                             "details": "I declare this dataset certified",
-                            "certified_by": "Myself"
+                            "certified_by": "Myself",
                         },
                     },
                 ),
@@ -851,11 +845,7 @@ def test_sync_datasets_warning(mocker: MockerFixture) -> None:
                 "schema": "public",
                 "description": "",
                 "meta": {
-                    "superset": {
-                        "extra": {
-                            "warning_markdown": "Under Construction"
-                        }
-                    }
+                    "superset": {"extra": {"warning_markdown": "Under Construction"}},
                 },
                 "name": "messages_channels",
                 "unique_id": "model.superset_examples.messages_channels",
@@ -947,11 +937,7 @@ def test_sync_datasets_meta_test(mocker: MockerFixture) -> None:
                 "database": "examples_dev",
                 "schema": "public",
                 "description": "",
-                "meta": {
-                    "superset": {
-                        "cache_timeout": 250
-                    }
-                },
+                "meta": {"superset": {"cache_timeout": 250}},
                 "name": "messages_channels",
                 "unique_id": "model.superset_examples.messages_channels",
                 "columns": [{"name": "id", "description": "Primary key"}],
