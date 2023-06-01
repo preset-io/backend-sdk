@@ -364,6 +364,31 @@ Running this command will:
 4. Any `metrics <https://docs.getdbt.com/docs/building-a-dbt-project/metrics>`_ will be added to the corresponding datasets.
 5. Every dashboard built on top of the dbt sources and/or models will be synchronized back to dbt as an `exposure <https://docs.getdbt.com/docs/building-a-dbt-project/exposures>`_.
 
+Descriptions, labels and other metadata is also synced from dbt models to the corresponding fields in the dataset. It's also possible to specify values for Superset-only fields directly in the model definition, under ``model.meta.superset.{{field_name}}``. For example, to specify the cache timeout for a dataset:
+
+.. code-block:: yaml
+
+    models:
+      - name: my_dbt_model
+        meta:
+          superset:
+            cache_timeout: 250 # Setting the dataset cache timeout to 250. 
+
+The same is applied for metrics. For example, to specify the d3 format for a metric:
+
+.. code-block:: yaml
+
+    - name: avg_revenue
+      label: "AVG Revenue"
+      model: ref('my_dbt_model')
+      calculation_method: average
+      expression: price_each
+      timestamp: date
+      meta:
+        superset:
+          d3format: '%d'
+
+
 The ``--external-url-prefix`` should point to your dbt docs, so that the resources in the workspace can point to the source of truth where they are being managed. Similar to the native sync, the dbt sync also supports the ``--disallow-edits`` flag.
 
 By default, the CLI sync would create a new database on the destination workspace using below name structure:
