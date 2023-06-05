@@ -86,11 +86,13 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
 
         # load additional metadata from dbt model definition
         model_kwargs = model.get("meta", {}).pop("superset", {})
-        certification = (
-            model_kwargs.get("extra", {}).pop("certification")
-            if "certification" in model_kwargs
-            else certification or {"details": "This table is produced by dbt"}
-        )
+        certification_info = {
+            "certification": (
+                model_kwargs.get("extra", {}).pop("certification")
+                if "certification" in model_kwargs.get("extra", {})
+                else certification or {"details": "This table is produced by dbt"}
+            ),
+        }
 
         filters = {
             "database": OneToMany(database["id"]),
@@ -115,7 +117,11 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         extra = {
             "unique_id": model["unique_id"],
             "depends_on": "ref('{name}')".format(**model),
-            "certification": certification,
+            **(
+                certification_info
+                if certification_info["certification"] is not None
+                else {}
+            ),
             **model_kwargs.pop(
                 "extra",
                 {},
