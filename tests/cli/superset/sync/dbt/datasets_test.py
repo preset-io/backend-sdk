@@ -682,7 +682,6 @@ def test_sync_datasets_null_certification(mocker: MockerFixture) -> None:
                     {
                         "unique_id": "model.superset_examples.messages_channels",
                         "depends_on": "ref('messages_channels')",
-                        "certification": None,
                     },
                 ),
                 is_managed_externally=False,
