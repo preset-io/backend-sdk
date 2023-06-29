@@ -21,6 +21,8 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_metrics_for_model,
 )
 
+DEFAULT_CERTIFICATION = {"details": "This table is produced by dbt"}
+
 _logger = logging.getLogger(__name__)
 
 
@@ -66,7 +68,7 @@ def create_dataset(
     return client.create_dataset(**kwargs)
 
 
-def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments
+def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments, too-many-statements
     client: SupersetClient,
     models: List[ModelSchema],
     metrics: List[MetricSchema],
@@ -74,6 +76,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     disallow_edits: bool,
     external_url_prefix: str,
     certification: Optional[Dict[str, Any]] = None,
+    reload_columns: bool = True,
 ) -> List[Any]:
     """
     Read the dbt manifest and import models as datasets with metrics.
@@ -86,13 +89,13 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
 
         # load additional metadata from dbt model definition
         model_kwargs = model.get("meta", {}).pop("superset", {})
-        certification_info = {
-            "certification": (
-                model_kwargs.get("extra", {}).pop("certification")
-                if "certification" in model_kwargs.get("extra", {})
-                else certification or {"details": "This table is produced by dbt"}
-            ),
-        }
+
+        try:
+            certification_details = model_kwargs["extra"].pop("certification")
+        except KeyError:
+            certification_details = certification or DEFAULT_CERTIFICATION
+
+        certification_info = {"certification": certification_details}
 
         filters = {
             "database": OneToMany(database["id"]),
@@ -150,7 +153,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                 },
             )
 
-        # update dataset clearing metrics...
+        # update dataset metadata from dbt and clearing metrics
         update = {
             "description": model.get("description", ""),
             "extra": json.dumps(extra),
@@ -161,7 +164,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         if base_url:
             fragment = "!/model/{unique_id}".format(**model)
             update["external_url"] = str(base_url.with_fragment(fragment))
-        client.update_dataset(dataset["id"], override_columns=True, **update)
+        client.update_dataset(dataset["id"], override_columns=reload_columns, **update)
 
         # ...then update metrics
         if dataset_metrics:
@@ -192,7 +195,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
 
             client.update_dataset(
                 dataset["id"],
-                override_columns=True,
+                override_columns=reload_columns,
                 columns=current_columns,
             )
 

@@ -515,6 +515,85 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
     )
 
 
+def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` when setting ovverride_columns to false.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
+    client.get_dataset.return_value = {
+        "columns": [
+            {
+                "column_name": "id",
+                "is_dttm": False,
+                "filterable": False,
+                "groupby": False,
+            },
+        ],
+    }
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=metrics,
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="https://dbt.example.org/",
+        reload_columns=False,
+    )
+    client.create_dataset.assert_not_called()
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=False,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+                external_url=(
+                    "https://dbt.example.org/"
+                    "#!/model/model.superset_examples.messages_channels"
+                ),
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "filterable": False,
+                        "groupby": False,
+                        "verbose_name": "id",
+                    },
+                ],
+            ),
+        ],
+    )
+
+
 def test_sync_datasets_no_columns(mocker: MockerFixture) -> None:
     """
     Test ``sync_datasets`` when passing external URL prefix.

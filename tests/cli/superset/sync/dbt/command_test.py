@@ -24,6 +24,132 @@ dirname, _ = os.path.split(os.path.abspath(__file__))
 with open(os.path.join(dirname, "manifest.json"), encoding="utf-8") as fp:
     manifest_contents = fp.read()
 
+dbt_core_models = [
+    {
+        "database": "examples_dev",
+        "columns": [],
+        "meta": {},
+        "description": "",
+        "name": "messages_channels",
+        "tags": [],
+        "schema": "public",
+        "unique_id": "model.superset_examples.messages_channels",
+        "created_at": 1642628933.004452,
+        "children": ["metric.superset_examples.cnt"],
+        "depends_on": {
+            "macros": [],
+            "nodes": [
+                "source.superset_examples.public.channels",
+                "source.superset_examples.public.messages",
+            ],
+        },
+        "unrendered_config": {"materialized": "view"},
+        "resource_type": "model",
+        "path": "slack/messages_channels.sql",
+        "extra_ctes": [],
+        "package_name": "superset_examples",
+        "alias": "messages_channels",
+        "relation_name": '"examples_dev"."public"."messages_channels"',
+        "config": {
+            "enabled": True,
+            "alias": None,
+            "schema": None,
+            "database": None,
+            "tags": [],
+            "meta": {},
+            "materialized": "view",
+            "persist_docs": {},
+            "quoting": {},
+            "column_types": {},
+            "full_refresh": None,
+            "on_schema_change": "ignore",
+            "post-hook": [],
+            "pre-hook": [],
+        },
+        "patch_path": None,
+        "compiled_sql": (
+            "SELECT messages.ts, channels.name, messages.text "
+            'FROM "examples_dev"."public"."messages" messages '
+            'JOIN "examples_dev"."public"."channels" channels '
+            "ON messages.channel_id = channels.id"
+        ),
+        "extra_ctes_injected": True,
+        "deferred": False,
+        "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+        "original_file_path": "models/slack/messages_channels.sql",
+        "refs": [],
+        "fqn": ["superset_examples", "slack", "messages_channels"],
+        "raw_sql": (
+            "SELECT messages.ts, channels.name, messages.text "
+            "FROM {{ source ('public', 'messages') }} messages "
+            "JOIN {{ source ('public', 'channels') }} channels "
+            "ON messages.channel_id = channels.id"
+        ),
+        "build_path": None,
+        "sources": [["public", "channels"], ["public", "messages"]],
+        "checksum": {
+            "name": "sha256",
+            "checksum": "b4ce232b28280daa522b37e12c36b67911e2a98456b8a3b99440075ec5564609",
+        },
+        "docs": {"show": True},
+        "compiled_path": "target/compiled/superset_examples/models/slack/messages_channels.sql",
+        "compiled": True,
+    },
+]
+
+dbt_core_metrics = [
+    {
+        "label": "",
+        "sql": "*",
+        "depends_on": ["model.superset_examples.messages_channels"],
+        "meta": {},
+        "description": "",
+        "name": "cnt",
+        "type": "count",
+        "filters": [],
+        "unique_id": "metric.superset_examples.cnt",
+        "created_at": 1642630986.1942852,
+        "package_name": "superset_examples",
+        "sources": [],
+        "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
+        "path": "slack/schema.yml",
+        "resource_type": "metric",
+        "original_file_path": "models/slack/schema.yml",
+        "model": "ref('messages_channels')",
+        "timestamp": None,
+        "fqn": ["superset_examples", "slack", "cnt"],
+        "time_grains": [],
+        "tags": [],
+        "refs": [["messages_channels"]],
+        "dimensions": [],
+    },
+]
+
+dbt_cloud_models = [
+    {
+        "database": "examples_dev",
+        "description": "",
+        "meta": {},
+        "name": "messages_channels",
+        "schema": "public",
+        "unique_id": "model.superset_examples.messages_channels",
+    },
+]
+
+dbt_cloud_metrics = [
+    {
+        "depends_on": ["model.superset_examples.messages_channels"],
+        "description": "",
+        "filters": [],
+        "label": "",
+        "meta": {},
+        "name": "cnt",
+        "sql": "*",
+        "type": "count",
+        "unique_id": "metric.superset_examples.cnt",
+    },
+]
+
 
 def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
@@ -79,118 +205,97 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         False,
         "",
     )
-    models = [
-        {
-            "database": "examples_dev",
-            "columns": [],
-            "meta": {},
-            "description": "",
-            "name": "messages_channels",
-            "tags": [],
-            "schema": "public",
-            "unique_id": "model.superset_examples.messages_channels",
-            "created_at": 1642628933.004452,
-            "children": ["metric.superset_examples.cnt"],
-            "depends_on": {
-                "macros": [],
-                "nodes": [
-                    "source.superset_examples.public.channels",
-                    "source.superset_examples.public.messages",
-                ],
-            },
-            "unrendered_config": {"materialized": "view"},
-            "resource_type": "model",
-            "path": "slack/messages_channels.sql",
-            "extra_ctes": [],
-            "package_name": "superset_examples",
-            "alias": "messages_channels",
-            "relation_name": '"examples_dev"."public"."messages_channels"',
-            "config": {
-                "enabled": True,
-                "alias": None,
-                "schema": None,
-                "database": None,
-                "tags": [],
-                "meta": {},
-                "materialized": "view",
-                "persist_docs": {},
-                "quoting": {},
-                "column_types": {},
-                "full_refresh": None,
-                "on_schema_change": "ignore",
-                "post-hook": [],
-                "pre-hook": [],
-            },
-            "patch_path": None,
-            "compiled_sql": (
-                "SELECT messages.ts, channels.name, messages.text "
-                'FROM "examples_dev"."public"."messages" messages '
-                'JOIN "examples_dev"."public"."channels" channels '
-                "ON messages.channel_id = channels.id"
-            ),
-            "extra_ctes_injected": True,
-            "deferred": False,
-            "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
-            "original_file_path": "models/slack/messages_channels.sql",
-            "refs": [],
-            "fqn": ["superset_examples", "slack", "messages_channels"],
-            "raw_sql": (
-                "SELECT messages.ts, channels.name, messages.text "
-                "FROM {{ source ('public', 'messages') }} messages "
-                "JOIN {{ source ('public', 'channels') }} channels "
-                "ON messages.channel_id = channels.id"
-            ),
-            "build_path": None,
-            "sources": [["public", "channels"], ["public", "messages"]],
-            "checksum": {
-                "name": "sha256",
-                "checksum": "b4ce232b28280daa522b37e12c36b67911e2a98456b8a3b99440075ec5564609",
-            },
-            "docs": {"show": True},
-            "compiled_path": "target/compiled/superset_examples/models/slack/messages_channels.sql",
-            "compiled": True,
-        },
-    ]
-    metrics = [
-        {
-            "label": "",
-            "sql": "*",
-            "depends_on": ["model.superset_examples.messages_channels"],
-            "meta": {},
-            "description": "",
-            "name": "cnt",
-            "type": "count",
-            "filters": [],
-            "unique_id": "metric.superset_examples.cnt",
-            "created_at": 1642630986.1942852,
-            "package_name": "superset_examples",
-            "sources": [],
-            "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
-            "path": "slack/schema.yml",
-            "resource_type": "metric",
-            "original_file_path": "models/slack/schema.yml",
-            "model": "ref('messages_channels')",
-            "timestamp": None,
-            "fqn": ["superset_examples", "slack", "cnt"],
-            "time_grains": [],
-            "tags": [],
-            "refs": [["messages_channels"]],
-            "dimensions": [],
-        },
-    ]
+
     sync_datasets.assert_called_with(
         client,
-        models,
-        metrics,
+        dbt_core_models,
+        dbt_core_metrics,
         sync_database(),
         False,
         "",
+        reload_columns=True,
     )
     sync_exposures.assert_called_with(
         client,
         exposures,
         sync_datasets(),
-        {("public", "messages_channels"): "ref(messages_channels)"},
+        {("public", "messages_channels"): "ref('messages_channels')"},
+    )
+
+
+def test_dbt_core_reload_columns_false(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with --preserve-columns flag
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+    exposures = root / "models/exposures.yml"
+    fs.create_file(exposures)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+    )
+    sync_exposures = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--exposures",
+            str(exposures),
+            "--preserve-columns",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "default",
+        "default",
+        None,
+        False,
+        False,
+        "",
+    )
+
+    sync_datasets.assert_called_with(
+        client,
+        dbt_core_models,
+        dbt_core_metrics,
+        sync_database(),
+        False,
+        "",
+        reload_columns=False,
+    )
+    sync_exposures.assert_called_with(
+        client,
+        exposures,
+        sync_datasets(),
+        {("public", "messages_channels"): "ref('messages_channels')"},
     )
 
 
@@ -443,12 +548,13 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         sync_database(),
         False,
         "",
+        reload_columns=True,
     )
     sync_exposures.assert_called_with(
         client,
         exposures,
         sync_datasets(),
-        {("public", "messages_channels"): "ref(messages_channels)"},
+        {("public", "messages_channels"): "ref('messages_channels')"},
     )
 
 
@@ -596,31 +702,9 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
     )
-    models = [
-        {
-            "database": "examples_dev",
-            "description": "",
-            "meta": {},
-            "name": "messages_channels",
-            "schema": "public",
-            "unique_id": "model.superset_examples.messages_channels",
-        },
-    ]
-    dbt_client.get_models.return_value = models
-    metrics = [
-        {
-            "depends_on": ["model.superset_examples.messages_channels"],
-            "description": "",
-            "filters": [],
-            "label": "",
-            "meta": {},
-            "name": "cnt",
-            "sql": "*",
-            "type": "count",
-            "unique_id": "metric.superset_examples.cnt",
-        },
-    ]
-    dbt_client.get_metrics.return_value = metrics
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_metrics.return_value = dbt_cloud_metrics
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database
@@ -640,11 +724,60 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     assert result.exit_code == 0
     sync_datasets.assert_called_with(
         superset_client,
-        models,
-        metrics,
+        dbt_cloud_models,
+        dbt_cloud_metrics,
         database,
         False,
         "",
+        reload_columns=True,
+    )
+
+
+def test_dbt_cloud_reload_columns_false(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command with the --preserve-columns flag.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+    )
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_metrics.return_value = dbt_cloud_metrics
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "123",
+            "--preserve-columns",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_datasets.assert_called_with(
+        superset_client,
+        dbt_cloud_models,
+        dbt_cloud_metrics,
+        database,
+        False,
+        "",
+        reload_columns=False,
     )
 
 
@@ -664,31 +797,9 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
     )
-    models = [
-        {
-            "database": "examples_dev",
-            "description": "",
-            "meta": {},
-            "name": "messages_channels",
-            "schema": "public",
-            "unique_id": "model.superset_examples.messages_channels",
-        },
-    ]
-    dbt_client.get_models.return_value = models
-    metrics = [
-        {
-            "depends_on": ["model.superset_examples.messages_channels"],
-            "description": "",
-            "filters": [],
-            "label": "",
-            "meta": {},
-            "name": "cnt",
-            "sql": "*",
-            "type": "count",
-            "unique_id": "metric.superset_examples.cnt",
-        },
-    ]
-    dbt_client.get_metrics.return_value = metrics
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_metrics.return_value = dbt_cloud_metrics
     dbt_client.get_accounts.return_value = [{"id": 1, "name": "My account"}]
     dbt_client.get_projects.return_value = [{"id": 1000, "name": "My project"}]
     dbt_client.get_jobs.return_value = [{"id": 123, "name": "My job"}]
@@ -713,11 +824,12 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
     dbt_client.get_metrics.assert_called_with(123)
     sync_datasets.assert_called_with(
         superset_client,
-        models,
-        metrics,
+        dbt_cloud_models,
+        dbt_cloud_metrics,
         database,
         False,
         "",
+        reload_columns=True,
     )
 
 
@@ -952,7 +1064,7 @@ def test_dbt_core_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> N
         [
             {"schema": "public", "table_name": "messages_channels"},
         ],
-        {("public", "messages_channels"): "ref(messages_channels)"},
+        {("public", "messages_channels"): "ref('messages_channels')"},
     )
 
 
@@ -984,31 +1096,9 @@ def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> 
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
     )
-    models = [
-        {
-            "database": "examples_dev",
-            "description": "",
-            "meta": {},
-            "name": "messages_channels",
-            "schema": "public",
-            "unique_id": "model.superset_examples.messages_channels",
-        },
-    ]
-    dbt_client.get_models.return_value = models
-    metrics = [
-        {
-            "depends_on": ["model.superset_examples.messages_channels"],
-            "description": "",
-            "filters": [],
-            "label": "",
-            "meta": {},
-            "name": "cnt",
-            "sql": "*",
-            "type": "count",
-            "unique_id": "metric.superset_examples.cnt",
-        },
-    ]
-    dbt_client.get_metrics.return_value = metrics
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_metrics.return_value = dbt_cloud_metrics
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database
@@ -1036,5 +1126,5 @@ def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> 
         [
             {"schema": "public", "table_name": "messages_channels"},
         ],
-        {("public", "messages_channels"): "ref(messages_channels)"},
+        {("public", "messages_channels"): "ref('messages_channels')"},
     )
