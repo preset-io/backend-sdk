@@ -143,7 +143,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
     model_map = {
-        ModelKey(model["schema"], model["name"]): f'ref(\'{model["name"]}\')'
+        ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
         for model in models
     }
 
