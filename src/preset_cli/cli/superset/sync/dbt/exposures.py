@@ -122,7 +122,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
         first_owner = chart["owners"][0]
 
         asset_title = re.sub(" ", "_", chart["slice_name"])
-        asset_title = re.sub("\W", "", asset_title)
+        asset_title = re.sub(r"\W", "", asset_title)
 
         exposure = {
             "name": asset_title + "_chart_" + str(chart_id),
@@ -148,7 +148,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
         first_owner = dashboard["owners"][0]
 
         asset_title = re.sub(" ", "_", dashboard["dashboard_title"])
-        asset_title = re.sub("\W", "", asset_title)
+        asset_title = re.sub(r"\W", "", asset_title)
 
         exposure = {
             "name": asset_title + "_dashboard_" + str(dashboard_id),
