@@ -121,7 +121,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
         chart = client.get_chart(chart_id)
         first_owner = chart["owners"][0]
 
-        # remove unsupported characters for dbt exposure name
+        # remove unsupported characters for dbt exposures name
         asset_title = re.sub(" ", "_", chart["slice_name"])
         asset_title = re.sub(r"\W", "", asset_title)
 
