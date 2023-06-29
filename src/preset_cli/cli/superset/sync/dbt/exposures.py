@@ -121,16 +121,8 @@ def sync_exposures(  # pylint: disable=too-many-locals
         chart = client.get_chart(chart_id)
         first_owner = chart["owners"][0]
 
-        asset_title = re.sub(
-            r"[^a-zA-Z0-9 _]",
-            "",
-            chart["slice_name"],
-        )  # remove unsupported characters
-        asset_title = re.sub(
-            r" ",
-            "_",
-            asset_title,
-        )  # replace blank spaces with underscores
+        asset_title = re.sub(" ", "_", chart["slice_name"])
+        asset_title = re.sub("\W", "", asset_title)
 
         exposure = {
             "name": asset_title + "_chart_" + str(chart_id),
