@@ -147,16 +147,8 @@ def sync_exposures(  # pylint: disable=too-many-locals
         dashboard = client.get_dashboard(dashboard_id)
         first_owner = dashboard["owners"][0]
 
-        asset_title = re.sub(
-            r"[^a-zA-Z0-9 _]",
-            "",
-            dashboard["dashboard_title"],
-        )  # remove unsupported characters
-        asset_title = re.sub(
-            r" ",
-            "_",
-            asset_title,
-        )  # replace blank spaces with underscores
+        asset_title = re.sub(" ", "_", dashboard["dashboard_title"])
+        asset_title = re.sub("\W", "", asset_title)
 
         exposure = {
             "name": asset_title + "_dashboard_" + str(dashboard_id),
