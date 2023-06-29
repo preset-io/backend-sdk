@@ -359,7 +359,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     models = dbt_client.get_models(job_id)
     models = apply_select(models, select, exclude)
     model_map = {
-        ModelKey(model["schema"], model["name"]): f'ref(\'{model["name"]}\')'
+        ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
         for model in models
     }
     metrics = dbt_client.get_metrics(job_id)
