@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+import pytest
 import yaml
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
@@ -594,7 +595,8 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "version": 2,
         "exposures": [
             {
-                "name": "Example chart [chart]",
+                "name": "Example_chart_chart_1",
+                "label": "Example chart [chart]",
                 "type": "analysis",
                 "maturity": "low",
                 "url": (
@@ -606,7 +608,80 @@ def test_sync_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 "owner": {"name": "admin admin", "email": "unknown"},
             },
             {
-                "name": "Example dashboard [dashboard]",
+                "name": "Example_dashboard_dashboard_12",
+                "label": "Example dashboard [dashboard]",
+                "type": "dashboard",
+                "maturity": "low",
+                "url": "https://superset.example.org/superset/dashboard/12/",
+                "description": "",
+                "depends_on": ["ref('messages_channels')"],
+                "owner": {"name": "admin admin", "email": "unknown"},
+            },
+        ],
+    }
+
+
+def test_sync_exposures_special_characters(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``sync_exposures`` is generating a dbt-compatible name for the exposures.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root / "models")
+    exposures = root / "models/exposures.yml"
+
+    client = mocker.MagicMock()
+    client.baseurl = URL("https://superset.example.org/")
+
+    chart_with_special_characters = copy.deepcopy(chart_response)
+    chart_with_special_characters["result"][
+        "slice_name"
+    ] = "T!tl3_ w1th $pecial characters()*"  # type: ignore
+    client.get_chart.return_value = chart_with_special_characters["result"]
+
+    dashboard_with_special_characters = copy.deepcopy(dashboard_response)
+    dashboard_with_special_characters["result"][
+        "dashboard_title"
+    ] = "D4shboard %^#? `wi_th` $pecial characters()*"  # type: ignore
+    client.get_dashboard.return_value = dashboard_with_special_characters["result"]
+
+    session = client.auth.session
+    session.get().json.return_value = related_objects_response
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.exposures.get_dashboard_depends_on",
+        return_value=["ref('messages_channels')"],
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.exposures.get_chart_depends_on",
+        return_value=["ref('messages_channels')"],
+    )
+
+    datasets = [dataset_response["result"]]
+    sync_exposures(client, exposures, datasets, {})
+
+    with open(exposures, encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "version": 2,
+        "exposures": [
+            {
+                "name": "Ttl3__w1th_pecial_characters_chart_1",
+                "label": "T!tl3_ w1th $pecial characters()* [chart]",
+                "type": "analysis",
+                "maturity": "low",
+                "url": (
+                    "https://superset.example.org/superset/explore/"
+                    "?form_data=%7B%22slice_id%22:+1%7D"
+                ),
+                "description": "",
+                "depends_on": ["ref('messages_channels')"],
+                "owner": {"name": "admin admin", "email": "unknown"},
+            },
+            {
+                "name": "D4shboard__wi_th_pecial_characters_dashboard_12",
+                "label": "D4shboard %^#? `wi_th` $pecial characters()* [dashboard]",
                 "type": "dashboard",
                 "maturity": "low",
                 "url": "https://superset.example.org/superset/dashboard/12/",
@@ -648,6 +723,25 @@ def test_sync_exposures_no_charts_no_dashboards(
     }
 
 
+def test_get_chart_depends_on_null_query_context(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test ``get_chart_depends_on`` containing a chart that has ``query_context: null`.
+    """
+    client = mocker.MagicMock()
+    client.get_dataset.return_value = dataset_response["result"]
+    chart_response_no_query_context = copy.deepcopy(chart_response)
+    chart_response_no_query_context["result"]["query_context"] = None  # type: ignore
+
+    depends_on = get_chart_depends_on(
+        client,
+        chart_response_no_query_context["result"],
+        {},
+    )
+    assert depends_on == ["ref('messages_channels')"]
+
+
 def test_get_chart_depends_on_from_dataset(mocker: MockerFixture) -> None:
     """
     Test ``sync_exposures`` when datasets don't have model metadata.
@@ -664,9 +758,29 @@ def test_get_chart_depends_on_from_dataset(mocker: MockerFixture) -> None:
     depends_on = get_chart_depends_on(
         client,
         chart_response["result"],
-        {key: "ref(messages_channels)"},
+        {key: "ref('messages_channels')"},
     )
-    assert depends_on == ["ref(messages_channels)"]
+    assert depends_on == ["ref('messages_channels')"]
+
+
+def test_get_chart_depends_on_exception(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test ``get_chart_depends_on`` exception.
+    """
+    client = mocker.MagicMock()
+    client.get_dataset.return_value = dataset_response["result"]
+    chart_response_no_dataset_info = copy.deepcopy(chart_response)
+    chart_response_no_dataset_info["result"]["query_context"] = None  # type: ignore
+    chart_response_no_dataset_info["result"]["params"] = None  # type: ignore
+
+    with pytest.raises(Exception) as excinfo:
+        get_chart_depends_on(client, chart_response_no_dataset_info["result"], {})
+    assert (
+        str(excinfo.value)
+        == "Unable to find dataset information for Chart Example chart"
+    )
 
 
 def test_get_dashboard_depends_on_from_dataset(mocker: MockerFixture) -> None:
@@ -684,6 +798,6 @@ def test_get_dashboard_depends_on_from_dataset(mocker: MockerFixture) -> None:
     depends_on = get_dashboard_depends_on(
         client,
         dashboard_response["result"],
-        {key: "ref(messages_channels)"},
+        {key: "ref('messages_channels')"},
     )
-    assert depends_on == ["ref(messages_channels)"]
+    assert depends_on == ["ref('messages_channels')"]
