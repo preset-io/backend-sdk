@@ -6,6 +6,9 @@ Version 0.2.2 - 2023-06-05
 ==========================
 
 - ``certification`` and additional ``extra`` information is now synced from dbt models (`#213 <https://github.com/preset-io/backend-sdk/pull/213>`_ and `#215 <https://github.com/preset-io/backend-sdk/pull/215>`_).
+- Improved the ``exposures`` sync (`#221 <https://github.com/preset-io/backend-sdk/pull/221>`_).
+- The ``--preserve-columns`` flag can now be used to preserve ``groupby`` and ``filterable`` values for existing columns during a dbt sync (`#221 <https://github.com/preset-io/backend-sdk/pull/221>`_).
+- The search for roles during the ``sync roles`` command now uses ``Equals`` comparison, instead of ``Starts with`` (`#222 <https://github.com/preset-io/backend-sdk/pull/222>`_).
 
 Version 0.2.1 - 2023-05-30
 ==========================
