@@ -6,7 +6,7 @@ Sync dbt datasets/metrics to Superset.
 
 import json
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.engine import create_engine
 from sqlalchemy.engine.url import URL as SQLAlchemyURL
@@ -20,6 +20,8 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_metric_expression,
     get_metrics_for_model,
 )
+
+DEFAULT_CERTIFICATION = {"details": "This table is produced by dbt"}
 
 _logger = logging.getLogger(__name__)
 
@@ -50,7 +52,7 @@ def create_dataset(
         kwargs = {
             "database": database["id"],
             "schema": model["schema"],
-            "table_name": model["name"],
+            "table_name": model.get("alias") or model["name"],
         }
     else:
         engine = create_engine(url)
@@ -59,20 +61,22 @@ def create_dataset(
         kwargs = {
             "database": database["id"],
             "schema": model["schema"],
-            "table_name": model["name"],
+            "table_name": model.get("alias") or model["name"],
             "sql": f"SELECT * FROM {source}",
         }
 
     return client.create_dataset(**kwargs)
 
 
-def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments
+def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments, too-many-statements
     client: SupersetClient,
     models: List[ModelSchema],
     metrics: List[MetricSchema],
     database: Any,
     disallow_edits: bool,
     external_url_prefix: str,
+    certification: Optional[Dict[str, Any]] = None,
+    reload_columns: bool = True,
 ) -> List[Any]:
     """
     Read the dbt manifest and import models as datasets with metrics.
@@ -82,10 +86,21 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     # add datasets
     datasets = []
     for model in models:
+
+        # load additional metadata from dbt model definition
+        model_kwargs = model.get("meta", {}).pop("superset", {})
+
+        try:
+            certification_details = model_kwargs["extra"].pop("certification")
+        except KeyError:
+            certification_details = certification or DEFAULT_CERTIFICATION
+
+        certification_info = {"certification": certification_details}
+
         filters = {
             "database": OneToMany(database["id"]),
             "schema": model["schema"],
-            "table_name": model["name"],
+            "table_name": model.get("alias") or model["name"],
         }
         existing = client.get_datasets(**filters)
         if len(existing) > 1:
@@ -105,9 +120,15 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         extra = {
             "unique_id": model["unique_id"],
             "depends_on": "ref('{name}')".format(**model),
-            "certification": {
-                "details": "This table is produced by dbt",
-            },
+            **(
+                certification_info
+                if certification_info["certification"] is not None
+                else {}
+            ),
+            **model_kwargs.pop(
+                "extra",
+                {},
+            ),  # include any additional or custom field specified in model.meta.superset.extra
         }
 
         dataset_metrics = []
@@ -128,22 +149,22 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                     "verbose_name": metric.get("label", name),
                     "description": metric.get("description", ""),
                     "extra": json.dumps(meta),
-                    **kwargs,
+                    **kwargs,  # include additional metric metadata defined in metric.meta.superset
                 },
             )
 
-        # update dataset clearing metrics...
+        # update dataset metadata from dbt and clearing metrics
         update = {
             "description": model.get("description", ""),
             "extra": json.dumps(extra),
             "is_managed_externally": disallow_edits,
             "metrics": [],
+            **model_kwargs,  # include additional model metadata defined in model.meta.superset
         }
-        update.update(model.get("meta", {}).get("superset", {}))
         if base_url:
             fragment = "!/model/{unique_id}".format(**model)
             update["external_url"] = str(base_url.with_fragment(fragment))
-        client.update_dataset(dataset["id"], override_columns=True, **update)
+        client.update_dataset(dataset["id"], override_columns=reload_columns, **update)
 
         # ...then update metrics
         if dataset_metrics:
@@ -154,11 +175,13 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
 
         # update column descriptions
         if columns := model.get("columns"):
+            column_metadata = {column["name"]: column for column in columns}
             current_columns = client.get_dataset(dataset["id"])["columns"]
             for column in current_columns:
                 name = column["column_name"]
-                if name in columns:
-                    column["description"] = columns[name].get("description", "")
+                if name in column_metadata:
+                    column["description"] = column_metadata[name].get("description", "")
+                    column["verbose_name"] = column_metadata[name].get("name", "")
 
                 # remove columns that are not part of the update payload
                 for key in ("changed_on", "created_on", "type_generic"):
@@ -172,7 +195,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
 
             client.update_dataset(
                 dataset["id"],
-                override_columns=True,
+                override_columns=reload_columns,
                 columns=current_columns,
             )
 

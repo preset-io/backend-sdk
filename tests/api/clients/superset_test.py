@@ -889,7 +889,11 @@ def test_get_database(mocker: MockerFixture) -> None:
     """
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    get_resource = mocker.patch.object(client, "get_resource")
+    get_resource = mocker.patch.object(
+        client,
+        "get_resource",
+        return_value={"sqlalchemy_uri": "preset://"},
+    )
 
     client.get_database(1)
     get_resource.assert_called_with("database", 1)
@@ -2147,7 +2151,7 @@ def test_import_rls(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2238,7 +2242,7 @@ def test_import_rls_no_role_table(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2293,7 +2297,7 @@ def test_import_rls_invalid_role(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2377,7 +2381,7 @@ def test_import_rls_no_schema(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2538,7 +2542,7 @@ def test_import_rls_no_role(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2599,7 +2603,7 @@ def test_import_rls_multiple_roles(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2666,7 +2670,7 @@ def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2957,3 +2961,84 @@ def test_create_virtual_dataset(requests_mock: Mocker) -> None:
             },
         ],
     }
+
+
+def test_get_database_connection(requests_mock: Mocker) -> None:
+    """
+    Test that the client uses the new database endpoint for DB info.
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/database/1",
+        json={
+            "id": 1,
+            "result": {
+                "allow_ctas": False,
+                "allow_cvas": False,
+                "allow_dml": True,
+                "allow_file_upload": True,
+                "allow_run_async": False,
+                "backend": "preset",
+                "cache_timeout": None,
+                "configuration_method": "sqlalchemy_form",
+                "database_name": "File Uploads",
+                "driver": "apsw",
+                "engine_information": {
+                    "disable_ssh_tunneling": False,
+                    "supports_file_upload": True,
+                },
+                "expose_in_sqllab": True,
+                "force_ctas_schema": None,
+                "id": 1,
+                "impersonate_user": False,
+                "is_managed_externally": False,
+                "uuid": "d21c03ce-86ec-461f-ac82-0add92a8ee07",
+            },
+        },
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/database/1/connection",
+        json={
+            "id": 1,
+            "result": {
+                "allow_ctas": False,
+                "allow_cvas": False,
+                "allow_dml": True,
+                "allow_file_upload": True,
+                "allow_run_async": False,
+                "backend": "preset",
+                "cache_timeout": None,
+                "configuration_method": "sqlalchemy_form",
+                "database_name": "File Uploads",
+                "driver": "apsw",
+                "engine_information": {
+                    "disable_ssh_tunneling": False,
+                    "supports_file_upload": True,
+                },
+                "expose_in_sqllab": True,
+                "extra": json.dumps(
+                    {
+                        "allows_virtual_table_explore": True,
+                        "metadata_params": {},
+                        "engine_params": {},
+                        "schemas_allowed_for_file_upload": ["main"],
+                    },
+                ),
+                "force_ctas_schema": None,
+                "id": 1,
+                "impersonate_user": False,
+                "is_managed_externally": False,
+                "masked_encrypted_extra": None,
+                "parameters": {},
+                "parameters_schema": {},
+                "server_cert": None,
+                "sqlalchemy_uri": "preset://",
+                "uuid": "d21c03ce-86ec-461f-ac82-0add92a8ee07",
+            },
+        },
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    response = client.get_database(1)
+    assert response["sqlalchemy_uri"] == "preset://"

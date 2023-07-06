@@ -3,6 +3,7 @@ Sync Superset dashboards as dbt exposures.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional
 
@@ -31,8 +32,17 @@ def get_chart_depends_on(
     Get all the dbt dependencies for a given chart.
     """
 
-    query_context = json.loads(chart["query_context"])
-    dataset_id = query_context["datasource"]["id"]
+    # imported charts have a null query context until loaded in Explore for the first time.
+    # in that case, we can get the dataset id from the params
+    if chart["query_context"]:
+        dataset_id = json.loads(chart["query_context"])["datasource"]["id"]
+    elif chart["params"]:
+        dataset_id = json.loads(chart["params"])["datasource"].split("__")[0]
+    else:
+        raise Exception(
+            f'Unable to find dataset information for Chart {chart["slice_name"]}',
+        )
+
     dataset = client.get_dataset(dataset_id)
     extra = json.loads(dataset["extra"] or "{}")
     if "depends_on" in extra:
@@ -110,8 +120,14 @@ def sync_exposures(  # pylint: disable=too-many-locals
     for chart_id in charts_ids:
         chart = client.get_chart(chart_id)
         first_owner = chart["owners"][0]
+
+        # remove unsupported characters for dbt exposures name
+        asset_title = re.sub(" ", "_", chart["slice_name"])
+        asset_title = re.sub(r"\W", "", asset_title)
+
         exposure = {
-            "name": chart["slice_name"] + " [chart]",
+            "name": asset_title + "_chart_" + str(chart_id),
+            "label": chart["slice_name"] + " [chart]",
             "type": "analysis",
             "maturity": "high" if chart["certified_by"] else "low",
             "url": str(
@@ -131,8 +147,13 @@ def sync_exposures(  # pylint: disable=too-many-locals
     for dashboard_id in dashboards_ids:
         dashboard = client.get_dashboard(dashboard_id)
         first_owner = dashboard["owners"][0]
+
+        asset_title = re.sub(" ", "_", dashboard["dashboard_title"])
+        asset_title = re.sub(r"\W", "", asset_title)
+
         exposure = {
-            "name": dashboard["dashboard_title"] + " [dashboard]",
+            "name": asset_title + "_dashboard_" + str(dashboard_id),
+            "label": dashboard["dashboard_title"] + " [dashboard]",
             "type": "dashboard",
             "maturity": "high"
             if dashboard["published"] or dashboard["certified_by"]

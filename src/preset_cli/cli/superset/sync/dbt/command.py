@@ -40,7 +40,7 @@ from preset_cli.exceptions import DatabaseNotFoundError
     "--import-db",
     is_flag=True,
     default=False,
-    help="Import database to Superset",
+    help="Import (or update) the database connection to Superset",
 )
 @click.option(
     "--disallow-edits",
@@ -67,6 +67,12 @@ from preset_cli.exceptions import DatabaseNotFoundError
     default=False,
     help="Do not sync models to datasets and only fetch exposures instead",
 )
+@click.option(
+    "--preserve-columns",
+    is_flag=True,
+    default=False,
+    help="Preserve column configurations",
+)
 @click.pass_context
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
@@ -81,6 +87,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     disallow_edits: bool = True,
     external_url_prefix: str = "",
     exposures_only: bool = False,
+    preserve_columns: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Core to Superset and charts/dashboards to dbt exposures.
@@ -88,6 +95,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
+
+    reload_columns = not preserve_columns
 
     if profiles is None:
         profiles = os.path.expanduser("~/.dbt/profiles.yml")
@@ -130,10 +139,11 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             # conform to the same schema that dbt Cloud uses for models
             unique_id = config["uniqueId"] = config["unique_id"]
             config["children"] = configs["child_map"][unique_id]
+            config["columns"] = list(config["columns"].values())
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
     model_map = {
-        ModelKey(model["schema"], model["name"]): f'ref({model["name"]})'
+        ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
         for model in models
     }
 
@@ -174,6 +184,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             database,
             disallow_edits,
             external_url_prefix,
+            reload_columns=reload_columns,
         )
 
     if exposures:
@@ -299,6 +310,12 @@ def get_job_id(
     default=False,
     help="Do not sync models to datasets and only fetch exposures instead",
 )
+@click.option(
+    "--preserve-columns",
+    is_flag=True,
+    default=False,
+    help="Preserve column configurations",
+)
 @click.pass_context
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
@@ -310,6 +327,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     disallow_edits: bool = True,
     external_url_prefix: str = "",
     exposures_only: bool = False,
+    preserve_columns: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
@@ -320,6 +338,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
 
     dbt_auth = TokenAuth(token)
     dbt_client = DBTClient(dbt_auth)
+
+    reload_columns = not preserve_columns
 
     if job_id is None:
         job_id = get_job_id(dbt_client)
@@ -339,7 +359,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     models = dbt_client.get_models(job_id)
     models = apply_select(models, select, exclude)
     model_map = {
-        ModelKey(model["schema"], model["name"]): f'ref({model["name"]})'
+        ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
         for model in models
     }
     metrics = dbt_client.get_metrics(job_id)
@@ -358,6 +378,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
             database,
             disallow_edits,
             external_url_prefix,
+            reload_columns=reload_columns,
         )
 
     if exposures:

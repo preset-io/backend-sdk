@@ -1,7 +1,7 @@
 """
 Tests for ``preset_cli.cli.superset.sync.dbt.datasets``.
 """
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name, too-many-lines
 
 import json
 from typing import List, cast
@@ -45,7 +45,7 @@ models: List[ModelSchema] = [
             "meta": {},
             "name": "messages_channels",
             "unique_id": "model.superset_examples.messages_channels",
-            "columns": {"id": {"description": "Primary key"}},
+            "columns": [{"name": "id", "description": "Primary key"}],
         },
     ),
 ]
@@ -116,6 +116,98 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
                         "column_name": "id",
                         "description": "Primary key",
                         "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                    {
+                        "column_name": "ts",
+                        "is_dttm": True,
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_with_alias(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` when datasets has an alias.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
+
+    models_with_alias: List[ModelSchema] = [
+        model_schema.load(
+            {
+                "alias": "model_alias",
+                "database": "examples_dev",
+                "schema": "public",
+                "description": "",
+                "meta": {},
+                "name": "messages_channels",
+                "unique_id": "model.superset_examples.messages_channels",
+                "columns": [{"name": "id", "description": "Primary key"}],
+            },
+        ),
+    ]
+    sync_datasets(
+        client=client,
+        models=models_with_alias,
+        metrics=metrics,
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="model_alias"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "verbose_name": "id",
                     },
                     {
                         "column_name": "ts",
@@ -175,6 +267,66 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
                         "column_name": "id",
                         "description": "Primary key",
                         "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_custom_certification(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with a custom certification.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [{"column_name": "id", "is_dttm": False}],
+    }
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=[],
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+        certification={"details": "This dataset is synced from dbt Cloud"},
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="messages_channels"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {
+                            "details": "This dataset is synced from dbt Cloud",
+                        },
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "verbose_name": "id",
                     },
                 ],
             ),
@@ -267,6 +419,7 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
                         "column_name": "id",
                         "description": "Primary key",
                         "is_dttm": False,
+                        "verbose_name": "id",
                     },
                 ],
             ),
@@ -354,6 +507,86 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
                         "column_name": "id",
                         "description": "Primary key",
                         "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` when setting ovverride_columns to false.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
+    client.get_dataset.return_value = {
+        "columns": [
+            {
+                "column_name": "id",
+                "is_dttm": False,
+                "filterable": False,
+                "groupby": False,
+            },
+        ],
+    }
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=metrics,
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="https://dbt.example.org/",
+        reload_columns=False,
+    )
+    client.create_dataset.assert_not_called()
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=False,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+                external_url=(
+                    "https://dbt.example.org/"
+                    "#!/model/model.superset_examples.messages_channels"
+                ),
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "filterable": False,
+                        "groupby": False,
+                        "verbose_name": "id",
                     },
                 ],
             ),
@@ -476,3 +709,378 @@ def test_model_in_database() -> None:
     url = make_url("snowflake://user:password@host/db1")
     assert model_in_database(cast(ModelSchema, {"database": "db1"}), url)
     assert not model_in_database(cast(ModelSchema, {"database": "db2"}), url)
+
+
+def test_sync_datasets_null_certification(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with no certification info
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
+
+    models_with_null_certification: List[ModelSchema] = [
+        model_schema.load(
+            {
+                "database": "examples_dev",
+                "schema": "public",
+                "description": "",
+                "meta": {"superset": {"extra": {"certification": None}}},
+                "name": "messages_channels",
+                "unique_id": "model.superset_examples.messages_channels",
+                "columns": [{"name": "id", "description": "Primary key"}],
+            },
+        ),
+    ]
+    sync_datasets(
+        client=client,
+        models=models_with_null_certification,
+        metrics=metrics,
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="messages_channels"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                    {
+                        "column_name": "ts",
+                        "is_dttm": True,
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_model_certification(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with certification from model definition
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
+
+    models_with_model_certification: List[ModelSchema] = [
+        model_schema.load(
+            {
+                "database": "examples_dev",
+                "schema": "public",
+                "description": "",
+                "meta": {
+                    "superset": {
+                        "extra": {
+                            "certification": {
+                                "details": "I declare this dataset certified",
+                                "certified_by": "Myself",
+                            },
+                        },
+                    },
+                },
+                "name": "messages_channels",
+                "unique_id": "model.superset_examples.messages_channels",
+                "columns": [{"name": "id", "description": "Primary key"}],
+            },
+        ),
+    ]
+    sync_datasets(
+        client=client,
+        models=models_with_model_certification,
+        metrics=metrics,
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="messages_channels"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {
+                            "details": "I declare this dataset certified",
+                            "certified_by": "Myself",
+                        },
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                    {
+                        "column_name": "ts",
+                        "is_dttm": True,
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_warning(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with warning information
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
+
+    models_with_warning: List[ModelSchema] = [
+        model_schema.load(
+            {
+                "database": "examples_dev",
+                "schema": "public",
+                "description": "",
+                "meta": {
+                    "superset": {"extra": {"warning_markdown": "Under Construction"}},
+                },
+                "name": "messages_channels",
+                "unique_id": "model.superset_examples.messages_channels",
+                "columns": [{"name": "id", "description": "Primary key"}],
+            },
+        ),
+    ]
+    sync_datasets(
+        client=client,
+        models=models_with_warning,
+        metrics=metrics,
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="messages_channels"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                        "warning_markdown": "Under Construction",
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                    {
+                        "column_name": "ts",
+                        "is_dttm": True,
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_meta_test(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with an additional field set through meta.superset
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}, {"id": 2}, {"id": 3}]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
+
+    models_with_meta_info: List[ModelSchema] = [
+        model_schema.load(
+            {
+                "database": "examples_dev",
+                "schema": "public",
+                "description": "",
+                "meta": {"superset": {"cache_timeout": 250}},
+                "name": "messages_channels",
+                "unique_id": "model.superset_examples.messages_channels",
+                "columns": [{"name": "id", "description": "Primary key"}],
+            },
+        ),
+    ]
+    sync_datasets(
+        client=client,
+        models=models_with_meta_info,
+        metrics=metrics,
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_has_calls(
+        [
+            mock.call(database=1, schema="public", table_name="messages_channels"),
+        ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+                cache_timeout=250,
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                    {
+                        "column_name": "ts",
+                        "is_dttm": True,
+                    },
+                ],
+            ),
+        ],
+    )

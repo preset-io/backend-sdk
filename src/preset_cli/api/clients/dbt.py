@@ -535,6 +535,7 @@ class ModelSchema(PostelSchema):
     unique_id = fields.String(data_key="uniqueId")
     tags = fields.List(fields.String())
     columns = fields.Raw()
+    config = fields.Dict(fields.String(), fields.Raw(allow_none=True))
 
 
 class FilterSchema(PostelSchema):
@@ -588,6 +589,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         self.session.headers.update(auth.get_headers())
         self.session.headers["User-Agent"] = "Preset CLI"
         self.session.headers["X-Client-Version"] = __version__
+        self.session.headers["X-dbt-partner-source"] = "preset"
 
     def execute(self, query: str, **variables: Any) -> DataResponse:
         """
@@ -609,6 +611,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         payload = response.json()
 
+        if not response.ok:
+            raise Exception(payload["status"]["user_message"])
+
         account_schema = AccountSchema()
         return [account_schema.load(row) for row in payload["data"]]
 
@@ -621,6 +626,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         response = self.session.get(url)
 
         payload = response.json()
+
+        if not response.ok:
+            raise Exception(payload["status"]["user_message"])
 
         project_schema = ProjectSchema()
         projects = [project_schema.load(project) for project in payload["data"]]
@@ -641,6 +649,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         response = self.session.get(url, params=params)
 
         payload = response.json()
+
+        if not response.ok:
+            raise Exception(payload["status"]["user_message"])
 
         job_schema = JobSchema()
         jobs = [job_schema.load(job) for job in payload["data"]]
@@ -663,6 +674,10 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                     description
                     meta
                     tags
+                    columns {
+                        name
+                        description
+                    }
                 }
             }
         """

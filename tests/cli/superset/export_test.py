@@ -39,8 +39,12 @@ def dataset_export() -> BytesIO:
                 "sql": """
 SELECT action, count(*) as times
 FROM logs
-WHERE
-    action in {{ filter_values('action_type')|where_in }}
+{% if filter_values('action_type')|length %}
+    WHERE action is null
+    {% for action in filter_values('action_type') %}
+        or action = '{{ action }}'
+    {% endfor %}
+{% endif %}
 GROUP BY action""",
             },
         ),
@@ -75,6 +79,7 @@ def test_export_resource(
         root=root,
         client=client,
         overwrite=False,
+        disable_jinja_escaping=False,
     )
     with open(root / "databases/gsheets.yaml", encoding="utf-8") as input_:
         assert input_.read() == "database_name: GSheets\nsqlalchemy_uri: gsheets://\n"
@@ -86,6 +91,7 @@ def test_export_resource(
         root=root,
         client=client,
         overwrite=False,
+        disable_jinja_escaping=False,
     )
     with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
         assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
@@ -93,8 +99,12 @@ def test_export_resource(
             "sql": """
 SELECT action, count(*) as times
 FROM logs
-WHERE
-    action in {{ '{{' }} filter_values('action_type')|where_in {{ '}}' }}
+{{ '{% if' }} filter_values('action_type')|length {{ '%}' }}
+    WHERE action is null
+    {{ '{% for' }} action in filter_values('action_type') {{ '%}' }}
+        or action = '{{ '{{' }} action {{ '}}' }}'
+    {{ '{% endfor %}' }}
+{{ '{% endif %}' }}
 GROUP BY action""",
         }
 
@@ -122,6 +132,7 @@ def test_export_resource_overwrite(
         root=root,
         client=client,
         overwrite=False,
+        disable_jinja_escaping=False,
     )
     with pytest.raises(Exception) as excinfo:
         export_resource(
@@ -130,6 +141,7 @@ def test_export_resource_overwrite(
             root=root,
             client=client,
             overwrite=False,
+            disable_jinja_escaping=False,
         )
     assert str(excinfo.value) == (
         "File already exists and --overwrite was not specified: "
@@ -142,6 +154,7 @@ def test_export_resource_overwrite(
         root=root,
         client=client,
         overwrite=True,
+        disable_jinja_escaping=False,
     )
 
 
@@ -173,6 +186,7 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 Path("/path/to/root"),
                 client,
                 False,
+                False,
                 skip_related=True,
             ),
             mock.call(
@@ -180,6 +194,7 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 set(),
                 Path("/path/to/root"),
                 client,
+                False,
                 False,
                 skip_related=True,
             ),
@@ -189,6 +204,7 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 Path("/path/to/root"),
                 client,
                 False,
+                False,
                 skip_related=True,
             ),
             mock.call(
@@ -196,6 +212,7 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 set(),
                 Path("/path/to/root"),
                 client,
+                False,
                 False,
                 skip_related=True,
             ),
@@ -236,6 +253,7 @@ def test_export_assets_by_id(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 {1, 2, 3},
                 Path("/path/to/root"),
                 client,
+                False,
                 False,
                 skip_related=False,
             ),
@@ -279,6 +297,7 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
                 Path("/path/to/root"),
                 client,
                 False,
+                False,
                 skip_related=True,
             ),
             mock.call(
@@ -286,6 +305,7 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
                 set(),
                 Path("/path/to/root"),
                 client,
+                False,
                 False,
                 skip_related=True,
             ),
@@ -321,6 +341,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 Path("/path/to/root"),
                 client,
                 False,
+                False,
                 skip_related=True,
             ),
             mock.call(
@@ -328,6 +349,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 set(),
                 Path("/path/to/root"),
                 client,
+                False,
                 False,
                 skip_related=True,
             ),
@@ -337,6 +359,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 Path("/path/to/root"),
                 client,
                 False,
+                False,
                 skip_related=True,
             ),
             mock.call(
@@ -344,6 +367,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 set(),
                 Path("/path/to/root"),
                 client,
+                False,
                 False,
                 skip_related=True,
             ),
@@ -501,3 +525,115 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             },
         ],
     }
+
+
+def test_export_resource_jinja_escaping_disabled(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    dataset_export: BytesIO,
+) -> None:
+    """
+    Test ``export_resource`` with --disable-jinja-escaping.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    client = mocker.MagicMock()
+    client.export_zip.return_value = dataset_export
+
+    # check that Jinja2 was not escaped
+    export_resource(
+        resource_name="dataset",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=False,
+        disable_jinja_escaping=True,
+    )
+    with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
+        assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
+            "table_name": "test",
+            "sql": """
+SELECT action, count(*) as times
+FROM logs
+{% if filter_values('action_type')|length %}
+    WHERE action is null
+    {% for action in filter_values('action_type') %}
+        or action = '{{ action }}'
+    {% endfor %}
+{% endif %}
+GROUP BY action""",
+        }
+
+    # metadata file should be ignored
+    assert not (root / "metadata.yaml").exists()
+
+
+def test_export_resource_jinja_escaping_disabled_command(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_assets`` with --disable-jinja-escaping command.
+    """
+    # root must exist for command to succeed
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export",
+            "/path/to/root",
+            "--disable-jinja-escaping",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    export_resource.assert_has_calls(
+        [
+            mock.call(
+                "database",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                True,
+                skip_related=True,
+            ),
+            mock.call(
+                "dataset",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                True,
+                skip_related=True,
+            ),
+            mock.call(
+                "chart",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                True,
+                skip_related=True,
+            ),
+            mock.call(
+                "dashboard",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                True,
+                skip_related=True,
+            ),
+        ],
+    )

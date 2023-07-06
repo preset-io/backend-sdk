@@ -80,6 +80,16 @@ def is_yaml_config(path: Path) -> bool:
     )
 
 
+def load_yaml(path: Path) -> Dict[str, Any]:
+    """
+    Load a YAML file and returns it as a dictionary.
+    """
+    with open(path, encoding="utf-8") as input_:
+        content = input_.read()
+
+    return yaml.load(content, Loader=yaml.SafeLoader)
+
+
 def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     """
     Load a YAML file as a template, render it, and deserialize it.
@@ -109,6 +119,12 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     help="Custom values for templates (eg, country=BR)",
 )
 @click.option(
+    "--disable-jinja-templating",
+    is_flag=True,
+    default=False,
+    help="By default, the CLI supports Jinja templating. This flag disables it",
+)
+@click.option(
     "--disallow-edits",
     is_flag=True,
     default=False,
@@ -130,11 +146,12 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     help="Split imports into individual assets",
 )
 @click.pass_context
-def native(  # pylint: disable=too-many-locals, too-many-arguments
+def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
     ctx: click.core.Context,
     directory: str,
     option: Tuple[str, ...],
     overwrite: bool = False,
+    disable_jinja_templating: bool = False,
     disallow_edits: bool = True,  # pylint: disable=unused-argument
     external_url_prefix: str = "",
     load_env: bool = False,
@@ -171,11 +188,19 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments
         if path_name.is_dir() and not path_name.stem.startswith("."):
             queue.extend(path_name.glob("*"))
         elif is_yaml_config(relative_path):
-            config = render_yaml(path_name, env)
+            config = (
+                load_yaml(path_name)
+                if disable_jinja_templating
+                else render_yaml(path_name, env)
+            )
 
             overrides_path = path_name.with_suffix(".overrides" + path_name.suffix)
             if overrides_path.exists():
-                overrides = render_yaml(overrides_path, env)
+                overrides = (
+                    load_yaml(overrides_path)
+                    if disable_jinja_templating
+                    else render_yaml(overrides_path, env)
+                )
                 dict_merge(config, overrides)
 
             config["is_managed_externally"] = disallow_edits

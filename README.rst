@@ -301,18 +301,57 @@ The function can then be called from any template the following way:
     params:
       ...
 
+Disabling Jinja Templating
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Both the CLI and Superset support Jinja templating. To prevent the CLI from loading Superset Jinja syntax, the export operation automatically escapes Jinja syntax from YAML files. As a consequence, this query:
+
+.. code-block:: yaml
+
+    sql: 'SELECT action, count(*) as times
+        FROM logs
+        {% if filter_values(''action_type'')|length %}
+            WHERE action is null
+            {% for action in filter_values(''action_type'') %}
+                or action = ''{{ action }}''
+            {% endfor %}
+        {% endif %}
+        GROUP BY action'
+
+Becomes this:
+
+.. code-block:: yaml
+
+    sql: 'SELECT action, count(*) as times
+        FROM logs
+        {{ '{% if' }} filter_values(''action_type'')|length {{ '%}' }}
+            WHERE action is null
+            {{ '{% for' }} action in filter_values(''action_type'') {{ '%}' }}
+                or action = ''{{ '{{' }} action {{ '}}' }}''
+            {{ '{% endfor %}' }}
+        {{ '{% endif %}' }}
+        GROUP BY action'
+
+When performing the import, the CLI would load any templating syntax that isn't escaped, and remove escaping. However, this escaping syntax isn't compatible with UI imports. 
+To avoid issues when running migrations using both the CLI and the UI, you can use:
+
+- ``--disable-jinja-escaping`` flag with the ``export-assets`` command to disable the escaping (so that exported assets can be imported via the UI)
+- ``--disable-jinja-templating`` flag with the ``sync native`` command to disable jinja templating (so that assets exported via the UI can be imported via the CLI)
+
+Note that using these flags would remove the ability to dynamically modify the content through the CLI. 
+
 Synchronizing to and from dbt
 -----------------------------
 
 The CLI also allows you to synchronize models, and metrics from a `dbt <https://www.getdbt.com/>`_ project.
 
-If you're using dbt Core you can point the CLI to your compiled manifest and your profiles file, so that all the database is automatically created, together with all the models and metrics. The full command is:
+If you're using dbt Core you can point the CLI to your compiled manifest and your profiles file, so that the database is automatically created, together with all the models and metrics. The full command is:
 
 .. code-block:: bash
 
    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
    > superset sync dbt-core /path/to/dbt/my_project/target/manifest.json \
-   > --project=my_project --target=dev --profile=${HOME}/.dbt/profiles.yml \
+   > --project=my_project --target=dev --profiles=${HOME}/.dbt/profiles.yml \
    > --exposures=/path/to/dbt/my_project/models/exposures.yaml \
    > --import-db \
    > --external-url-prefix=http://localhost:8080/
@@ -325,7 +364,59 @@ Running this command will:
 4. Any `metrics <https://docs.getdbt.com/docs/building-a-dbt-project/metrics>`_ will be added to the corresponding datasets.
 5. Every dashboard built on top of the dbt sources and/or models will be synchronized back to dbt as an `exposure <https://docs.getdbt.com/docs/building-a-dbt-project/exposures>`_.
 
+Descriptions, labels and other metadata is also synced from dbt models to the corresponding fields in the dataset. It's also possible to specify values for Superset-only fields directly in the model definition, under ``model.meta.superset.{{field_name}}``. For example, to specify the cache timeout for a dataset:
+
+.. code-block:: yaml
+
+    models:
+      - name: my_dbt_model
+        meta:
+          superset:
+            cache_timeout: 250 # Setting the dataset cache timeout to 250. 
+
+The same is applied for metrics. For example, to specify the d3 format for a metric:
+
+.. code-block:: yaml
+
+    - name: avg_revenue
+      label: "AVG Revenue"
+      model: ref('my_dbt_model')
+      calculation_method: average
+      expression: price_each
+      timestamp: date
+      meta:
+        superset:
+          d3format: '%d'
+
+
 The ``--external-url-prefix`` should point to your dbt docs, so that the resources in the workspace can point to the source of truth where they are being managed. Similar to the native sync, the dbt sync also supports the ``--disallow-edits`` flag.
+
+By default, the CLI sync would create a new database on the destination workspace using below name structure:
+
+.. code-block:: python
+
+    f"{project_name}_{target_name}"
+
+If you want to sync data to an existing database connection on the workspace instead, you can specify the database connection name on the profiles YAML file. Add below structure under the ``<target-name>``:
+
+.. code-block:: yaml
+    
+    meta:
+      superset:
+        database_name: my DB name # <= specify the database connection/display name used on the workspace
+        
+Example:
+
+.. code-block:: yaml
+
+    jaffle_shop:
+      outputs:
+        dev:
+          meta:
+            superset:
+              database_name: Postgres - Production
+
+If  ``--import-db`` was passed and a database connection was found on the workspace, the operation would update the connection configuration with the dbt connection settings.
 
 If you're using dbt Cloud you can instead pass a job ID and a `service account access token <https://cloud.getdbt.com/#/accounts/72449/settings/service-tokens/new/>`_:
 
@@ -338,30 +429,7 @@ If you're using dbt Cloud you can instead pass a job ID and a `service account a
 
 The token only needs access to the "Metadata only" permission set for your project. You can see the job ID by going to the project URL in dbt Cloud and looking at the last ID in the URL. For example, if the URL is https://cloud.getdbt.com/#/accounts/12345/projects/567890/jobs/ the job ID is 567890.
 
-By default, the CLI sync would create a new database on the destination workspace using below name structure:
-
-.. code-block:: python
-
-    f"{project_name}_{target_name}"
-
-If you want to sync data to an existing database connection on the workspace instead, you can specify the database name on the profiles YAML file. Add below structure under the ``<target-name>``:
-
-.. code-block:: yaml
-    
-    meta:
-      superset:
-        database_name: my DB name # <= specify the database name used on the workspace
-        
-Example:
-
-.. code-block:: yaml
-
-    jaffle_shop:
-      outputs:
-        dev:
-          meta:
-            superset:
-              database_name: Postgres - Production
+When syncing from dbt Cloud, the database connection must already exist on the target workspace. The connection display name on the workspace must match the database name from dbt Cloud.
               
 Selecting models
 ~~~~~~~~~~~~~~~~
