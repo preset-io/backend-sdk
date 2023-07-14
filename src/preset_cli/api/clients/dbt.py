@@ -467,14 +467,26 @@ class TimeSchema(PostelSchema):
     hours = fields.List(fields.Integer(), allow_none=True)
 
 
+class StringOrSchema(fields.Field):
+    def __init__(self, nested_schema, *args, **kwargs):
+        self.nested_schema = nested_schema
+        super().__init__(*args, **kwargs)
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        if isinstance(value, str):
+            return value
+        else:
+            return self.nested_schema().load(value)
+
+
 class ScheduleSchema(PostelSchema):
     """
     Schema for a job schedule.
     """
 
     cron = fields.String()
-    date = fields.Nested(DateSchema, required=True)
-    time = fields.Nested(TimeSchema, required=True)
+    date = StringOrSchema(DateSchema, required=True)
+    time = StringOrSchema(TimeSchema, required=True)
 
 
 class ExecutionSchema(PostelSchema):
@@ -508,9 +520,9 @@ class JobSchema(PostelSchema):
     lifecycle_webhooks_url = fields.String(allow_none=True)
     cron_humanized = fields.String()
     created_at = fields.DateTime()
-    next_run = fields.DateTime()
+    next_run = fields.DateTime(allow_none=True)
     lifecycle_webhooks = fields.Boolean()
-    next_run_humanized = fields.String()
+    next_run_humanized = fields.String(allow_none=True)
     deferring_job_definition_id = fields.Integer(allow_none=True)
     deactivated = fields.Boolean()
     is_deferrable = fields.Boolean()
