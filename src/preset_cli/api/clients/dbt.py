@@ -361,25 +361,25 @@ class RepositorySchema(PostelSchema):
     id = fields.Integer()
     account_id = fields.Integer()
     remote_url = fields.String()
-    remote_backend = fields.String()
+    remote_backend = fields.String(allow_none=True)
     git_clone_strategy = PostelEnumField(GitCloneStrategy)
     deploy_key_id = fields.Integer()
-    github_installation_id = fields.Integer()
+    github_installation_id = fields.Integer(allow_none=True)
     state = fields.Integer()
     created_at = fields.DateTime()
     updated_at = fields.DateTime()
 
     # not present in the spec
-    full_name = fields.String()
+    full_name = fields.String(allow_none=True)
     repository_credentials_id = fields.Integer(allow_none=True)
     gitlab = fields.String(allow_none=True)
     name = fields.String()
-    pull_request_url_template = fields.String()
+    pull_request_url_template = fields.String(allow_none=True)
     git_provider_id = fields.Integer()
     git_provider = fields.String(allow_none=True)
     project_id = fields.Integer()
     deploy_key = fields.Nested(DeployKeySchema)
-    github_repo = fields.String()
+    github_repo = fields.String(allow_none=True)
 
 
 class ProjectSchema(PostelSchema):
@@ -401,10 +401,10 @@ class ProjectSchema(PostelSchema):
 
     # not present in the spec
     group_permissions = fields.List(fields.Nested(GroupPermissionSchema))
-    docs_job = fields.String(allow_none=True)
+    docs_job = fields.Nested("JobSchema", allow_none=True)
     docs_job_id = fields.Integer(allow_none=True)
     freshness_job_id = fields.Integer(allow_none=True)
-    freshness_job = fields.String(allow_none=True)
+    freshness_job = fields.Nested("JobSchema", allow_none=True)
     skipped_setup = fields.Boolean()
 
 
@@ -496,6 +496,7 @@ class JobSchema(PostelSchema):
     environment_id = fields.Integer()
     name = fields.String()
     dbt_version = fields.String(allow_none=True)
+    raw_dbt_version = fields.String(allow_none=True)
     triggers = fields.Nested(TriggerSchema)
     execute_steps = fields.List(fields.String())
     settings = fields.Nested(SettingsSchema)
