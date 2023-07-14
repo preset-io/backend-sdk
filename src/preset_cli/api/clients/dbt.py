@@ -468,6 +468,10 @@ class TimeSchema(PostelSchema):
 
 
 class StringOrSchema(fields.Field):
+    """
+    Dynamic schema constructor for fields that could have a string or another schema
+    """
+
     def __init__(self, nested_schema, *args, **kwargs):
         self.nested_schema = nested_schema
         super().__init__(*args, **kwargs)
@@ -475,8 +479,8 @@ class StringOrSchema(fields.Field):
     def _deserialize(self, value, attr, data, **kwargs):
         if isinstance(value, str):
             return value
-        else:
-            return self.nested_schema().load(value)
+
+        return self.nested_schema().load(value)
 
 
 class ScheduleSchema(PostelSchema):
