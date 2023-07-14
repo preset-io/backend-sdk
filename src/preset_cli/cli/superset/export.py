@@ -241,7 +241,7 @@ def export_rls(ctx: click.core.Context, path: str) -> None:
     client = SupersetClient(url, auth)
 
     with open(path, "w", encoding="utf-8") as output:
-        yaml.dump(list(client.export_rls()), output)
+        yaml.dump(list(client.export_rls()), output, sort_keys=False)
 
 
 @click.command()
