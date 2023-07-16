@@ -888,9 +888,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 keys = ["name", "description", "filter_type", "tables", "roles", "group_key", "clause"]
                 data = {}
                 for key in keys:
-                    if key in ["tables", "roles"]:
-                        inner_key = "table_name" if key == "tables" else "name"
-                        data[key] = [inner_item[inner_key] for inner_item in rule.get(key, [])]
+                    if key == "tables":
+                        data[key] = [f"{inner_item['schema']}.{inner_item['table_name']}" for inner_item in rule.get(key, [])]
+                    elif key == "roles":
+                        data[key] = [inner_item["name"] for inner_item in rule.get(key, [])]
                     else:
                         data[key] = rule.get(key)
                 yield cast(RuleType, data)

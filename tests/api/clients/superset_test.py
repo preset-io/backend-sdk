@@ -1235,6 +1235,18 @@ def test_import_zip_error(requests_mock: Mocker) -> None:
     )
 
 
+def test_get_rls(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_rls`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    get_resources = mocker.patch.object(client, "get_resources")
+
+    client.get_rls()
+    get_resources.assert_called_with("rowlevelsecurity")
+
+
 def test_export_users(requests_mock: Mocker) -> None:
     """
     Test ``export_users``.
@@ -1668,9 +1680,9 @@ def test_export_roles_anchor_role_id(
     ]
 
 
-def test_export_rls(requests_mock: Mocker) -> None:
+def test_export_rls_legacy(requests_mock: Mocker) -> None:
     """
-    Test ``export_rls``.
+    Test ``export_rls_legacy``.
     """
     requests_mock.get(
         (
@@ -1766,7 +1778,7 @@ def test_export_rls(requests_mock: Mocker) -> None:
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    assert list(client.export_rls()) == [
+    assert list(client.export_rls_legacy()) == [
         {
             "name": "My Rule",
             "description": "This is a rule. There are many others like it, but this one is mine.",
@@ -1779,9 +1791,188 @@ def test_export_rls(requests_mock: Mocker) -> None:
     ]
 
 
-def test_export_rls_no_rules(requests_mock: Mocker) -> None:
+def test_export_rls_legacy_older_superset(requests_mock: Mocker) -> None:
     """
-    Test ``export_rls``.
+    Test ``export_rls_legacy`` with older Superset version.
+    """
+    requests_mock.get(
+        (
+            "https://superset.example.org/rowlevelsecurityfiltersmodelview/list/?"
+            "psize_RowLevelSecurityFiltersModelView=100&"
+            "page_RowLevelSecurityFiltersModelView=0"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Filter Type</th>
+        <th>Tables</th>
+        <th>Roles</th>
+        <th>Clause</th>
+        <th>Creator</th>
+        <th>Modified</th>
+      </tr>
+      <tr>
+        <td><input id="1" /></td>
+        <td>Regular</td>
+        <td>[main.test_table]</td>
+        <td>client_id = 9</td>
+        <td>admin admin</td>
+        <td>35 minutes ago</td>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        (
+            "https://superset.example.org/rowlevelsecurityfiltersmodelview/list/?"
+            "psize_RowLevelSecurityFiltersModelView=100&"
+            "page_RowLevelSecurityFiltersModelView=1"
+        ),
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table></table>
+    <table>
+      <tr>
+        <th></th>
+        <th>Filter Type</th>
+        <th>Tables</th>
+        <th>Roles</th>
+        <th>Clause</th>
+        <th>Creator</th>
+        <th>Modified</th>
+      </tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+    requests_mock.get(
+        "https://superset.example.org/rowlevelsecurityfiltersmodelview/show/1",
+        text="""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <table>
+      <tr><th>Filter Type</th><td>Regular</td></tr>
+      <tr><th>Tables</th><td>[main.test_table]</td></tr>
+      <tr><th>Roles</th><td>[Gamma]</td></tr>
+      <tr><th>Group Key</th><td>department</td></tr>
+      <tr><th>Clause</th><td>client_id = 9</td></tr>
+    </table>
+  </body>
+</html>
+        """,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_rls_legacy()) == [
+        {
+            "filter_type": "Regular",
+            "tables": ["main.test_table"],
+            "roles": ["Gamma"],
+            "group_key": "department",
+            "clause": "client_id = 9",
+        },
+    ]
+
+
+def test_export_rls_legacy_route(requests_mock: Mocker, mocker: MockerFixture) -> None:
+    """
+    Test ``export_rls`` going through the legacy route
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code = 404
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    export_rls_legacy = mocker.patch.object(client, "export_rls_legacy")
+    list(client.export_rls())
+    export_rls_legacy.assert_called_once()
+
+
+def test_export_rls(requests_mock: Mocker, mocker: MockerFixture) -> None:
+    """
+    Test ``export_rls``
+    """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code = 200
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    get_rls = mocker.patch.object(client, "get_rls")
+    get_rls.return_value = [
+        {
+            "changed_on_delta_humanized": "2 days ago",
+            "clause": "client_id = 9",
+            "description": "This is a rule. There are many others like it, but this one is mine.",
+            "filter_type": "Regular",
+            "group_key": "department",
+            "id": 9,
+            "name": "My Rule",
+            "roles": [
+            {
+                "id": 1,
+                "name": "Admin"
+            },
+            {
+                "id": 2,
+                "name": "Gamma"
+            }],
+            "tables": [
+            {
+                "id": 18,
+                "schema": "main",
+                "table_name": "test_table"
+            },
+            {
+                "id": 20,
+                "schema": "main",
+                "table_name": "second_test"
+            }]
+        }
+    ]
+
+    assert list(client.export_rls()) == [
+        {
+            "name": "My Rule",
+            "description": "This is a rule. There are many others like it, but this one is mine.",
+            "filter_type": "Regular",
+            "tables": ["main.test_table", "main.second_test"],
+            "roles": ["Admin", "Gamma"],
+            "group_key": "department",
+            "clause": "client_id = 9",
+        },
+    ]
+
+
+def test_export_rls_legacy_no_rules(requests_mock: Mocker) -> None:
+    """
+    Test ``export_rls_legacy`` with no rows returned.
     """
     requests_mock.get(
         (
@@ -1805,7 +1996,7 @@ def test_export_rls_no_rules(requests_mock: Mocker) -> None:
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    assert list(client.export_rls()) == []
+    assert list(client.export_rls_legacy()) == []
 
 
 def test_export_ownership(mocker: MockerFixture) -> None:
