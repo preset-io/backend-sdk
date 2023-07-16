@@ -863,7 +863,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     ("group_key", str),
                     ("clause", str),
                 ]
-                
+
                 # Before Superset 2.1.0, RLS dont have name and description
                 if table.find("th").text.strip() == "Filter Type":
                     keys.remove(("name", str))
@@ -877,7 +877,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     },
                 )
 
-    def export_rls(self) -> None:
+    def export_rls(self) -> Iterator[RuleType]:
         """
         Return all RLS rules.
         """
@@ -885,13 +885,26 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         response = self.session.get(url)
         if response.status_code == 200:
             for rule in self.get_rls():
-                keys = ["name", "description", "filter_type", "tables", "roles", "group_key", "clause"]
+                keys = [
+                    "name",
+                    "description",
+                    "filter_type",
+                    "tables",
+                    "roles",
+                    "group_key",
+                    "clause",
+                ]
                 data = {}
                 for key in keys:
                     if key == "tables":
-                        data[key] = [f"{inner_item['schema']}.{inner_item['table_name']}" for inner_item in rule.get(key, [])]
+                        data[key] = [
+                            f"{inner_item['schema']}.{inner_item['table_name']}"
+                            for inner_item in rule.get(key, [])
+                        ]
                     elif key == "roles":
-                        data[key] = [inner_item["name"] for inner_item in rule.get(key, [])]
+                        data[key] = [
+                            inner_item["name"] for inner_item in rule.get(key, [])
+                        ]
                     else:
                         data[key] = rule.get(key)
                 yield cast(RuleType, data)

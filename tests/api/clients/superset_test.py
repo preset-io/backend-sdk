@@ -1901,7 +1901,7 @@ def test_export_rls_legacy_route(requests_mock: Mocker, mocker: MockerFixture) -
     """
     requests_mock.get(
         "https://superset.example.org/api/v1/rowlevelsecurity/",
-        status_code = 404
+        status_code=404,
     )
 
     auth = Auth()
@@ -1918,7 +1918,7 @@ def test_export_rls(requests_mock: Mocker, mocker: MockerFixture) -> None:
     """
     requests_mock.get(
         "https://superset.example.org/api/v1/rowlevelsecurity/",
-        status_code = 200
+        status_code=200,
     )
 
     auth = Auth()
@@ -1934,27 +1934,12 @@ def test_export_rls(requests_mock: Mocker, mocker: MockerFixture) -> None:
             "group_key": "department",
             "id": 9,
             "name": "My Rule",
-            "roles": [
-            {
-                "id": 1,
-                "name": "Admin"
-            },
-            {
-                "id": 2,
-                "name": "Gamma"
-            }],
+            "roles": [{"id": 1, "name": "Admin"}, {"id": 2, "name": "Gamma"}],
             "tables": [
-            {
-                "id": 18,
-                "schema": "main",
-                "table_name": "test_table"
-            },
-            {
-                "id": 20,
-                "schema": "main",
-                "table_name": "second_test"
-            }]
-        }
+                {"id": 18, "schema": "main", "table_name": "test_table"},
+                {"id": 20, "schema": "main", "table_name": "second_test"},
+            ],
+        },
     ]
 
     assert list(client.export_rls()) == [
