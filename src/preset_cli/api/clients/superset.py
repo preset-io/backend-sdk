@@ -191,7 +191,7 @@ class RuleType(TypedDict):
     Schema for an RLS rule.
     """
 
-    name: str
+    name: Optional[str]
     description: Optional[str]
     filter_type: str
     tables: List[str]
@@ -690,6 +690,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return payload["message"] == "OK"
 
+    def get_rls(self, **kwargs: str) -> List[Any]:
+        """
+        Return RLS rules, possibly filtered.
+        """
+        return self.get_resources("rowlevelsecurity", **kwargs)
+
     def export_users(self) -> Iterator[UserType]:
         """
         Return all users.
@@ -808,9 +814,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     "users": users,
                 }
 
-    def export_rls(self) -> Iterator[RuleType]:
+    def export_rls_legacy(self) -> Iterator[RuleType]:
         """
-        Return all RLS rules.
+        Return all RLS rules from legacy endpoint.
         """
         page = 0
         while True:
@@ -857,6 +863,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     ("group_key", str),
                     ("clause", str),
                 ]
+
+                # Before Superset 2.1.0, RLS dont have name and description
+                if table.find("th").text.strip() == "Filter Type":
+                    keys.remove(("name", str))
+                    keys.remove(("description", str))
+
                 yield cast(
                     RuleType,
                     {
@@ -864,6 +876,41 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                         for (key, parse), tr in zip(keys, table.find_all("tr"))
                     },
                 )
+
+    def export_rls(self) -> Iterator[RuleType]:
+        """
+        Return all RLS rules.
+        """
+        url = self.baseurl / "api/v1/rowlevelsecurity/"
+        response = self.session.get(url)
+        if response.status_code == 200:
+            for rule in self.get_rls():
+                keys = [
+                    "name",
+                    "description",
+                    "filter_type",
+                    "tables",
+                    "roles",
+                    "group_key",
+                    "clause",
+                ]
+                data = {}
+                for key in keys:
+                    if key == "tables":
+                        data[key] = [
+                            f"{inner_item['schema']}.{inner_item['table_name']}"
+                            for inner_item in rule.get(key, [])
+                        ]
+                    elif key == "roles":
+                        data[key] = [
+                            inner_item["name"] for inner_item in rule.get(key, [])
+                        ]
+                    else:
+                        data[key] = rule.get(key)
+                yield cast(RuleType, data)
+
+        else:
+            yield from self.export_rls_legacy()
 
     def import_role(self, role: RoleType) -> None:  # pylint: disable=too-many-locals
         """
