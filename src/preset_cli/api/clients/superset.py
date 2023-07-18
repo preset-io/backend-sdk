@@ -1053,7 +1053,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return the ID of a given role.
         """
-        params = {"_flt_0_name": role_name}
+        params = {"_flt_3_name": role_name}
         url = self.baseurl / "roles/list/"
         _logger.debug("GET %s", url % params)
         response = self.session.get(url, params=params)

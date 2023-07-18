@@ -2327,7 +2327,7 @@ def test_import_rls(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2418,7 +2418,7 @@ def test_import_rls_no_role_table(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2473,7 +2473,7 @@ def test_import_rls_invalid_role(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2557,7 +2557,7 @@ def test_import_rls_no_schema(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2718,7 +2718,7 @@ def test_import_rls_no_role(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2779,7 +2779,7 @@ def test_import_rls_multiple_roles(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
@@ -2846,7 +2846,7 @@ def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
         json={"result": []},
     )
     requests_mock.get(
-        "https://superset.example.org/roles/list/?_flt_0_name=Gamma",
+        "https://superset.example.org/roles/list/?_flt_3_name=Gamma",
         text="""
 <!DOCTYPE html>
 <html lang="en">
