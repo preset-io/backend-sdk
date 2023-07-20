@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.2.4 - 2023-07-20
+==========================
+
+- Further adjustments to dbt marshmallow schemas to avoid integration errors (`#228 <https://github.com/preset-io/backend-sdk/pull/228>_`).
+- Export RLS rules is now compatible with Preset Cloud and older Superset installations (`#227 <https://github.com/preset-io/backend-sdk/pull/227>_`)
+
 Version 0.2.3 - 2023-07-14
 ==========================
 

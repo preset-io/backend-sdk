@@ -375,7 +375,7 @@ class RepositorySchema(PostelSchema):
     gitlab = fields.String(allow_none=True)
     name = fields.String()
     pull_request_url_template = fields.String(allow_none=True)
-    git_provider_id = fields.Integer()
+    git_provider_id = fields.Integer(allow_none=True)
     git_provider = fields.String(allow_none=True)
     project_id = fields.Integer()
     deploy_key = fields.Nested(DeployKeySchema)
