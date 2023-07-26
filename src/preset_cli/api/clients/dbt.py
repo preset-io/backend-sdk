@@ -317,7 +317,7 @@ class ConnectionSchema(PostelSchema):
     Schema for connection information.
     """
 
-    id = fields.Integer()
+    id = fields.Integer(allow_none=True)
     account_id = fields.Integer()
     project_id = fields.Integer()
     name = fields.String()
@@ -358,12 +358,12 @@ class RepositorySchema(PostelSchema):
     Schema for a repository.
     """
 
-    id = fields.Integer()
+    id = fields.Integer(allow_none=True)
     account_id = fields.Integer()
-    remote_url = fields.String()
+    remote_url = fields.String(allow_none=True)
     remote_backend = fields.String(allow_none=True)
     git_clone_strategy = PostelEnumField(GitCloneStrategy)
-    deploy_key_id = fields.Integer()
+    deploy_key_id = fields.Integer(allow_none=True)
     github_installation_id = fields.Integer(allow_none=True)
     state = fields.Integer()
     created_at = fields.DateTime()
@@ -377,7 +377,7 @@ class RepositorySchema(PostelSchema):
     pull_request_url_template = fields.String(allow_none=True)
     git_provider_id = fields.Integer(allow_none=True)
     git_provider = fields.String(allow_none=True)
-    project_id = fields.Integer()
+    project_id = fields.Integer(allow_none=True)
     deploy_key = fields.Nested(DeployKeySchema)
     github_repo = fields.String(allow_none=True)
 
@@ -387,25 +387,28 @@ class ProjectSchema(PostelSchema):
     Schema for a dbt project.
     """
 
-    id = fields.Integer()
+    id = fields.Integer(allow_none=True)
     account_id = fields.Integer()
-    connection = fields.Nested(ConnectionSchema)
-    connection_id = fields.Integer()
+    connection = fields.Nested(ConnectionSchema, allow_none=True)
+    connection_id = fields.Integer(allow_none=True)
     dbt_project_subdirectory = fields.String(allow_none=True)
     name = fields.String()
-    repository = fields.Nested(RepositorySchema)
-    repository_id = fields.Integer()
+    repository = fields.Nested(RepositorySchema, allow_none=True)
+    repository_id = fields.Integer(allow_none=True)
     state = fields.Integer()
-    created_at = fields.DateTime()
-    updated_at = fields.DateTime()
+    created_at = fields.DateTime(allow_none=True)
+    updated_at = fields.DateTime(allow_none=True)
 
     # not present in the spec
-    group_permissions = fields.List(fields.Nested(GroupPermissionSchema))
+    group_permissions = fields.List(
+        fields.Nested(GroupPermissionSchema),
+        allow_none=True,
+    )
     docs_job = fields.Nested("JobSchema", allow_none=True)
     docs_job_id = fields.Integer(allow_none=True)
     freshness_job_id = fields.Integer(allow_none=True)
     freshness_job = fields.Nested("JobSchema", allow_none=True)
-    skipped_setup = fields.Boolean()
+    skipped_setup = fields.Boolean(allow_none=True)
 
 
 class TriggerSchema(PostelSchema):
@@ -525,7 +528,7 @@ class JobSchema(PostelSchema):
     cron_humanized = fields.String()
     created_at = fields.DateTime()
     next_run = fields.DateTime(allow_none=True)
-    lifecycle_webhooks = fields.Boolean()
+    lifecycle_webhooks = fields.Boolean(allow_none=True)
     next_run_humanized = fields.String(allow_none=True)
     deferring_job_definition_id = fields.Integer(allow_none=True)
     deactivated = fields.Boolean()
