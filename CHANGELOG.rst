@@ -5,6 +5,11 @@ Changelog
 Next
 ====
 
+Version 0.2.5 - 2023-07-26
+==========================
+
+- Further adjustments to dbt marshmallow schemas to avoid integration errors (`#229 <https://github.com/preset-io/backend-sdk/pull/229>_`).
+
 Version 0.2.4 - 2023-07-20
 ==========================
 
