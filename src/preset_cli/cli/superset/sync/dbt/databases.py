@@ -54,6 +54,15 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
             build_sqlalchemy_params(target),
         )
 
+        database_args = {
+            "database_name": database_name,
+            "masked_encrypted_extra": connection_params.get("encrypted_extra"),
+        }
+
+        # Avoid including if not necessary to prevent issues with legacy instances
+        if disallow_edits:
+            database_args["is_managed_externally"] = disallow_edits
+
         if databases:
             _logger.info("Found an existing database connection, updating it")
             database = databases[0]
@@ -61,9 +70,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
 
             database = client.update_database(
                 database_id=database["id"],
-                database_name=database_name,
-                is_managed_externally=disallow_edits,
-                masked_encrypted_extra=connection_params.get("encrypted_extra"),
+                **database_args,
                 sqlalchemy_uri=connection_params["sqlalchemy_uri"],
                 **meta,
             )
@@ -72,9 +79,7 @@ def sync_database(  # pylint: disable=too-many-locals, too-many-arguments
             _logger.info("No database connection found, creating it")
 
             database = client.create_database(
-                database_name=database_name,
-                is_managed_externally=disallow_edits,
-                masked_encrypted_extra=connection_params.get("encrypted_extra"),
+                **database_args,
                 **connection_params,
                 **meta,
             )

@@ -36,6 +36,93 @@ def test_run_query(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
     _logger = mocker.patch("preset_cli.api.clients.superset._logger")
     mocker.patch("preset_cli.api.clients.superset.shortid", return_value="5b8f4d8c89")
+
+    requests_mock.post(
+        "https://superset.example.org/api/v1/sqllab/execute/",
+        json={
+            "query_id": 2,
+            "status": "success",
+            "data": [{"value": 1}],
+            "columns": [{"name": "value", "type": "INT", "is_date": False}],
+            "selected_columns": [{"name": "value", "type": "INT", "is_date": False}],
+            "expanded_columns": [],
+            "query": {
+                "changedOn": "2022-03-25T15:37:00.393660",
+                "changed_on": "2022-03-25T15:37:00.393660",
+                "dbId": 1,
+                "db": "examples",
+                "endDttm": 1648222620417.808,
+                "errorMessage": None,
+                "executedSql": "SELECT 1 AS value\nLIMIT 1001",
+                "id": "IrwwY8Ky14",
+                "queryId": 2,
+                "limit": 1000,
+                "limitingFactor": "NOT_LIMITED",
+                "progress": 100,
+                "rows": 1,
+                "schema": "public",
+                "ctas": False,
+                "serverId": 2,
+                "sql": "SELECT 1 AS value",
+                "sqlEditorId": "1",
+                "startDttm": 1648222620279.198000,
+                "state": "success",
+                "tab": "Untitled Query 1",
+                "tempSchema": None,
+                "tempTable": None,
+                "userId": 1,
+                "user": "admin admin",
+                "resultsKey": None,
+                "trackingUrl": None,
+                "extra": {"cancel_query": 35121, "progress": None},
+            },
+        },
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    results = client.run_query(database_id=1, sql="SELECT 1 AS value", limit=10)
+    assert results.to_dict() == {"value": {0: 1}}
+
+    _logger.debug.assert_called_with(
+        "POST %s\n%s",
+        URL("https://superset.example.org/api/v1/sqllab/execute/"),
+        """{
+    "client_id": "5b8f4d8c89",
+    "database_id": 1,
+    "json": true,
+    "runAsync": false,
+    "schema": null,
+    "sql": "SELECT 1 AS value",
+    "sql_editor_id": "1",
+    "tab": "Untitled Query 2",
+    "tmp_table_name": "",
+    "select_as_cta": false,
+    "ctas_method": "TABLE",
+    "queryLimit": 10,
+    "expand_data": true
+}""",
+    )
+
+
+def test_run_query_legacy_endpoint(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test the ``run_query`` method for legacy Superset instances.
+    """
+    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+    mocker.patch("preset_cli.api.clients.superset.shortid", return_value="5b8f4d8c89")
+
+    # Mock POST request to new endpoint
+    requests_mock.post(
+        "https://superset.example.org/api/v1/sqllab/execute/",
+        status_code=404,
+    )
+
+    # Mock POST request to legacy endpoint
     requests_mock.post(
         "https://superset.example.org/superset/sql_json/",
         json={
@@ -83,6 +170,29 @@ def test_run_query(mocker: MockerFixture, requests_mock: Mocker) -> None:
 
     results = client.run_query(database_id=1, sql="SELECT 1 AS value", limit=10)
     assert results.to_dict() == {"value": {0: 1}}
+
+    # Assert request to new endpoint was made first
+    _logger.debug.assert_any_call(
+        "POST %s\n%s",
+        URL("https://superset.example.org/api/v1/sqllab/execute/"),
+        """{
+    "client_id": "5b8f4d8c89",
+    "database_id": 1,
+    "json": true,
+    "runAsync": false,
+    "schema": null,
+    "sql": "SELECT 1 AS value",
+    "sql_editor_id": "1",
+    "tab": "Untitled Query 2",
+    "tmp_table_name": "",
+    "select_as_cta": false,
+    "ctas_method": "TABLE",
+    "queryLimit": 10,
+    "expand_data": true
+}""",
+    )
+
+    # Assert request to legacy endpoint then
     _logger.debug.assert_called_with(
         "POST %s\n%s",
         URL("https://superset.example.org/superset/sql_json/"),
@@ -126,7 +236,7 @@ def test_run_query_error(requests_mock: Mocker) -> None:
         },
     ]
     requests_mock.post(
-        "https://superset.example.org/superset/sql_json/",
+        "https://superset.example.org/api/v1/sqllab/execute/",
         json={"errors": errors},
         headers={"Content-Type": "application/json"},
         status_code=400,
@@ -183,7 +293,7 @@ def test_convert_to_adhoc_column() -> None:
 
 def test_get_data(requests_mock: Mocker) -> None:
     """
-    Test the ``run_query`` method.
+    Test the ``get_data`` method.
     """
     requests_mock.get(
         "https://superset.example.org/api/v1/dataset/27",
@@ -2998,12 +3108,41 @@ def test_update_role(requests_mock: Mocker) -> None:
     )
 
 
-def test_create_virtual_dataset(requests_mock: Mocker) -> None:
+def test_create_virtual_dataset(mocker: MockerFixture) -> None:
     """
     Test the ``create_dataset`` method with virtual datasets.
     """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    create_resource = mocker.patch.object(client, "create_resource")
+    validate_key_in_resource_schema = mocker.patch.object(
+        client,
+        "validate_key_in_resource_schema",
+    )
+    validate_key_in_resource_schema.return_value = {"add_columns": True}
+
+    client.create_database(
+        database_name="my_db",
+        sqlalchemy_uri="gsheets://",
+        sql="select 1 as one",
+    )
+    create_resource.assert_called_with(
+        "database",
+        database_name="my_db",
+        sqlalchemy_uri="gsheets://",
+        sql="select 1 as one",
+    )
+
+
+def test_create_virtual_dataset_legacy(
+    requests_mock: Mocker,
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test the ``create_dataset`` method with virtual datasets for legacy Superset instances.
+    """
     requests_mock.post(
-        "https://superset.example.org/superset/sql_json/",
+        "https://superset.example.org/api/v1/sqllab/execute/",
         json={
             "query_id": 137,
             "status": "success",
@@ -3079,6 +3218,12 @@ def test_create_virtual_dataset(requests_mock: Mocker) -> None:
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
+
+    validate_key_in_resource_schema = mocker.patch.object(
+        client,
+        "validate_key_in_resource_schema",
+    )
+    validate_key_in_resource_schema.return_value = {"add_columns": False}
 
     client.create_dataset(
         database=1,

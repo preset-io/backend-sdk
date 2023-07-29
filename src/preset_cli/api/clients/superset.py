@@ -43,6 +43,7 @@ from zipfile import ZipFile
 
 import pandas as pd
 import prison
+import requests
 import yaml
 from bs4 import BeautifulSoup
 from yarl import URL
@@ -247,7 +248,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         schema: Optional[str] = None,
         limit: int = 1000,
     ) -> Dict[str, Any]:
-        url = self.baseurl / "superset/sql_json/"
+        url = self.baseurl / "api/v1/sqllab/execute/"
         data = {
             "client_id": shortid()[:10],
             "database_id": database_id,
@@ -268,10 +269,19 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         }
         self.session.headers.update(headers)
 
-        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
-        response = self.session.post(url, json=data)
-        validate_response(response)
+        try:
+            _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+            response = self.session.post(url, json=data)
+            response.raise_for_status()
 
+        # Legacy superset installations don't have the SQL API endpoint yet
+        except requests.exceptions.HTTPError as err:
+            if err.response.status_code == 404:
+                url = self.baseurl / "superset/sql_json/"
+                _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+                response = self.session.post(url, json=data)
+
+        validate_response(response)
         payload = response.json()
 
         return payload
@@ -473,6 +483,37 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return resource
 
+    def get_resource_endpoint_info(self, resource_name: str, **kwargs: Any) -> Any:
+        """
+        Get resource endpoint info (such as available columns) possibly filtered.
+        """
+        query = prison.dumps({"keys": list(kwargs["keys"])} if "keys" in kwargs else {})
+
+        url = self.baseurl / "api/v1" / resource_name / "_info" % {"q": query}
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
+        validate_response(response)
+
+        endpoint_info = response.json()
+
+        return endpoint_info
+
+    def validate_key_in_resource_schema(
+        self, resource_name: str, key_name: str, **kwargs: Any
+    ) -> Any:
+        """
+        Validate if a key is present in a resource schema.
+        """
+        schema_validation = {}
+
+        endpoint_info = self.get_resource_endpoint_info(resource_name, **kwargs)
+
+        for key in kwargs.get("keys", ["add_columns", "edit_columns"]):
+            schema_columns = [column["name"] for column in endpoint_info.get(key, [])]
+            schema_validation[key] = key_name in schema_columns
+
+        return schema_validation
+
     def get_database(self, database_id: int) -> Any:
         """
         Return a single database.
@@ -526,6 +567,16 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         if "sql" not in kwargs:
             return self.create_resource("dataset", **kwargs)
 
+        # Check if the dataset creation supports sql directly
+        not_legacy = self.validate_key_in_resource_schema(
+            "dataset",
+            "sql",
+            keys=["add_columns"],
+        )
+        not_legacy = not_legacy["add_columns"]
+        if not_legacy:
+            return self.create_resource("dataset", **kwargs)
+
         # run query to determine columns types
         payload = self._run_query(
             database_id=kwargs["database"],
@@ -539,7 +590,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         for column in columns:
             column["column_name"] = column["name"]
             column["groupby"] = True
-            if column["is_dttm"]:
+            if column.get("is_dttm") or column.get("is_date"):
                 column["type_generic"] = 2
             elif column["type"] is None:
                 column["type"] = "UNKNOWN"
@@ -564,7 +615,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         payload = response.json()
 
-        return payload["data"]
+        return payload["data"] if "data" in payload else {"id": payload["table_id"]}
 
     def update_dataset(
         self,
