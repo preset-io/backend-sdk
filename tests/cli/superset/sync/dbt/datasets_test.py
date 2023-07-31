@@ -91,6 +91,7 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -181,6 +182,7 @@ def test_sync_datasets_with_alias(mocker: MockerFixture) -> None:
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -254,6 +256,7 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -312,6 +315,7 @@ def test_sync_datasets_custom_certification(mocker: MockerFixture) -> None:
                         },
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -390,6 +394,7 @@ def test_sync_datasets_existing(mocker: MockerFixture) -> None:
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -473,12 +478,12 @@ def test_sync_datasets_external_url_disallow_edits(mocker: MockerFixture) -> Non
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
+                is_managed_externally=True,
                 metrics=[],
                 external_url=(
                     "https://dbt.example.org/"
                     "#!/model/model.superset_examples.messages_channels"
                 ),
-                is_managed_externally=True,
             ),
             mock.call(
                 1,
@@ -550,6 +555,7 @@ def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
                 external_url=(
                     "https://dbt.example.org/"
@@ -620,6 +626,7 @@ def test_sync_datasets_no_columns(mocker: MockerFixture) -> None:
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -756,6 +763,7 @@ def test_sync_datasets_null_certification(mocker: MockerFixture) -> None:
                         "depends_on": "ref('messages_channels')",
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -857,6 +865,7 @@ def test_sync_datasets_model_certification(mocker: MockerFixture) -> None:
                         },
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -949,6 +958,7 @@ def test_sync_datasets_warning(mocker: MockerFixture) -> None:
                         "warning_markdown": "Under Construction",
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
             ),
             mock.call(
@@ -1038,6 +1048,7 @@ def test_sync_datasets_meta_test(mocker: MockerFixture) -> None:
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
+                is_managed_externally=False,
                 metrics=[],
                 cache_timeout=250,
             ),

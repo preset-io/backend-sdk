@@ -157,14 +157,10 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         update = {
             "description": model.get("description", ""),
             "extra": json.dumps(extra),
+            "is_managed_externally": disallow_edits,
             "metrics": [],
             **model_kwargs,  # include additional model metadata defined in model.meta.superset
         }
-
-        # Avoid including if not necessary to prevent issues with legacy instances
-        if disallow_edits:
-            update["is_managed_externally"] = disallow_edits
-
         if base_url:
             fragment = "!/model/{unique_id}".format(**model)
             update["external_url"] = str(base_url.with_fragment(fragment))
