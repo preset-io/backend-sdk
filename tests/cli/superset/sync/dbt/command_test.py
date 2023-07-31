@@ -4,6 +4,7 @@ Tests for the dbt import command.
 # pylint: disable=invalid-name, too-many-lines
 
 import os
+import warnings
 from pathlib import Path
 
 import pytest
@@ -684,6 +685,77 @@ def test_dbt_core_no_database(mocker: MockerFixture, fs: FakeFilesystem) -> None
     )
     assert result.exit_code == 0
     assert result.output == "No database was found, pass --import-db to create\n"
+
+
+def test_dbt_core_disallow_edits_superset(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with ``--disallow-edits`` for Superset legacy installation.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    dbt_project = root / "default/dbt_project.yml"
+    fs.create_file(
+        dbt_project,
+        contents=yaml.dump(
+            {
+                "name": "my_project",
+                "profile": "default",
+                "target-path": "target",
+            },
+        ),
+    )
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+
+    runner = CliRunner()
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        result = runner.invoke(
+            superset_cli,
+            [
+                "https://superset.example.org/",
+                "sync",
+                "dbt-core",
+                str(dbt_project),
+                "--profiles",
+                str(profiles),
+                "--disallow-edits",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+
+    assert issubclass(w[0].category, UserWarning)
+    assert (
+        "The managed externally feature was only introduced in Superset v1.5."
+        in str(w[0].message)
+    )
+
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "my_project",
+        "default",
+        None,
+        False,
+        True,
+        "",
+    )
 
 
 def test_dbt_cloud(mocker: MockerFixture) -> None:

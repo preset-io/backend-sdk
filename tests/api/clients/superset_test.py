@@ -966,6 +966,365 @@ def test_update_resource(requests_mock: Mocker) -> None:
     }
 
 
+def test_get_resource_endpoint_info(requests_mock: Mocker) -> None:
+    """
+    Test the ``get_resource_endpoint_info`` method.
+    """
+
+    expected_response = json.dumps(
+        {
+            "add_columns": [
+                {
+                    "description": "",
+                    "label": "Database",
+                    "name": "database",
+                    "required": True,
+                    "type": "Integer",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Schema",
+                    "name": "schema",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                    "validate": ["<Length(min=0, max=250, equal=None, error=None)>"],
+                },
+                {
+                    "description": "",
+                    "label": "Table Name",
+                    "name": "table_name",
+                    "required": True,
+                    "type": "String",
+                    "unique": False,
+                    "validate": ["<Length(min=1, max=250, equal=None, error=None)>"],
+                },
+                {
+                    "description": "",
+                    "label": "Sql",
+                    "name": "sql",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Owners",
+                    "name": "owners",
+                    "required": False,
+                    "type": "List",
+                    "unique": False,
+                },
+            ],
+            "add_title": "Add Sqla Table",
+            "edit_columns": [
+                {
+                    "description": "",
+                    "label": "Table Name",
+                    "name": "table_name",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                    "validate": ["<Length(min=1, max=250, equal=None, error=None)>"],
+                },
+                {
+                    "description": "",
+                    "label": "Sql",
+                    "name": "sql",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Filter Select Enabled",
+                    "name": "filter_select_enabled",
+                    "required": False,
+                    "type": "Boolean",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Fetch Values Predicate",
+                    "name": "fetch_values_predicate",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                    "validate": ["<Length(min=0, max=1000, equal=None, error=None)>"],
+                },
+                {
+                    "description": "",
+                    "label": "Schema",
+                    "name": "schema",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                    "validate": ["<Length(min=0, max=255, equal=None, error=None)>"],
+                },
+                {
+                    "description": "",
+                    "label": "Description",
+                    "name": "description",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Main Dttm Col",
+                    "name": "main_dttm_col",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Offset",
+                    "name": "offset",
+                    "required": False,
+                    "type": "Integer",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Default Endpoint",
+                    "name": "default_endpoint",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Cache Timeout",
+                    "name": "cache_timeout",
+                    "required": False,
+                    "type": "Integer",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Is Sqllab View",
+                    "name": "is_sqllab_view",
+                    "required": False,
+                    "type": "Boolean",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Template Params",
+                    "name": "template_params",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Owners",
+                    "name": "owners",
+                    "required": False,
+                    "type": "List",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Columns",
+                    "name": "columns",
+                    "required": False,
+                    "type": "List",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Metrics",
+                    "name": "metrics",
+                    "required": False,
+                    "type": "List",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Extra",
+                    "name": "extra",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                },
+            ],
+            "edit_title": "Edit Sqla Table",
+            "filters": {
+                "database": [
+                    {"name": "Relation", "operator": "rel_o_m"},
+                    {"name": "No Relation", "operator": "nrel_o_m"},
+                ],
+                "id": [
+                    {"name": "Equal to", "operator": "eq"},
+                    {"name": "Greater than", "operator": "gt"},
+                    {"name": "Smaller than", "operator": "lt"},
+                    {"name": "Not Equal to", "operator": "neq"},
+                    {"name": "Is certified", "operator": "dataset_is_certified"},
+                ],
+                "owners": [{"name": "Relation as Many", "operator": "rel_m_m"}],
+                "schema": [
+                    {"name": "Starts with", "operator": "sw"},
+                    {"name": "Ends with", "operator": "ew"},
+                    {"name": "Contains", "operator": "ct"},
+                    {"name": "Equal to", "operator": "eq"},
+                    {"name": "Not Starts with", "operator": "nsw"},
+                    {"name": "Not Ends with", "operator": "new"},
+                    {"name": "Not Contains", "operator": "nct"},
+                    {"name": "Not Equal to", "operator": "neq"},
+                ],
+                "sql": [
+                    {"name": "Starts with", "operator": "sw"},
+                    {"name": "Ends with", "operator": "ew"},
+                    {"name": "Contains", "operator": "ct"},
+                    {"name": "Equal to", "operator": "eq"},
+                    {"name": "Not Starts with", "operator": "nsw"},
+                    {"name": "Not Ends with", "operator": "new"},
+                    {"name": "Not Contains", "operator": "nct"},
+                    {"name": "Not Equal to", "operator": "neq"},
+                    {"name": "Null or Empty", "operator": "dataset_is_null_or_empty"},
+                ],
+                "table_name": [
+                    {"name": "Starts with", "operator": "sw"},
+                    {"name": "Ends with", "operator": "ew"},
+                    {"name": "Contains", "operator": "ct"},
+                    {"name": "Equal to", "operator": "eq"},
+                    {"name": "Not Starts with", "operator": "nsw"},
+                    {"name": "Not Ends with", "operator": "new"},
+                    {"name": "Not Contains", "operator": "nct"},
+                    {"name": "Not Equal to", "operator": "neq"},
+                ],
+            },
+            "permissions": [
+                "can_warm_up_cache",
+                "can_export",
+                "can_get_or_create_dataset",
+                "can_duplicate",
+                "can_write",
+                "can_read",
+            ],
+        },
+    )
+
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/_info?q=()",
+        json=expected_response,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    response = client.get_resource_endpoint_info("dataset")
+    assert response == expected_response
+
+
+def test_get_resource_endpoint_info_filtered(requests_mock: Mocker) -> None:
+    """
+    Test the ``get_resource_endpoint_info`` method with an applied filter.
+    """
+
+    expected_response = json.dumps(
+        {
+            "add_columns": [
+                {
+                    "description": "",
+                    "label": "Database",
+                    "name": "database",
+                    "required": True,
+                    "type": "Integer",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Schema",
+                    "name": "schema",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                    "validate": ["<Length(min=0, max=250, equal=None, error=None)>"],
+                },
+                {
+                    "description": "",
+                    "label": "Table Name",
+                    "name": "table_name",
+                    "required": True,
+                    "type": "String",
+                    "unique": False,
+                    "validate": ["<Length(min=1, max=250, equal=None, error=None)>"],
+                },
+                {
+                    "description": "",
+                    "label": "Sql",
+                    "name": "sql",
+                    "required": False,
+                    "type": "String",
+                    "unique": False,
+                },
+                {
+                    "description": "",
+                    "label": "Owners",
+                    "name": "owners",
+                    "required": False,
+                    "type": "List",
+                    "unique": False,
+                },
+            ],
+        },
+    )
+
+    requests_mock.get(
+        "https://superset.example.org/api/v1/dataset/_info?q=(keys:!(add_columns))",
+        json=expected_response,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    response = client.get_resource_endpoint_info("dataset", keys=["add_columns"])
+    assert response == expected_response
+
+
+def test_validate_key_in_resource_schema(mocker: MockerFixture) -> None:
+    """
+    Test the `validate_key_in_resource_schema` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    get_resource_endpoint_info = mocker.patch.object(
+        client,
+        "get_resource_endpoint_info",
+    )
+
+    client.validate_key_in_resource_schema(
+        "dataset",
+        "sql",
+    )
+
+    get_resource_endpoint_info.assert_called_with("dataset")
+
+
+def test_validate_key_in_resource_schema_filtered(mocker: MockerFixture) -> None:
+    """
+    Test the `validate_key_in_resource_schema` method with filters.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    get_resource_endpoint_info = mocker.patch.object(
+        client,
+        "get_resource_endpoint_info",
+    )
+
+    client.validate_key_in_resource_schema(
+        "dataset",
+        "sql",
+        keys=["add_columns"],
+    )
+
+    get_resource_endpoint_info.assert_called_with("dataset", keys=["add_columns"])
+
+
 def test_update_resource_with_query_args(requests_mock: Mocker) -> None:
     """
     Test the generic ``update_resource`` method.
@@ -3121,13 +3480,14 @@ def test_create_virtual_dataset(mocker: MockerFixture) -> None:
     )
     validate_key_in_resource_schema.return_value = {"add_columns": True}
 
-    client.create_database(
+    client.create_dataset(
         database_name="my_db",
         sqlalchemy_uri="gsheets://",
         sql="select 1 as one",
     )
+
     create_resource.assert_called_with(
-        "database",
+        "dataset",
         database_name="my_db",
         sqlalchemy_uri="gsheets://",
         sql="select 1 as one",
