@@ -84,7 +84,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     profiles: Optional[str] = None,
     exposures: Optional[str] = None,
     import_db: bool = False,
-    disallow_edits: bool = True,
+    disallow_edits: bool = False,
     external_url_prefix: str = "",
     exposures_only: bool = False,
     preserve_columns: bool = False,
@@ -102,6 +102,17 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
         profiles = os.path.expanduser("~/.dbt/profiles.yml")
 
     file_path = Path(file)
+
+    if "MANAGER_URL" not in ctx.obj and disallow_edits:
+        warnings.warn(
+            (
+                "The managed externally feature was only introduced in Superset v1.5."
+                "Make sure you are running a compatible version."
+            ),
+            category=UserWarning,
+            stacklevel=2,
+        )
+
     if file_path.name == "manifest.json":
         warnings.warn(
             (
@@ -324,7 +335,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     exclude: Tuple[str, ...],
     exposures: Optional[str] = None,
     job_id: Optional[int] = None,
-    disallow_edits: bool = True,
+    disallow_edits: bool = False,
     external_url_prefix: str = "",
     exposures_only: bool = False,
     preserve_columns: bool = False,

@@ -446,9 +446,9 @@ def test_sync_datasets_multiple_existing(mocker: MockerFixture) -> None:
     assert str(excinfo.value) == "More than one dataset found"
 
 
-def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
+def test_sync_datasets_external_url_disallow_edits(mocker: MockerFixture) -> None:
     """
-    Test ``sync_datasets`` when passing external URL prefix.
+    Test ``sync_datasets`` when passing external URL prefix and disallow-edits.
     """
     client = mocker.MagicMock()
     client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
@@ -461,7 +461,7 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
         models=models,
         metrics=metrics,
         database={"id": 1},
-        disallow_edits=False,
+        disallow_edits=True,
         external_url_prefix="https://dbt.example.org/",
     )
     client.create_dataset.assert_not_called()
@@ -478,7 +478,7 @@ def test_sync_datasets_external_url(mocker: MockerFixture) -> None:
                         "certification": {"details": "This table is produced by dbt"},
                     },
                 ),
-                is_managed_externally=False,
+                is_managed_externally=True,
                 metrics=[],
                 external_url=(
                     "https://dbt.example.org/"

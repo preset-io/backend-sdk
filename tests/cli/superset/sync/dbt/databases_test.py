@@ -289,12 +289,12 @@ def test_sync_database_multiple_databases(
     assert str(excinfo.value) == "More than one database with the same name found"
 
 
-def test_sync_database_external_url_prefix(
+def test_sync_database_external_url_prefix_disallow_edits(
     mocker: MockerFixture,
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test ``sync_database`` with an external URL prefix.
+    Test ``sync_database`` with an external URL prefix and disallow-edits.
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
