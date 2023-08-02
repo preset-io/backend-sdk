@@ -269,17 +269,16 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         }
         self.session.headers.update(headers)
 
-        try:
+        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+        response = self.session.post(url, json=data)
+        
+        # Legacy superset installations don't have the SQL API endpoint yet
+        if response.status_code == 404:
+            url = self.baseurl / "superset/sql_json/"
             _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
             response = self.session.post(url, json=data)
-            response.raise_for_status()
-
-        # Legacy superset installations don't have the SQL API endpoint yet
-        except requests.exceptions.HTTPError as err:
-            if err.response.status_code == 404:
-                url = self.baseurl / "superset/sql_json/"
-                _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
-                response = self.session.post(url, json=data)
+            
+        response.raise_for_status()
 
         validate_response(response)
         payload = response.json()
@@ -590,6 +589,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         for column in columns:
             column["column_name"] = column["name"]
             column["groupby"] = True
+            # Superset 1.4 returns ``is_date`` instead of ``is_dttm``
             if column.get("is_dttm") or column.get("is_date"):
                 column["type_generic"] = 2
             elif column["type"] is None:
@@ -615,6 +615,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         payload = response.json()
 
+        # Superset 1.4 returns ``{"table_id": dataset_id}`` rather than the dataset payload
         return payload["data"] if "data" in payload else {"id": payload["table_id"]}
 
     def update_dataset(
