@@ -5,6 +5,7 @@ Tests for the Superset dispatcher.
 import click
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
+from yarl import URL
 
 from preset_cli.cli.superset.main import mutate_commands, superset, superset_cli
 
@@ -161,4 +162,4 @@ def test_superset_jwt_auth(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
 
-    JWTAuth.assert_called_with("SECRET")
+    JWTAuth.assert_called_with("SECRET", URL("http://localhost:8088/"))

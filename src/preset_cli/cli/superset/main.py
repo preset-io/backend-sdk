@@ -58,7 +58,7 @@ def superset_cli(  # pylint: disable=too-many-arguments
     # allow a custom authenticator to be passed via the context
     if "AUTH" not in ctx.obj:
         if jwt_token:
-            ctx.obj["AUTH"] = JWTAuth(jwt_token)
+            ctx.obj["AUTH"] = JWTAuth(jwt_token, URL(instance))
         else:
             ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password)
 
