@@ -1,5 +1,5 @@
 """
-Mechanisms for authentication and authorization.
+Mechanisms for authentication and authorization for Superset instances.
 """
 
 from typing import Dict, Optional
@@ -8,11 +8,12 @@ from bs4 import BeautifulSoup
 from yarl import URL
 
 from preset_cli.auth.main import Auth
+from preset_cli.auth.token import TokenAuth
 
 
 class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
     """
-    Auth via username/password.
+    Auth to Superset via username/password.
     """
 
     def __init__(self, baseurl: URL, username: str, password: Optional[str] = None):
@@ -44,3 +45,31 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
 
         # set cookies
         self.session.post(self.baseurl / "login/", data=data)
+
+
+class SupersetJWTAuth(TokenAuth):  # pylint: disable=too-few-public-methods
+    """
+    Auth to Superset via JWT token.
+    """
+
+    def __init__(self, token: str, baseurl: URL):
+        super().__init__(token)
+        self.baseurl = baseurl
+
+    def get_csrf_token(self, jwt: str) -> str:
+        """
+        Get a CSRF token.
+        """
+        response = self.session.get(
+            self.baseurl / "api/v1/security/csrf_token/",  # type: ignore
+            headers={"Authorization": f"Bearer {jwt}"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload["result"]
+
+    def get_headers(self) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "X-CSRFToken": self.get_csrf_token(self.token)
+        }

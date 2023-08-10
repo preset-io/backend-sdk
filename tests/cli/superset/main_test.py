@@ -153,7 +153,7 @@ def test_superset_jwt_auth(mocker: MockerFixture) -> None:
     Test passing a JWT to authenticate with Superset.
     """
     # pylint: disable=invalid-name
-    JWTAuth = mocker.patch("preset_cli.cli.superset.main.JWTAuth")
+    SupersetJWTAuth = mocker.patch("preset_cli.cli.superset.main.SupersetJWTAuth")
 
     runner = CliRunner()
     runner.invoke(
@@ -162,4 +162,4 @@ def test_superset_jwt_auth(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
 
-    JWTAuth.assert_called_with("SECRET", URL("http://localhost:8088/"))
+    SupersetJWTAuth.assert_called_with("SECRET", URL("http://localhost:8088/"))

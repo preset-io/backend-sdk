@@ -4,7 +4,6 @@ Test JWT auth.
 
 import pytest
 from pytest_mock import MockerFixture
-from requests_mock.mocker import Mocker
 from yarl import URL
 
 from preset_cli.auth.jwt import JWTAuth
@@ -54,29 +53,3 @@ def test_jwt_auth_from_stored_credentials(mocker: MockerFixture) -> None:
         str(excinfo.value)
         == "Could not load credentials from /path/to/credentials.yaml"
     )
-
-
-def test_jwt_auth_superset(mocker: MockerFixture) -> None:
-    """
-    Test the ``JWTAuth`` authentication mechanism for Superset tenant.
-    """
-    auth = JWTAuth("my-token", URL("https://example.org/"))
-    mocker.patch.object(auth, "get_csrf_token", return_value="myCSRFToken")
-
-    assert auth.get_headers() == {
-        "Authorization": "Bearer my-token",
-        "X-CSRFToken": "myCSRFToken",
-    }
-
-
-def test_get_csrf_token(requests_mock: Mocker) -> None:
-    """
-    Test the get_csrf_token method.
-    """
-    auth = JWTAuth("my-token", URL("https://example.org/"))
-    requests_mock.get(
-        "https://example.org/api/v1/security/csrf_token/",
-        json={"result": "myCSRFToken"},
-    )
-
-    assert auth.get_csrf_token("my-token") == "myCSRFToken"
