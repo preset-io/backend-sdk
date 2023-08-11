@@ -6,8 +6,7 @@ from typing import Any, Optional
 import click
 from yarl import URL
 
-from preset_cli.auth.jwt import JWTAuth
-from preset_cli.auth.password import UsernamePasswordAuth
+from preset_cli.auth.superset import SupersetJWTAuth, UsernamePasswordAuth
 from preset_cli.cli.superset.export import (
     export_assets,
     export_ownership,
@@ -58,7 +57,7 @@ def superset_cli(  # pylint: disable=too-many-arguments
     # allow a custom authenticator to be passed via the context
     if "AUTH" not in ctx.obj:
         if jwt_token:
-            ctx.obj["AUTH"] = JWTAuth(jwt_token)
+            ctx.obj["AUTH"] = SupersetJWTAuth(jwt_token, URL(instance))
         else:
             ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password)
 
