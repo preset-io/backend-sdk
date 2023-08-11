@@ -47,7 +47,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         self.session.post(self.baseurl / "login/", data=data)
 
 
-class SupersetJWTAuth(TokenAuth):  # pylint: disable=too-few-public-methods
+class SupersetJWTAuth(TokenAuth):  # pylint: disable=abstract-method
     """
     Auth to Superset via JWT token.
     """
@@ -71,5 +71,5 @@ class SupersetJWTAuth(TokenAuth):  # pylint: disable=too-few-public-methods
     def get_headers(self) -> Dict[str, str]:
         return {
             "Authorization": f"Bearer {self.token}",
-            "X-CSRFToken": self.get_csrf_token(self.token)
+            "X-CSRFToken": self.get_csrf_token(self.token),
         }

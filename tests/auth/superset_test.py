@@ -2,11 +2,11 @@
 Test username:password authentication mechanism.
 """
 
-from requests_mock.mocker import Mocker
 from pytest_mock import MockerFixture
+from requests_mock.mocker import Mocker
 from yarl import URL
 
-from preset_cli.auth.superset import UsernamePasswordAuth, SupersetJWTAuth
+from preset_cli.auth.superset import SupersetJWTAuth, UsernamePasswordAuth
 
 
 def test_username_password_auth(requests_mock: Mocker) -> None:
@@ -80,4 +80,3 @@ def test_get_csrf_token(requests_mock: Mocker) -> None:
     )
 
     assert auth.get_csrf_token("my-token") == "myCSRFToken"
-

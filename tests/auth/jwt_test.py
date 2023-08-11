@@ -4,7 +4,6 @@ Test JWT auth.
 
 import pytest
 from pytest_mock import MockerFixture
-from yarl import URL
 
 from preset_cli.auth.jwt import JWTAuth
 
