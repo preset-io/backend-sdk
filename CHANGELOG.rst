@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.2.6 - 2023-08-17
+==========================
+
+- The dbt sync now uses Superset updated endpoints to properly create a virtual dataset (`#232 <https://github.com/preset-io/backend-sdk/pull/232>_`).
+- It's now possible to authenticate to Superset instances that require a CSRF token (`#233 <https://github.com/preset-io/backend-sdk/pull/233>_`).
+
 Version 0.2.5 - 2023-07-26
 ==========================
 
