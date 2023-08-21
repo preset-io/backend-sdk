@@ -5,6 +5,8 @@ Mechanisms for authentication and authorization.
 from typing import Any, Dict
 
 from requests import Response, Session
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 
 class Auth:  # pylint: disable=too-few-public-methods
@@ -15,6 +17,14 @@ class Auth:  # pylint: disable=too-few-public-methods
     def __init__(self):
         self.session = Session()
         self.session.hooks["response"].append(self.reauth)
+
+        retries = Retry(
+            total=3,  # max retries count
+            backoff_factor=1,  # delay factor between attempts
+            respect_retry_after_header=True,
+        )
+
+        self.session.mount("https://", HTTPAdapter(max_retries=retries))
 
     def get_headers(self) -> Dict[str, str]:
         """
