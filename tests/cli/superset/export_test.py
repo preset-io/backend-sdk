@@ -3,6 +3,7 @@ Tests for the export commands.
 """
 # pylint: disable=redefined-outer-name, invalid-name, unused-argument
 
+import json
 from io import BytesIO
 from pathlib import Path
 from unittest import mock
@@ -21,19 +22,20 @@ from preset_cli.cli.superset.main import superset_cli
 
 
 @pytest.fixture
-def dataset_export() -> BytesIO:
+def chart_export() -> BytesIO:
+    # pylint: disable=line-too-long
     """
-    Fixture for the contents of a simple database export.
+    Fixture for the contents of a simple chart export.
     """
     contents = {
-        "dashboard_export/metadata.yaml": "Metadata",
-        "dashboard_export/databases/gsheets.yaml": yaml.dump(
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/databases/gsheets.yaml": yaml.dump(
             {
                 "database_name": "GSheets",
                 "sqlalchemy_uri": "gsheets://",
             },
         ),
-        "dashboard_export/datasets/gsheets/test.yaml": yaml.dump(
+        "chart_export/datasets/gsheets/test.yaml": yaml.dump(
             {
                 "table_name": "test",
                 "sql": """
@@ -46,6 +48,43 @@ FROM logs
     {% endfor %}
 {% endif %}
 GROUP BY action""",
+            },
+        ),
+        "chart_export/charts/test_01.yaml": yaml.dump(
+            {
+                "slice_name": "test",
+                "viz_type": "big_number_total",
+                "params": {
+                    "datasource": "1__table",
+                    "viz_type": "big_number_total",
+                    "slice_id": 1,
+                    "metric": {
+                        "expressionType": "SQL",
+                        "sqlExpression": "COUNT(*)",
+                        "column": None,
+                        "aggregate": None,
+                        "datasourceWarning": False,
+                        "hasCustomLabel": False,
+                        "label": "count",
+                        "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
+                    },
+                    "adhoc_filters": [],
+                    "header_font_size": 0.4,
+                    "subheader_font_size": 0.15,
+                    "y_axis_format": "SMART_NUMBER",
+                    "time_format": "smart_date",
+                    "extra_form_data": {},
+                    "dashboards": [],
+                    "query_context": """
+{"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},
+"applied_time_extras":{},"columns":[],"metrics":[{"expressionType":"SQL","sqlExpression":"COUNT(*)","column":null,
+"aggregate":null,"datasourceWarning":false,"hasCustomLabel":false,"label":"count","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"}],
+"annotation_layers":[],"series_limit":0,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],
+"form_data":{"datasource":"1__table","viz_type":"big_number_total","slice_id":1,"metric":{"expressionType":"SQL","sqlExpression":"COUNT(*)",
+"column":null,"aggregate":null,"datasourceWarning":false,"hasCustomLabel":false,"label":"count","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"},
+"adhoc_filters":[],"header_font_size":0.4,"subheader_font_size":0.15,"y_axis_format":"SMART_NUMBER","time_format":"smart_date",
+"extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},"result_format":"json","result_type":"full"}""",
+                },
             },
         ),
     }
@@ -62,8 +101,9 @@ GROUP BY action""",
 def test_export_resource(
     mocker: MockerFixture,
     fs: FakeFilesystem,
-    dataset_export: BytesIO,
+    chart_export: BytesIO,
 ) -> None:
+    # pylint: disable=line-too-long
     """
     Test ``export_resource``.
     """
@@ -71,7 +111,7 @@ def test_export_resource(
     fs.create_dir(root)
 
     client = mocker.MagicMock()
-    client.export_zip.return_value = dataset_export
+    client.export_zip.return_value = chart_export
 
     export_resource(
         resource_name="database",
@@ -108,6 +148,58 @@ FROM logs
 GROUP BY action""",
         }
 
+    # check that chart JSON strcuture was not escaped
+    export_resource(
+        resource_name="chart",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=False,
+        disable_jinja_escaping=False,
+    )
+    with open(root / "charts/test_01.yaml", encoding="utf-8") as input_:
+        input__ = yaml.load(input_.read(), Loader=yaml.SafeLoader)
+        input__["params"]["query_context"] = json.loads(
+            input__["params"]["query_context"],
+        )
+        assert input__ == {
+            "slice_name": "test",
+            "viz_type": "big_number_total",
+            "params": {
+                "datasource": "1__table",
+                "viz_type": "big_number_total",
+                "slice_id": 1,
+                "metric": {
+                    "expressionType": "SQL",
+                    "sqlExpression": "COUNT(*)",
+                    "column": None,
+                    "aggregate": None,
+                    "datasourceWarning": False,
+                    "hasCustomLabel": False,
+                    "label": "count",
+                    "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
+                },
+                "adhoc_filters": [],
+                "header_font_size": 0.4,
+                "subheader_font_size": 0.15,
+                "y_axis_format": "SMART_NUMBER",
+                "time_format": "smart_date",
+                "extra_form_data": {},
+                "dashboards": [],
+                "query_context": json.loads(
+                    """
+    {"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},
+    "applied_time_extras":{},"columns":[],"metrics":[{"expressionType":"SQL","sqlExpression":"COUNT(*)","column":null,
+    "aggregate":null,"datasourceWarning":false,"hasCustomLabel":false,"label":"count","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"}],
+    "annotation_layers":[],"series_limit":0,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],
+    "form_data":{"datasource":"1__table","viz_type":"big_number_total","slice_id":1,"metric":{"expressionType":"SQL","sqlExpression":"COUNT(*)",
+    "column":null,"aggregate":null,"datasourceWarning":false,"hasCustomLabel":false,"label":"count","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"},
+    "adhoc_filters":[],"header_font_size":0.4,"subheader_font_size":0.15,"y_axis_format":"SMART_NUMBER","time_format":"smart_date",
+    "extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},"result_format":"json","result_type":"full"}""",
+                ),
+            },
+        }
+
     # metadata file should be ignored
     assert not (root / "metadata.yaml").exists()
 
@@ -115,7 +207,7 @@ GROUP BY action""",
 def test_export_resource_overwrite(
     mocker: MockerFixture,
     fs: FakeFilesystem,
-    dataset_export: BytesIO,
+    chart_export: BytesIO,
 ) -> None:
     """
     Test that we need to confirm overwrites.
@@ -124,7 +216,7 @@ def test_export_resource_overwrite(
     fs.create_dir(root)
 
     client = mocker.MagicMock()
-    client.export_zip.return_value = dataset_export
+    client.export_zip.return_value = chart_export
 
     export_resource(
         resource_name="database",
@@ -530,7 +622,7 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 def test_export_resource_jinja_escaping_disabled(
     mocker: MockerFixture,
     fs: FakeFilesystem,
-    dataset_export: BytesIO,
+    chart_export: BytesIO,
 ) -> None:
     """
     Test ``export_resource`` with --disable-jinja-escaping.
@@ -539,7 +631,7 @@ def test_export_resource_jinja_escaping_disabled(
     fs.create_dir(root)
 
     client = mocker.MagicMock()
-    client.export_zip.return_value = dataset_export
+    client.export_zip.return_value = chart_export
 
     # check that Jinja2 was not escaped
     export_resource(
