@@ -15,13 +15,15 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
     Auth via username/password.
     """
 
-    def __init__(self, baseurl: URL, username: str, password: Optional[str] = None):
+    def __init__(self, baseurl: URL, username: str, password: Optional[str] = None, cf_client_id: Optional[str] = None, cf_client_secret: Optional[str] = None):
         super().__init__()
 
         self.csrf_token: Optional[str] = None
         self.baseurl = baseurl
         self.username = username
         self.password = password
+        self.cf_client_id = cf_client_id
+        self.cf_client_secret = cf_client_secret
         self.auth()
 
     def get_headers(self) -> Dict[str, str]:
@@ -41,6 +43,10 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
             self.session.headers["X-CSRFToken"] = csrf_token
             data["csrf_token"] = csrf_token
             self.csrf_token = csrf_token
+
+        if self.cf_client_id:
+            self.session.headers["CF-Access-Client-Id"] = self.cf_client_id
+            self.session.headers["CF-Access-Client-Secret"] = self.cf_client_secret
 
         # set cookies
         self.session.post(self.baseurl / "login/", data=data)

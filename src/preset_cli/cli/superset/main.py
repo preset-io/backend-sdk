@@ -35,6 +35,8 @@ from preset_cli.lib import setup_logging
     hide_input=True,
     help="Password (leave empty for prompt)",
 )
+@click.option("--cf-client-id", default=None, help="Cloudflare Access Client ID")
+@click.option("--cf-client-secret", default=None, help="Cloudflare Access Client Secret")
 @click.option("--loglevel", default="INFO")
 @click.version_option()
 @click.pass_context
@@ -44,6 +46,8 @@ def superset_cli(  # pylint: disable=too-many-arguments
     jwt_token: Optional[str],
     username: str,
     password: str,
+    cf_client_id: Optional[str],
+    cf_client_secret: Optional[str],
     loglevel: str,
 ):
     """
@@ -60,7 +64,7 @@ def superset_cli(  # pylint: disable=too-many-arguments
         if jwt_token:
             ctx.obj["AUTH"] = JWTAuth(jwt_token)
         else:
-            ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password)
+            ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password, cf_client_id, cf_client_secret)
 
 
 superset_cli.add_command(sql)
