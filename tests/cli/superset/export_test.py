@@ -148,7 +148,7 @@ FROM logs
 GROUP BY action""",
         }
 
-    # check that chart JSON strcuture was not escaped, only Jinja
+    # check that chart JSON structure was not escaped, only Jinja templating
     export_resource(
         resource_name="chart",
         requested_ids=set(),
@@ -159,7 +159,7 @@ GROUP BY action""",
     )
     with open(root / "charts/test_01.yaml", encoding="utf-8") as input_:
         # load `query_context` as JSON to avoid
-        # issues due to blank spaces, quotes, etc
+        # mismatches due to blank spaces, single vs double quotes, etc
         input__ = yaml.load(input_.read(), Loader=yaml.SafeLoader)
         print(input__["query_context"])
         input__["query_context"] = json.loads(

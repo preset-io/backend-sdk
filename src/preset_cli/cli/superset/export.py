@@ -168,7 +168,8 @@ def traverse_data(value: Any, handler: Callable) -> Any:
 
 def handle_string(value):
     """
-    Try to load string as JSON to traverse its content
+    Try to load a string as JSON to traverse its content for proper Jinja templating escaping.
+    Required for fields like ``query_context``
     """
     try:
         asset_dict = json.loads(value)

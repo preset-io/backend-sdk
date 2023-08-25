@@ -103,7 +103,7 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     try:
         template = Template(asset_content)
 
-    # For charts with a `query_context` (str(json)), templating the YAML structure directly
+    # For charts with a `query_context` -> ``str(JSON)``, templating the YAML structure directly
     # was failing. The route str(YAML) -> dict -> str(JSON) is more consistent.
     except TemplateSyntaxError:
         content = yaml.load(asset_content, Loader=yaml.SafeLoader)
