@@ -153,7 +153,6 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
             output.write(file_contents)
 
 
-# def process_value(value: Any) -> Any:
 def traverse_data(value: Any, handler: Callable) -> Any:
     """
     Process value according to its data type

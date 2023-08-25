@@ -60,12 +60,12 @@ GROUP BY action""",
                     "slice_id": 1,
                     "metric": {
                         "expressionType": "SQL",
-                        "sqlExpression": "COUNT(*)",
+                        "sqlExpression": "{% if from_dttm %} count(*) {% else %} count(*) {% endif %}",
                         "column": None,
                         "aggregate": None,
                         "datasourceWarning": False,
-                        "hasCustomLabel": False,
-                        "label": "count",
+                        "hasCustomLabel": True,
+                        "label": "custom_calculation",
                         "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
                     },
                     "adhoc_filters": [],
@@ -75,16 +75,16 @@ GROUP BY action""",
                     "time_format": "smart_date",
                     "extra_form_data": {},
                     "dashboards": [],
-                    "query_context": """
-{"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},
-"applied_time_extras":{},"columns":[],"metrics":[{"expressionType":"SQL","sqlExpression":"COUNT(*)","column":null,
-"aggregate":null,"datasourceWarning":false,"hasCustomLabel":false,"label":"count","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"}],
-"annotation_layers":[],"series_limit":0,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],
-"form_data":{"datasource":"1__table","viz_type":"big_number_total","slice_id":1,"metric":{"expressionType":"SQL","sqlExpression":"COUNT(*)",
-"column":null,"aggregate":null,"datasourceWarning":false,"hasCustomLabel":false,"label":"count","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"},
-"adhoc_filters":[],"header_font_size":0.4,"subheader_font_size":0.15,"y_axis_format":"SMART_NUMBER","time_format":"smart_date",
-"extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},"result_format":"json","result_type":"full"}""",
                 },
+                "query_context": """
+{"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},"applied_time_extras":{},
+"columns":[],"metrics":[{"expressionType":"SQL","sqlExpression":"{% if from_dttm %} count(*) {% else %} count(*) {% endif %}","column":null,"aggregate":null,
+"datasourceWarning":false,"hasCustomLabel":true,"label":"custom_calculation","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"}],"annotation_layers":[],
+"series_limit":0,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],"form_data":{"datasource":"1__table","viz_type":"big_number_total",
+"slice_id":1,"metric":{"expressionType":"SQL","sqlExpression":"{% if from_dttm %} count(*) {% else %} count(*) {% endif %}","column":null,"aggregate":null,
+"datasourceWarning":false,"hasCustomLabel":true,"label":"custom_calculation","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"},"adhoc_filters":[],"header_font_size":0.4,
+"subheader_font_size":0.15,"y_axis_format":"SMART_NUMBER","time_format":"smart_date","extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},
+"result_format":"json","result_type":"full"}""",
             },
         ),
     }
@@ -148,7 +148,7 @@ FROM logs
 GROUP BY action""",
         }
 
-    # check that chart JSON strcuture was not escaped
+    # check that chart JSON strcuture was not escaped, only Jinja
     export_resource(
         resource_name="chart",
         requested_ids=set(),
@@ -158,10 +158,14 @@ GROUP BY action""",
         disable_jinja_escaping=False,
     )
     with open(root / "charts/test_01.yaml", encoding="utf-8") as input_:
+        # load `query_context` as JSON to avoid
+        # issues due to blank spaces, quotes, etc
         input__ = yaml.load(input_.read(), Loader=yaml.SafeLoader)
-        input__["params"]["query_context"] = json.loads(
-            input__["params"]["query_context"],
+        print(input__["query_context"])
+        input__["query_context"] = json.loads(
+            input__["query_context"],
         )
+        print(input__["query_context"])
         assert input__ == {
             "slice_name": "test",
             "viz_type": "big_number_total",
@@ -171,12 +175,12 @@ GROUP BY action""",
                 "slice_id": 1,
                 "metric": {
                     "expressionType": "SQL",
-                    "sqlExpression": "COUNT(*)",
+                    "sqlExpression": "{{ '{% if' }} from_dttm {{ '%}' }} count(*) {{ '{% else %}' }} count(*) {{ '{% endif %}' }}",
                     "column": None,
                     "aggregate": None,
                     "datasourceWarning": False,
-                    "hasCustomLabel": False,
-                    "label": "count",
+                    "hasCustomLabel": True,
+                    "label": "custom_calculation",
                     "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
                 },
                 "adhoc_filters": [],
@@ -186,18 +190,18 @@ GROUP BY action""",
                 "time_format": "smart_date",
                 "extra_form_data": {},
                 "dashboards": [],
-                "query_context": json.loads(
-                    """
-    {"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},
-    "applied_time_extras":{},"columns":[],"metrics":[{"expressionType":"SQL","sqlExpression":"COUNT(*)","column":null,
-    "aggregate":null,"datasourceWarning":false,"hasCustomLabel":false,"label":"count","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"}],
-    "annotation_layers":[],"series_limit":0,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],
-    "form_data":{"datasource":"1__table","viz_type":"big_number_total","slice_id":1,"metric":{"expressionType":"SQL","sqlExpression":"COUNT(*)",
-    "column":null,"aggregate":null,"datasourceWarning":false,"hasCustomLabel":false,"label":"count","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"},
-    "adhoc_filters":[],"header_font_size":0.4,"subheader_font_size":0.15,"y_axis_format":"SMART_NUMBER","time_format":"smart_date",
-    "extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},"result_format":"json","result_type":"full"}""",
-                ),
             },
+            "query_context": json.loads(
+                """
+{"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},"applied_time_extras":{},"columns":[],
+"metrics":[{"expressionType":"SQL","sqlExpression":"{{ '{% if' }} from_dttm {{ '%}' }} count(*) {{ '{% else %}' }} count(*) {{ '{% endif %}' }}",
+"column":null,"aggregate":null,"datasourceWarning":false,"hasCustomLabel":true,"label":"custom_calculation","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"}],
+"annotation_layers":[],"series_limit":0,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],"form_data":{"datasource":"1__table",
+"viz_type":"big_number_total","slice_id":1,"metric":{"expressionType":"SQL","sqlExpression":"{{ '{% if' }} from_dttm {{ '%}' }} count(*) {{ '{% else %}' }} count(*) {{ '{% endif %}' }}",
+"column":null,"aggregate":null,"datasourceWarning":false,"hasCustomLabel":true,"label":"custom_calculation","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"},
+"adhoc_filters":[],"header_font_size":0.4,"subheader_font_size":0.15,"y_axis_format":"SMART_NUMBER","time_format":"smart_date",
+"extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},"result_format":"json","result_type":"full"}""",
+            ),
         }
 
     # metadata file should be ignored
