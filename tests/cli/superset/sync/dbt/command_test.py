@@ -215,6 +215,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         False,
         "",
         reload_columns=True,
+        merge_metadata=False,
     )
     sync_exposures.assert_called_with(
         client,
@@ -224,12 +225,12 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
 
 
-def test_dbt_core_reload_columns_false(
+def test_dbt_core_preserve_metadata(
     mocker: MockerFixture,
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``dbt-core`` command with --preserve-columns flag
+    Test the ``dbt-core`` command with --preserve-metadata flag
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
@@ -267,7 +268,7 @@ def test_dbt_core_reload_columns_false(
             str(profiles),
             "--exposures",
             str(exposures),
-            "--preserve-columns",
+            "--preserve-metadata",
         ],
         catch_exceptions=False,
     )
@@ -291,6 +292,7 @@ def test_dbt_core_reload_columns_false(
         False,
         "",
         reload_columns=False,
+        merge_metadata=False,
     )
     sync_exposures.assert_called_with(
         client,
@@ -298,6 +300,121 @@ def test_dbt_core_reload_columns_false(
         sync_datasets(),
         {("public", "messages_channels"): "ref('messages_channels')"},
     )
+
+
+def test_dbt_core_merge_metadata(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with --merge-metadata flag
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+    exposures = root / "models/exposures.yml"
+    fs.create_file(exposures)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+    )
+    sync_exposures = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--exposures",
+            str(exposures),
+            "--merge-metadata",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "default",
+        "default",
+        None,
+        False,
+        False,
+        "",
+    )
+
+    sync_datasets.assert_called_with(
+        client,
+        dbt_core_models,
+        dbt_core_metrics,
+        sync_database(),
+        False,
+        "",
+        reload_columns=False,
+        merge_metadata=True,
+    )
+    sync_exposures.assert_called_with(
+        client,
+        exposures,
+        sync_datasets(),
+        {("public", "messages_channels"): "ref('messages_channels')"},
+    )
+
+
+def test_dbt_core_preserve_and_merge(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with both the --preserve-metadata and --merge-metadata flags.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+    exposures = root / "models/exposures.yml"
+    fs.create_file(exposures)
+
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--exposures",
+            str(exposures),
+            "--preserve-metadata",
+            "--merge-metadata",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
 
 
 def test_dbt_core_dbt_project(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -550,6 +667,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         False,
         "",
         reload_columns=True,
+        merge_metadata=False,
     )
     sync_exposures.assert_called_with(
         client,
@@ -802,12 +920,13 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
         False,
         "",
         reload_columns=True,
+        merge_metadata=False,
     )
 
 
-def test_dbt_cloud_reload_columns_false(mocker: MockerFixture) -> None:
+def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     """
-    Test the ``dbt-cloud`` command with the --preserve-columns flag.
+    Test the ``dbt-cloud`` command with the --preserve-metadata flag.
     """
     SupersetClient = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
@@ -837,7 +956,7 @@ def test_dbt_cloud_reload_columns_false(mocker: MockerFixture) -> None:
             "dbt-cloud",
             "XXX",
             "123",
-            "--preserve-columns",
+            "--preserve-metadata",
         ],
         catch_exceptions=False,
     )
@@ -850,7 +969,80 @@ def test_dbt_cloud_reload_columns_false(mocker: MockerFixture) -> None:
         False,
         "",
         reload_columns=False,
+        merge_metadata=False,
     )
+
+
+def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command with the --merge-metadata flag.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+    )
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_metrics.return_value = dbt_cloud_metrics
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "123",
+            "--merge-metadata",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_datasets.assert_called_with(
+        superset_client,
+        dbt_cloud_models,
+        dbt_cloud_metrics,
+        database,
+        False,
+        "",
+        reload_columns=False,
+        merge_metadata=True,
+    )
+
+
+def test_dbt_cloud_preserve_and_merge(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command with both the --preserve-metadata and --merge-metadata flags.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "123",
+            "--preserve-metadata",
+            "--merge-metadata",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
 
 
 def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
@@ -902,6 +1094,7 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
         False,
         "",
         reload_columns=True,
+        merge_metadata=False,
     )
 
 
