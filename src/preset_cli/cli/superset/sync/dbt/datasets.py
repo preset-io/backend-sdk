@@ -193,13 +193,11 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             update["external_url"] = str(base_url.with_fragment(fragment))
         client.update_dataset(dataset["id"], override_columns=reload_columns, **update)
 
-        if reload_columns:
-            # ...then update metrics
-            if dataset_metrics:
-                update = {
-                    "metrics": dataset_metrics,
-                }
-                client.update_dataset(dataset["id"], override_columns=False, **update)
+        if reload_columns and dataset_metrics:
+            update = {
+                "metrics": dataset_metrics,
+            }
+            client.update_dataset(dataset["id"], override_columns=False, **update)
 
         # update column descriptions
         if columns := model.get("columns"):
