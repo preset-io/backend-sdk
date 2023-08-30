@@ -42,7 +42,8 @@ def clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     When updating an existing column/metric we need to remove some fields from the payload.
     """
     return {
-        k: v for k, v in metadata.items()
+        k: v
+        for k, v in metadata.items()
         if k not in {"changed_on", "created_on", "type_generic"}
     }
 
@@ -148,7 +149,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             metric["name"]: metric for metric in get_metrics_for_model(model, metrics)
         }
 
-        if not reload_columns or merge_metadata:
+        if not reload_columns:
             current_metrics = {
                 metric["metric_name"]: metric
                 for metric in client.get_dataset(dataset["id"])["metrics"]
@@ -210,8 +211,9 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                     column["verbose_name"] = column_metadata[name].get("name", "")
 
                 # remove data that is not part of the update payload
+                print(column)
                 column = clean_metadata(column)
-
+                print(column)
                 # for some reason this is being sent as null sometimes
                 # https://github.com/preset-io/backend-sdk/issues/163
                 if "is_active" in column and column["is_active"] is None:

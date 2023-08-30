@@ -107,7 +107,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         click.echo(
             click.style(
                 """
-                --preserve-metadata and --merge-metadata can't be combined.
+                ``--preserve-metadata`` and ``--merge-metadata`` can't be combined.
                 Please include only one in the command.
                 """,
                 fg="bright_red",
@@ -153,7 +153,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     else:
         click.echo(
             click.style(
-                "FILE should be either manifest.json or dbt_project.yml",
+                "FILE should be either ``manifest.json`` or ``dbt_project.yml``",
                 fg="bright_red",
             ),
         )
@@ -204,7 +204,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
                 external_url_prefix,
             )
         except DatabaseNotFoundError:
-            click.echo("No database was found, pass --import-db to create")
+            click.echo("No database was found, pass ``--import-db`` to create")
             return
 
         datasets = sync_datasets(
@@ -348,6 +348,12 @@ def get_job_id(
     help="Preserve column and metric configurations defined in Preset",
 )
 @click.option(
+    "--preserve-columns",
+    is_flag=True,
+    default=False,
+    help="Preserve column and metric configurations defined in Preset",
+)
+@click.option(
     "--merge-metadata",
     is_flag=True,
     default=False,
@@ -364,6 +370,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     disallow_edits: bool = False,
     external_url_prefix: str = "",
     exposures_only: bool = False,
+    preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
 ) -> None:
@@ -377,19 +384,20 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     dbt_auth = TokenAuth(token)
     dbt_client = DBTClient(dbt_auth)
 
-    if preserve_metadata and merge_metadata:
+    if (preserve_columns or preserve_metadata) and merge_metadata:
         click.echo(
             click.style(
                 """
-                --preserve-metadata and --merge-metadata can't be combined.
-                Please include only one to the command.
+                ``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``
+                can't be combined. Please include only one to the command.
                 """,
                 fg="bright_red",
             ),
         )
         sys.exit(1)
 
-    reload_columns = not (preserve_metadata or merge_metadata)
+    reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
+    preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
     if job_id is None:
         job_id = get_job_id(dbt_client)

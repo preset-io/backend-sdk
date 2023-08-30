@@ -135,7 +135,7 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
         target = root / file_name
         if target.exists() and not overwrite:
             raise Exception(
-                f"File already exists and --overwrite was not specified: {target}",
+                f"File already exists and ``--overwrite`` was not specified: {target}",
             )
         if not target.parent.exists():
             target.parent.mkdir(parents=True, exist_ok=True)

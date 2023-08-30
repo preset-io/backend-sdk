@@ -230,7 +230,7 @@ def test_dbt_core_preserve_metadata(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``dbt-core`` command with --preserve-metadata flag
+    Test the ``dbt-core`` command with ``--preserve-metadata`` flag.
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
@@ -307,7 +307,7 @@ def test_dbt_core_merge_metadata(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``dbt-core`` command with --merge-metadata flag
+    Test the ``dbt-core`` command with ``--merge-metadata`` flag.
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
@@ -384,7 +384,8 @@ def test_dbt_core_preserve_and_merge(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``dbt-core`` command with both the --preserve-metadata and --merge-metadata flags.
+    Test the ``dbt-core`` command with both
+    the ``--preserve-metadata`` and ``--merge-metadata`` flags.
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
@@ -500,7 +501,10 @@ def test_dbt_core_invalid_argument(mocker: MockerFixture, fs: FakeFilesystem) ->
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    assert result.output == "FILE should be either manifest.json or dbt_project.yml\n"
+    assert (
+        result.output
+        == "FILE should be either ``manifest.json`` or ``dbt_project.yml``\n"
+    )
 
 
 def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -802,7 +806,7 @@ def test_dbt_core_no_database(mocker: MockerFixture, fs: FakeFilesystem) -> None
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert result.output == "No database was found, pass --import-db to create\n"
+    assert result.output == "No database was found, pass ``--import-db`` to create\n"
 
 
 def test_dbt_core_disallow_edits_superset(
@@ -926,7 +930,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
 
 def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     """
-    Test the ``dbt-cloud`` command with the --preserve-metadata flag.
+    Test the ``dbt-cloud`` command with the ``--preserve-metadata`` flag.
     """
     SupersetClient = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
@@ -975,7 +979,7 @@ def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
 
 def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     """
-    Test the ``dbt-cloud`` command with the --merge-metadata flag.
+    Test the ``dbt-cloud`` command with the ``--merge-metadata`` flag.
     """
     SupersetClient = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
@@ -1024,7 +1028,8 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
 
 def test_dbt_cloud_preserve_and_merge(mocker: MockerFixture) -> None:
     """
-    Test the ``dbt-cloud`` command with both the --preserve-metadata and --merge-metadata flags.
+    Test the ``dbt-cloud`` command with both
+    the ``--preserve-metadata`` and ``--merge-metadata`` flags.
     """
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 

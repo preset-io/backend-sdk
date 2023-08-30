@@ -375,7 +375,7 @@ def import_resources(
         click.echo(
             click.style(
                 (
-                    "The following file(s) already exist. Pass --overwrite to "
+                    "The following file(s) already exist. Pass ``--overwrite`` to "
                     f"replace them.\n{existing_list}"
                 ),
                 fg="bright_red",

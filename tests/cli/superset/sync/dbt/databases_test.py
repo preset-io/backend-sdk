@@ -397,7 +397,7 @@ def test_sync_database_reuse_connection(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test ``sync_database`` when the connection already exists and --import-db wasn't passed.
+    Test ``sync_database`` when the connection already exists and ``--import-db`` wasn't passed.
     """
     fs.create_file(
         "/path/to/.dbt/profiles.yml",
