@@ -108,7 +108,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             click.style(
                 """
                 --preserve-metadata and --merge-metadata can't be combined.
-                Please include only one to the command.
+                Please include only one in the command.
                 """,
                 fg="bright_red",
             ),
