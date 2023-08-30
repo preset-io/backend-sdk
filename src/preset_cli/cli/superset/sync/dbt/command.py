@@ -68,6 +68,12 @@ from preset_cli.exceptions import DatabaseNotFoundError
     help="Do not sync models to datasets and only fetch exposures instead",
 )
 @click.option(
+    "--preserve-columns",
+    is_flag=True,
+    default=False,
+    help="Preserve column and metric configurations defined in Preset",
+)
+@click.option(
     "--preserve-metadata",
     is_flag=True,
     default=False,
@@ -93,6 +99,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     disallow_edits: bool = False,
     external_url_prefix: str = "",
     exposures_only: bool = False,
+    preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
 ) -> None:
@@ -103,19 +110,20 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
-    if preserve_metadata and merge_metadata:
+    if (preserve_columns or preserve_metadata) and merge_metadata:
         click.echo(
             click.style(
                 """
-                ``--preserve-metadata`` and ``--merge-metadata`` can't be combined.
-                Please include only one in the command.
+                ``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``
+                can't be combined. Please include only one to the command.
                 """,
                 fg="bright_red",
             ),
         )
         sys.exit(1)
 
-    reload_columns = not (preserve_metadata or merge_metadata)
+    reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
+    preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
     if profiles is None:
         profiles = os.path.expanduser("~/.dbt/profiles.yml")
@@ -342,13 +350,13 @@ def get_job_id(
     help="Do not sync models to datasets and only fetch exposures instead",
 )
 @click.option(
-    "--preserve-metadata",
+    "--preserve-columns",
     is_flag=True,
     default=False,
     help="Preserve column and metric configurations defined in Preset",
 )
 @click.option(
-    "--preserve-columns",
+    "--preserve-metadata",
     is_flag=True,
     default=False,
     help="Preserve column and metric configurations defined in Preset",

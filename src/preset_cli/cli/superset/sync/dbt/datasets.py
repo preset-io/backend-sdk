@@ -41,11 +41,11 @@ def clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     Remove incompatbile columns from metatada.
     When updating an existing column/metric we need to remove some fields from the payload.
     """
-    return {
-        k: v
-        for k, v in metadata.items()
-        if k not in {"changed_on", "created_on", "type_generic"}
-    }
+    for key in ("changed_on", "created_on", "type_generic"):
+        if key in metadata:
+            del metadata[key]
+
+    return metadata
 
 
 def create_dataset(
