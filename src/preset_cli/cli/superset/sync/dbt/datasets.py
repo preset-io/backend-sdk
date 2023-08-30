@@ -211,9 +211,8 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                     column["verbose_name"] = column_metadata[name].get("name", "")
 
                 # remove data that is not part of the update payload
-                print(column)
                 column = clean_metadata(column)
-                print(column)
+
                 # for some reason this is being sent as null sometimes
                 # https://github.com/preset-io/backend-sdk/issues/163
                 if "is_active" in column and column["is_active"] is None:
