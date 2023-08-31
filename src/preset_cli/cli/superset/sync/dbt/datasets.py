@@ -36,6 +36,18 @@ def model_in_database(model: ModelSchema, url: SQLAlchemyURL) -> bool:
     return model["database"] == url.database
 
 
+def clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Remove incompatbile columns from metatada.
+    When updating an existing column/metric we need to remove some fields from the payload.
+    """
+    for key in ("changed_on", "created_on", "type_generic"):
+        if key in metadata:
+            del metadata[key]
+
+    return metadata
+
+
 def create_dataset(
     client: SupersetClient,
     database: Dict[str, Any],
@@ -68,7 +80,7 @@ def create_dataset(
     return client.create_dataset(**kwargs)
 
 
-def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments, too-many-statements
+def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments, too-many-statements # noqa:C901
     client: SupersetClient,
     models: List[ModelSchema],
     metrics: List[MetricSchema],
@@ -77,6 +89,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     external_url_prefix: str,
     certification: Optional[Dict[str, Any]] = None,
     reload_columns: bool = True,
+    merge_metadata: bool = False,
 ) -> List[Any]:
     """
     Read the dbt manifest and import models as datasets with metrics.
@@ -86,7 +99,6 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     # add datasets
     datasets = []
     for model in models:
-
         # load additional metadata from dbt model definition
         model_kwargs = model.get("meta", {}).pop("superset", {})
 
@@ -132,14 +144,28 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         }
 
         dataset_metrics = []
+        current_metrics = {}
         model_metrics = {
             metric["name"]: metric for metric in get_metrics_for_model(model, metrics)
         }
+
+        if not reload_columns:
+            current_metrics = {
+                metric["metric_name"]: metric
+                for metric in client.get_dataset(dataset["id"])["metrics"]
+            }
+            for name, metric in current_metrics.items():
+                # remove data that is not part of the update payload
+                metric = clean_metadata(metric)
+                if not merge_metadata or name not in model_metrics:
+                    dataset_metrics.append(metric)
+
         for name, metric in model_metrics.items():
             meta = metric.get("meta", {})
             kwargs = meta.pop("superset", {})
-            dataset_metrics.append(
-                {
+
+            if reload_columns or name not in current_metrics or merge_metadata:
+                metric_definition = {
                     "expression": get_metric_expression(name, model_metrics),
                     "metric_name": name,
                     "metric_type": (
@@ -150,15 +176,17 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                     "description": metric.get("description", ""),
                     "extra": json.dumps(meta),
                     **kwargs,  # include additional metric metadata defined in metric.meta.superset
-                },
-            )
+                }
+                if merge_metadata and name in current_metrics:
+                    metric_definition["id"] = current_metrics[name]["id"]
+                dataset_metrics.append(metric_definition)
 
         # update dataset metadata from dbt and clearing metrics
         update = {
             "description": model.get("description", ""),
             "extra": json.dumps(extra),
             "is_managed_externally": disallow_edits,
-            "metrics": [],
+            "metrics": [] if reload_columns else dataset_metrics,
             **model_kwargs,  # include additional model metadata defined in model.meta.superset
         }
         if base_url:
@@ -166,8 +194,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             update["external_url"] = str(base_url.with_fragment(fragment))
         client.update_dataset(dataset["id"], override_columns=reload_columns, **update)
 
-        # ...then update metrics
-        if dataset_metrics:
+        if reload_columns and dataset_metrics:
             update = {
                 "metrics": dataset_metrics,
             }
@@ -183,10 +210,8 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                     column["description"] = column_metadata[name].get("description", "")
                     column["verbose_name"] = column_metadata[name].get("name", "")
 
-                # remove columns that are not part of the update payload
-                for key in ("changed_on", "created_on", "type_generic"):
-                    if key in column:
-                        del column[key]
+                # remove data that is not part of the update payload
+                column = clean_metadata(column)
 
                 # for some reason this is being sent as null sometimes
                 # https://github.com/preset-io/backend-sdk/issues/163

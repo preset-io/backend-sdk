@@ -71,10 +71,22 @@ from preset_cli.exceptions import DatabaseNotFoundError
     "--preserve-columns",
     is_flag=True,
     default=False,
-    help="Preserve column configurations",
+    help="Preserve column and metric configurations defined in Preset",
+)
+@click.option(
+    "--preserve-metadata",
+    is_flag=True,
+    default=False,
+    help="Preserve column and metric configurations defined in Preset",
+)
+@click.option(
+    "--merge-metadata",
+    is_flag=True,
+    default=False,
+    help="Update Preset configurations based on dbt metadata. Preset-only metrics are preserved",
 )
 @click.pass_context
-def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
+def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements
     ctx: click.core.Context,
     file: str,
     project: Optional[str],
@@ -88,6 +100,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     external_url_prefix: str = "",
     exposures_only: bool = False,
     preserve_columns: bool = False,
+    preserve_metadata: bool = False,
+    merge_metadata: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Core to Superset and charts/dashboards to dbt exposures.
@@ -96,7 +110,20 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
-    reload_columns = not preserve_columns
+    if (preserve_columns or preserve_metadata) and merge_metadata:
+        click.echo(
+            click.style(
+                """
+                ``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``
+                can't be combined. Please include only one to the command.
+                """,
+                fg="bright_red",
+            ),
+        )
+        sys.exit(1)
+
+    reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
+    preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
     if profiles is None:
         profiles = os.path.expanduser("~/.dbt/profiles.yml")
@@ -134,7 +161,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
     else:
         click.echo(
             click.style(
-                "FILE should be either manifest.json or dbt_project.yml",
+                "FILE should be either ``manifest.json`` or ``dbt_project.yml``",
                 fg="bright_red",
             ),
         )
@@ -185,7 +212,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
                 external_url_prefix,
             )
         except DatabaseNotFoundError:
-            click.echo("No database was found, pass --import-db to create")
+            click.echo("No database was found, pass ``--import-db`` to create")
             return
 
         datasets = sync_datasets(
@@ -196,6 +223,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-locals
             disallow_edits,
             external_url_prefix,
             reload_columns=reload_columns,
+            merge_metadata=merge_metadata,
         )
 
     if exposures:
@@ -325,7 +353,19 @@ def get_job_id(
     "--preserve-columns",
     is_flag=True,
     default=False,
-    help="Preserve column configurations",
+    help="Preserve column and metric configurations defined in Preset",
+)
+@click.option(
+    "--preserve-metadata",
+    is_flag=True,
+    default=False,
+    help="Preserve column and metric configurations defined in Preset",
+)
+@click.option(
+    "--merge-metadata",
+    is_flag=True,
+    default=False,
+    help="Update Preset configurations based on dbt metadata. Preset-only metrics are preserved",
 )
 @click.pass_context
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
@@ -339,6 +379,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     external_url_prefix: str = "",
     exposures_only: bool = False,
     preserve_columns: bool = False,
+    preserve_metadata: bool = False,
+    merge_metadata: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
@@ -350,7 +392,20 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     dbt_auth = TokenAuth(token)
     dbt_client = DBTClient(dbt_auth)
 
-    reload_columns = not preserve_columns
+    if (preserve_columns or preserve_metadata) and merge_metadata:
+        click.echo(
+            click.style(
+                """
+                ``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``
+                can't be combined. Please include only one to the command.
+                """,
+                fg="bright_red",
+            ),
+        )
+        sys.exit(1)
+
+    reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
+    preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
     if job_id is None:
         job_id = get_job_id(dbt_client)
@@ -390,6 +445,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
             disallow_edits,
             external_url_prefix,
             reload_columns=reload_columns,
+            merge_metadata=merge_metadata,
         )
 
     if exposures:

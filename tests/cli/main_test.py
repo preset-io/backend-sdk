@@ -1204,7 +1204,7 @@ def test_list_group_membership_group_with_no_members(mocker: MockerFixture) -> N
 
 def test_list_group_membership_incorrect_export(mocker: MockerFixture) -> None:
     """
-    Test the ``list_group_membership`` command with an incorrect --export-report parameter.
+    Test the ``list_group_membership`` command with an incorrect ``--export-report`` parameter.
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
@@ -1229,7 +1229,7 @@ def test_list_group_membership_incorrect_export(mocker: MockerFixture) -> None:
 
 def test_list_group_membership_export_yaml(mocker: MockerFixture) -> None:
     """
-    Test the ``list_group_membership`` command setting --export-report=yaml.
+    Test the ``list_group_membership`` command setting ``--export-report=yaml``.
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])
@@ -1315,7 +1315,7 @@ def test_list_group_membership_export_yaml(mocker: MockerFixture) -> None:
 
 def test_list_group_membership_export_csv(mocker: MockerFixture) -> None:
     """
-    Test the ``list_group_membership`` setting --export-report=csv.
+    Test the ``list_group_membership`` setting ``--export-report=csv``.
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     mocker.patch("preset_cli.cli.main.input", side_effect=["invalid", "-"])

@@ -108,7 +108,7 @@ def test_import_resources_overwrite_needed(mocker: MockerFixture) -> None:
     import_resources(contents=contents, client=client, overwrite=False)
 
     assert click.style.called_with(
-        "The following file(s) already exist. Pass --overwrite to replace them.\n"
+        "The following file(s) already exist. Pass ``--overwrite`` to replace them.\n"
         "databases/gsheets.yaml",
         fg="bright_red",
     )
@@ -814,7 +814,7 @@ def test_sync_native_jinja_templating_disabled(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test ``native`` command with --disable-jinja-templating.
+    Test ``native`` command with ``--disable-jinja-templating``.
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
