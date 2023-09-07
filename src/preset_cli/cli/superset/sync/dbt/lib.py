@@ -310,6 +310,18 @@ def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema
     if condition in model_names:
         return [model_names[condition]]
 
+    # file
+    file_path = Path(condition)
+    if file_path.is_file() and file_path.stem in model_names:
+        return [model_names[condition]]
+
+    # path/directory
+    if file_path.is_dir() or str(file_path).endswith("/*"):
+        sql_files = [file for file in file_path.rglob("*.sql") if file.is_file()]
+        for file in sql_files:
+            if file.stem in model_names:
+                return [model_names[condition]]
+
     # plus and n-plus operators
     if "+" in condition:
         return filter_plus_operator(models, condition)
