@@ -2,10 +2,11 @@
 A command to export Superset resources into a directory.
 """
 
+import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Set, Tuple
+from typing import Any, Callable, List, Set, Tuple
 from zipfile import ZipFile
 
 import click
@@ -142,10 +143,41 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
 
         # escape any pre-existing Jinja2 templates
         if not disable_jinja_escaping:
-            file_contents = jinja_escaper(file_contents)
+            asset_content = yaml.load(file_contents, Loader=yaml.SafeLoader)
+            for key, value in asset_content.items():
+                asset_content[key] = traverse_data(value, handle_string)
+
+            file_contents = yaml.dump(asset_content, sort_keys=False)
 
         with open(target, "w", encoding="utf-8") as output:
             output.write(file_contents)
+
+
+def traverse_data(value: Any, handler: Callable) -> Any:
+    """
+    Process value according to its data type
+    """
+    if isinstance(value, str):
+        return handler(value)
+    if isinstance(value, dict) and value:
+        return {k: traverse_data(v, handler) for k, v in value.items()}
+    if isinstance(value, list) and value:
+        return [traverse_data(item, handler) for item in value]
+    return value
+
+
+def handle_string(value):
+    """
+    Try to load a string as JSON to traverse its content for proper Jinja templating escaping.
+    Required for fields like ``query_context``
+    """
+    try:
+        asset_dict = json.loads(value)
+        return (
+            json.dumps(traverse_data(asset_dict, jinja_escaper)) if asset_dict else "{}"
+        )
+    except json.JSONDecodeError:
+        return jinja_escaper(value)
 
 
 def jinja_escaper(value: str) -> str:
