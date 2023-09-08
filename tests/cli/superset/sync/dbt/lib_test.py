@@ -558,6 +558,7 @@ def test_apply_select_exclude() -> None:
     assert {model["name"] for model in apply_select(models, ("a",), ("d",))} == {"a"}
 
 
+# pylint: disable=unused-argument
 def test_apply_select_using_path(fs: FakeFilesystem) -> None:
     """
     Test ``apply_select`` using directory/path arguments.

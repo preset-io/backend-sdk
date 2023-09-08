@@ -284,6 +284,7 @@ def load_profiles(
     return apply_templating(profiles)
 
 
+# pylint: disable=R0911
 def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema]:
     """
     Filter a list of dbt models given a select condition.
