@@ -240,7 +240,7 @@ def test_export_resource_overwrite(
             disable_jinja_escaping=False,
         )
     assert str(excinfo.value) == (
-        "File already exists and --overwrite was not specified: "
+        "File already exists and ``--overwrite`` was not specified: "
         "/path/to/root/databases/gsheets.yaml"
     )
 
@@ -629,7 +629,7 @@ def test_export_resource_jinja_escaping_disabled(
     chart_export: BytesIO,
 ) -> None:
     """
-    Test ``export_resource`` with --disable-jinja-escaping.
+    Test ``export_resource`` with ``--disable-jinja-escaping``.
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
@@ -670,7 +670,7 @@ def test_export_resource_jinja_escaping_disabled_command(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``export_assets`` with --disable-jinja-escaping command.
+    Test the ``export_assets`` with ``--disable-jinja-escaping`` command.
     """
     # root must exist for command to succeed
     root = Path("/path/to/root")

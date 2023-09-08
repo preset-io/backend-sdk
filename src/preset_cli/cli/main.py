@@ -169,7 +169,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
             click.echo(
                 click.style(
                     "Failed to auth using the provided credentials."
-                    " Please run 'preset-cli auth'",
+                    " Please run ``preset-cli auth``",
                     fg="bright_red",
                 ),
             )
@@ -255,7 +255,7 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
             click.style(
                 (
                     f"The file {credentials_path} already exists. "
-                    "Pass --overwrite to replace it."
+                    "Pass ``--overwrite`` to replace it."
                 ),
                 fg="bright_red",
             ),
@@ -353,14 +353,13 @@ def list_group_membership(
     if save_report and save_report.casefold() not in {"yaml", "csv"}:
         click.echo(
             click.style(
-                "Invalid option. Please use --save-report=csv or --save-report=yaml",
+                "Invalid option. Please use ``--save-report=csv`` or ``--save-report=yaml``",
                 fg="bright_red",
             ),
         )
         sys.exit(1)
 
     for team in teams:
-
         # print the team name in case multiple teams were provided and it's not an export
         if not save_report and len(teams) > 1:
             click.echo(f"## Team {team} ##")
@@ -371,12 +370,10 @@ def list_group_membership(
 
         # account for pagination
         while start_at <= group_count:
-
             groups = client.get_group_membership(team, start_at)
             group_count = groups["totalResults"]
 
             if group_count > 0:
-
                 # print groups in console
                 if not save_report:
                     print_group_membership(groups)
@@ -430,10 +427,8 @@ def export_group_membership_csv(groups: Dict[str, Any], team: str) -> None:
     """
     csv_name = team + "_user_group_membership.csv"
     for group in groups["Resources"]:
-
         # CSV report would include a group only in case it has members
         if group.get("members"):
-
             # Assure we just write headers once
             file_exists = os.path.isfile(csv_name)
 

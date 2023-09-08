@@ -3,6 +3,7 @@ Tests for ``preset_cli.cli.superset.sync.dbt.datasets``.
 """
 # pylint: disable=invalid-name, too-many-lines
 
+import copy
 import json
 from typing import List, cast
 from unittest import mock
@@ -515,11 +516,28 @@ def test_sync_datasets_external_url_disallow_edits(mocker: MockerFixture) -> Non
     )
 
 
-def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
+def test_sync_datasets_preserve_metadata(mocker: MockerFixture) -> None:
     """
-    Test ``sync_datasets`` when setting ovverride_columns to false.
+    Test ``sync_datasets`` with preserve_metadata set to True.
+    Metrics should be merged (Preset as the source of truth).
     """
     client = mocker.MagicMock()
+    metrics_ = copy.deepcopy(metrics)
+    metrics_.append(
+        metric_schema.load(
+            {
+                "depends_on": ["model.superset_examples.messages_channels"],
+                "description": "",
+                "filters": [],
+                "meta": {},
+                "name": "max_id",
+                "label": "",
+                "sql": "id",
+                "type": "max",
+                "unique_id": "metric.superset_examples.cnt",
+            },
+        ),
+    )
     client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
     client.get_dataset.return_value = {
         "columns": [
@@ -530,12 +548,29 @@ def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
                 "groupby": False,
             },
         ],
+        "metrics": [
+            {
+                "changed_on": "2023-08-28T18:01:24.190211",
+                "created_on": "2023-08-28T18:01:24.190208",
+                "expression": "count(*)/1",
+                "id": 190,
+                "metric_name": "cnt",
+            },
+            {
+                "changed_on": "2023-08-27T18:01:24.190211",
+                "created_on": "2023-08-27T18:01:24.190208",
+                "expression": "COUNT (DISTINCT id)",
+                "id": 191,
+                "metric_name": "unique_ids",
+            },
+        ],
+        "id": 1,
     }
 
     sync_datasets(
         client=client,
         models=models,
-        metrics=metrics,
+        metrics=metrics_,
         database={"id": 1},
         disallow_edits=False,
         external_url_prefix="https://dbt.example.org/",
@@ -556,7 +591,26 @@ def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
                     },
                 ),
                 is_managed_externally=False,
-                metrics=[],
+                metrics=[
+                    {
+                        "expression": "count(*)/1",
+                        "id": 190,
+                        "metric_name": "cnt",
+                    },
+                    {
+                        "expression": "COUNT (DISTINCT id)",
+                        "id": 191,
+                        "metric_name": "unique_ids",
+                    },
+                    {
+                        "expression": "MAX(id)",
+                        "metric_name": "max_id",
+                        "metric_type": "max",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
                 external_url=(
                     "https://dbt.example.org/"
                     "#!/model/model.superset_examples.messages_channels"
@@ -565,7 +619,103 @@ def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
             mock.call(
                 1,
                 override_columns=False,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "filterable": False,
+                        "groupby": False,
+                        "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_merge_metadata(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with merge_metadata set to True.
+    Metrics should be merged (dbt as the source of truth).
+    """
+    client = mocker.MagicMock()
+    metrics_ = copy.deepcopy(metrics)
+    metrics_.append(
+        metric_schema.load(
+            {
+                "depends_on": ["model.superset_examples.messages_channels"],
+                "description": "",
+                "filters": [],
+                "meta": {},
+                "name": "max_id",
+                "label": "",
+                "sql": "id",
+                "type": "max",
+                "unique_id": "metric.superset_examples.cnt",
+            },
+        ),
+    )
+    client.get_datasets.side_effect = [[{"id": 1}], [{"id": 2}], [{"id": 3}]]
+    client.get_dataset.return_value = {
+        "columns": [
+            {
+                "column_name": "id",
+                "is_dttm": False,
+                "filterable": False,
+                "groupby": False,
+            },
+        ],
+        "metrics": [
+            {
+                "changed_on": "2023-08-28T18:01:24.190211",
+                "created_on": "2023-08-28T18:01:24.190208",
+                "expression": "count(*)/1",
+                "id": 190,
+                "metric_name": "cnt",
+            },
+            {
+                "changed_on": "2023-08-27T18:01:24.190211",
+                "created_on": "2023-08-27T18:01:24.190208",
+                "expression": "COUNT (DISTINCT id)",
+                "id": 191,
+                "metric_name": "unique_ids",
+            },
+        ],
+        "id": 1,
+    }
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=metrics_,
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="https://dbt.example.org/",
+        reload_columns=False,
+        merge_metadata=True,
+    )
+    client.create_dataset.assert_not_called()
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=False,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
                 metrics=[
+                    {
+                        "expression": "COUNT (DISTINCT id)",
+                        "id": 191,
+                        "metric_name": "unique_ids",
+                    },
                     {
                         "expression": "COUNT(*)",
                         "metric_name": "cnt",
@@ -573,8 +723,21 @@ def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
                         "verbose_name": "",
                         "description": "",
                         "extra": "{}",
+                        "id": 190,
+                    },
+                    {
+                        "expression": "MAX(id)",
+                        "metric_name": "max_id",
+                        "metric_type": "max",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
                     },
                 ],
+                external_url=(
+                    "https://dbt.example.org/"
+                    "#!/model/model.superset_examples.messages_channels"
+                ),
             ),
             mock.call(
                 1,
@@ -583,9 +746,9 @@ def test_sync_datasets_preserve_columns(mocker: MockerFixture) -> None:
                     {
                         "column_name": "id",
                         "description": "Primary key",
-                        "is_dttm": False,
                         "filterable": False,
                         "groupby": False,
+                        "is_dttm": False,
                         "verbose_name": "id",
                     },
                 ],
