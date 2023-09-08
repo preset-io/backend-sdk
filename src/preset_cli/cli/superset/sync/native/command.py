@@ -19,6 +19,7 @@ import click
 import requests
 import yaml
 from jinja2 import Template
+from jinja2.exceptions import TemplateSyntaxError
 from sqlalchemy.engine import create_engine
 from sqlalchemy.engine.url import make_url
 from yarl import URL
@@ -97,10 +98,19 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     env["filepath"] = path
 
     with open(path, encoding="utf-8") as input_:
-        template = Template(input_.read())
+        asset_content = input_.read()
+
+    try:
+        template = Template(asset_content)
+
+    # For charts with a `query_context` -> ``str(JSON)``, templating the YAML structure directly
+    # was failing. The route str(YAML) -> dict -> str(JSON) is more consistent.
+    except TemplateSyntaxError:
+        content = yaml.load(asset_content, Loader=yaml.SafeLoader)
+        content = json.dumps(content)
+        template = Template(content)
 
     content = template.render(**env)
-
     return yaml.load(content, Loader=yaml.SafeLoader)
 
 

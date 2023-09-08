@@ -3,6 +3,7 @@ Tests for the native import command.
 """
 # pylint: disable=redefined-outer-name, invalid-name
 
+import json
 from pathlib import Path
 from typing import List
 from unittest import mock
@@ -146,6 +147,7 @@ def test_import_resources_error(mocker: MockerFixture) -> None:
 
 
 def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    # pylint: disable=line-too-long
     """
     Test the ``native`` command.
     """
@@ -158,6 +160,44 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "uuid": "uuid1",
     }
     dataset_config = {"table_name": "test", "is_managed_externally": False}
+    chart_config = {
+        "slice_name": "test",
+        "viz_type": "big_number_total",
+        "params": {
+            "datasource": "1__table",
+            "viz_type": "big_number_total",
+            "slice_id": 1,
+            "metric": {
+                "expressionType": "SQL",
+                "sqlExpression": "{{ '{% if' }} from_dttm {{ '%}' }} count(*) {{ '{% else %}' }} count(*) {{ '{% endif %}' }}",
+                "column": None,
+                "aggregate": None,
+                "datasourceWarning": False,
+                "hasCustomLabel": True,
+                "label": "custom_calculation",
+                "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
+            },
+            "adhoc_filters": [],
+            "header_font_size": 0.4,
+            "subheader_font_size": 0.15,
+            "y_axis_format": "SMART_NUMBER",
+            "time_format": "smart_date",
+            "extra_form_data": {},
+            "dashboards": [],
+        },
+        "query_context": json.loads(
+            """
+{"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},"applied_time_extras":{},"columns":[],
+"metrics":[{"expressionType":"SQL","sqlExpression":"{{ '{% if' }} from_dttm {{ '%}' }} count(*) {{ '{% else %}' }} count(*) {{ '{% endif %}' }}",
+"column":null,"aggregate":null,"datasourceWarning":false,"hasCustomLabel":true,"label":"custom_calculation","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"}],
+"annotation_layers":[],"series_limit":0,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],"form_data":{"datasource":"1__table",
+"viz_type":"big_number_total","slice_id":1,"metric":{"expressionType":"SQL","sqlExpression":"{{ '{% if' }} from_dttm {{ '%}' }} count(*) {{ '{% else %}' }} count(*) {{ '{% endif %}' }}",
+"column":null,"aggregate":null,"datasourceWarning":false,"hasCustomLabel":true,"label":"custom_calculation","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"},
+"adhoc_filters":[],"header_font_size":0.4,"subheader_font_size":0.15,"y_axis_format":"SMART_NUMBER","time_format":"smart_date",
+"extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},"result_format":"json","result_type":"full"}""",
+        ),
+    }
+
     fs.create_file(
         root / "databases/gsheets.yaml",
         contents=yaml.dump(database_config),
@@ -169,6 +209,10 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     fs.create_file(
         root / "datasets/gsheets/test.overrides.yaml",
         contents="table_name: {{ 'Hello' }}",
+    )
+    fs.create_file(
+        root / "charts/test_01.yaml",
+        contents=yaml.dump(chart_config),
     )
     fs.create_file(
         root / "README.txt",
@@ -197,6 +241,46 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     assert result.exit_code == 0
     contents = {
+        "bundle/charts/test_01.yaml": yaml.dump(
+            {
+                "slice_name": "test",
+                "viz_type": "big_number_total",
+                "params": {
+                    "datasource": "1__table",
+                    "viz_type": "big_number_total",
+                    "slice_id": 1,
+                    "metric": {
+                        "expressionType": "SQL",
+                        "sqlExpression": "{% if from_dttm %} count(*) {% else %} count(*) {% endif %}",
+                        "column": None,
+                        "aggregate": None,
+                        "datasourceWarning": False,
+                        "hasCustomLabel": True,
+                        "label": "custom_calculation",
+                        "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
+                    },
+                    "adhoc_filters": [],
+                    "header_font_size": 0.4,
+                    "subheader_font_size": 0.15,
+                    "y_axis_format": "SMART_NUMBER",
+                    "time_format": "smart_date",
+                    "extra_form_data": {},
+                    "dashboards": [],
+                },
+                "query_context": json.loads(
+                    """
+{"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},"applied_time_extras":{},
+"columns":[],"metrics":[{"expressionType":"SQL","sqlExpression":"{% if from_dttm %} count(*) {% else %} count(*) {% endif %}","column":null,"aggregate":null,
+"datasourceWarning":false,"hasCustomLabel":true,"label":"custom_calculation","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"}],"annotation_layers":[],
+"series_limit":0,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],"form_data":{"datasource":"1__table","viz_type":"big_number_total",
+"slice_id":1,"metric":{"expressionType":"SQL","sqlExpression":"{% if from_dttm %} count(*) {% else %} count(*) {% endif %}","column":null,"aggregate":null,
+"datasourceWarning":false,"hasCustomLabel":true,"label":"custom_calculation","optionName":"metric_6aq7h4t8b3t_jbp2rak398o"},"adhoc_filters":[],"header_font_size":0.4,
+"subheader_font_size":0.15,"y_axis_format":"SMART_NUMBER","time_format":"smart_date","extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},
+"result_format":"json","result_type":"full"}""",
+                ),
+                "is_managed_externally": False,
+            },
+        ),
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(
             {
@@ -205,6 +289,7 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             },
         ),
     }
+
     import_resources.assert_has_calls([mock.call(contents, client, False)])
 
 
