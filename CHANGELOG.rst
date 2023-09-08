@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.2.7 - 2023-09-08
+==========================
+
+- The CLI now has a re-try mechanism to address Session-related errors (`#235 <https://github.com/preset-io/backend-sdk/pull/235>_`).
+- It's now possible to trigger a dbt sync and merge dbt metadata with Preset metadata (`#238 <https://github.com/preset-io/backend-sdk/pull/238>_`).
+
 Version 0.2.6 - 2023-08-17
 ==========================
 
