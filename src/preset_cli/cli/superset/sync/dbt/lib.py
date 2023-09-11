@@ -284,6 +284,7 @@ def load_profiles(
     return apply_templating(profiles)
 
 
+# pylint: disable=R0911
 def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema]:
     """
     Filter a list of dbt models given a select condition.
@@ -309,6 +310,20 @@ def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema
     model_names = {model["name"]: model for model in models}
     if condition in model_names:
         return [model_names[condition]]
+
+    # file
+    file_path = Path(condition)
+    if file_path.is_file() and file_path.stem in model_names:
+        return [model_names[file_path.stem]]
+
+    # path/directory
+    if file_path.is_dir() or (
+        str(file_path).endswith("/*") and (file_path := file_path.parent)
+    ):
+        sql_files = [file for file in file_path.rglob("*.sql") if file.is_file()]
+        return [
+            model_names[file.stem] for file in sql_files if file.stem in model_names
+        ]
 
     # plus and n-plus operators
     if "+" in condition:
@@ -419,7 +434,6 @@ def apply_select(
     Apply dbt node selection (https://docs.getdbt.com/reference/node-selection/syntax).
     """
     model_ids = {model["unique_id"]: model for model in models}
-
     selected: Dict[str, ModelSchema]
     if not select:
         selected = {model["unique_id"]: model for model in models}

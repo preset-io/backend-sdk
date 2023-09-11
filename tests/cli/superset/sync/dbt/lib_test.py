@@ -556,3 +556,66 @@ def test_apply_select_exclude() -> None:
     }
     assert {model["name"] for model in apply_select(models, (), ("b+", "c+"))} == {"a"}
     assert {model["name"] for model in apply_select(models, ("a",), ("d",))} == {"a"}
+
+
+# pylint: disable=unused-argument
+def test_apply_select_using_path(fs: FakeFilesystem) -> None:
+    """
+    Test ``apply_select`` using directory/path arguments.
+    """
+    one = {
+        "name": "one",
+        "tags": ["test"],
+        "unique_id": "model.one",
+        "depends_on": ["source.zero"],
+        "children": ["model.two"],
+    }
+    two = {
+        "name": "two",
+        "tags": [],
+        "unique_id": "model.two",
+        "depends_on": ["model.one", "model.three"],
+        "children": [],
+    }
+    three = {
+        "name": "three",
+        "tags": [],
+        "unique_id": "model.three",
+        "depends_on": ["source.zero"],
+        "children": ["model.two"],
+    }
+    models: List[ModelSchema] = [one, two, three]  # type: ignore
+
+    base_dir = Path("models")
+    base_dir.mkdir(exist_ok=True)
+    (base_dir / "one.sql").write_text(json.dumps(one))
+
+    test_folder = base_dir / "test_folder"
+    test_folder.mkdir(exist_ok=True)
+    (test_folder / "two.sql").write_text(json.dumps(two))
+
+    test_second_folder = test_folder / "test_second_folder"
+    test_second_folder.mkdir(exist_ok=True)
+    (test_second_folder / "three.sql").write_text(json.dumps(three))
+
+    assert {model["name"] for model in apply_select(models, ("models",), ())} == {
+        "one",
+        "two",
+        "three",
+    }
+    assert {
+        model["name"] for model in apply_select(models, ("models/one.sql",), ())
+    } == {
+        "one",
+    }
+    assert {model["name"] for model in apply_select(models, ("models/",), ())} == {
+        "one",
+        "two",
+        "three",
+    }
+    assert {
+        model["name"] for model in apply_select(models, ("models/test_folder/*",), ())
+    } == {
+        "two",
+        "three",
+    }
