@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.2.8 - 2023-09-12
+==========================
+
+- The Jinja rendering/escaping logic for content migration was improved (`#237 <https://github.com/preset-io/backend-sdk/pull/237>_`).
+- It's now possible to specify dbt models to be synced using the file name/path  (`#242 <https://github.com/preset-io/backend-sdk/pull/242>_`).
+
 Version 0.2.7 - 2023-09-08
 ==========================
 
