@@ -451,6 +451,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Create a resource.
         """
         url = self.baseurl / "api/v1" / resource_name / ""
+        url = str(url)
+        url = url.endswith("/") and url or url + "/"
 
         _logger.debug("POST %s\n%s", url, json.dumps(kwargs, indent=4))
         response = self.session.post(url, json=kwargs)
