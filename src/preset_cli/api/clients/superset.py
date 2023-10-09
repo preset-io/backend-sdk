@@ -429,6 +429,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 },
             )
             url = self.baseurl / "api/v1" / resource_name / "" % {"q": query}
+            url = str(url)
+            url = url.replace("?", "/?").replace("//?", "/?")
 
             _logger.debug("GET %s", url)
             response = self.session.get(url)
