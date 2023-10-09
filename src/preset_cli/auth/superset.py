@@ -60,8 +60,10 @@ class SupersetJWTAuth(TokenAuth):  # pylint: disable=abstract-method
         """
         Get a CSRF token.
         """
+        url = str(self.baseurl / "api/v1/security/csrf_token/")
+        url = url.endswith("/") and url or url + "/"
         response = self.session.get(
-            self.baseurl / "api/v1/security/csrf_token/",  # type: ignore
+            url,
             headers={"Authorization": f"Bearer {jwt}"},
         )
         response.raise_for_status()
