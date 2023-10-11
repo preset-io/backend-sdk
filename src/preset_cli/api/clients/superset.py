@@ -248,8 +248,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         limit: int = 1000,
     ) -> Dict[str, Any]:
         url = self.baseurl / "api/v1/sqllab/execute/"
-        url = str(url)
-        url = url + "/"
+        url = str(url) + "/"
         data = {
             "client_id": shortid()[:10],
             "database_id": database_id,
@@ -435,8 +434,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 },
             )
             url = self.baseurl / "api/v1" / resource_name / "" % {"q": query}
-            url = str(url)
-            url = url.replace("?", "/?").replace("//?", "/?")
+            url = str(url).replace("?", "/?").replace("//?", "/?")
 
             _logger.debug("GET %s", url)
             response = self.session.get(url)
@@ -457,8 +455,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Create a resource.
         """
         url = self.baseurl / "api/v1" / resource_name / ""
-        url = str(url)
-        url = url + "/"
+        url = str(url) + "/"
 
         _logger.debug("POST %s\n%s", url, json.dumps(kwargs, indent=4))
         response = self.session.post(url, json=kwargs)
@@ -479,8 +476,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Update a resource.
         """
         url = self.baseurl / "api/v1" / resource_name / str(resource_id)
-        url = str(url)
-        url = url + "/"
+        url = str(url) + "/"
         if query_args:
             url %= query_args
 
@@ -680,8 +676,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Export one or more of a resource.
         """
         url = self.baseurl / "api/v1" / resource_name / "export/"
-        url = str(url)
-        url = url + "/"
+        url = str(url) + "/"
 
         buf = BytesIO()
         with ZipFile(buf, "w") as bundle:
@@ -709,8 +704,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         between IDs and UUIDs in older versions of Superset.
         """
         url = self.baseurl / "api/v1" / resource_name / "export/"
-        url = str(url)
-        url = url + "/"
+        url = str(url) + "/"
 
         uuids: Dict[int, UUID] = {}
         for resource in self.get_resources(resource_name):
@@ -740,8 +734,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         key = "bundle" if resource_name == "assets" else "formData"
         files = {key: form_data}
         url = self.baseurl / "api/v1" / resource_name / "import/"
-        url = str(url)
-        url = url + "/"
+        url = str(url) + "/"
 
         self.session.headers.update({"Accept": "application/json"})
         data = {"overwrite": json.dumps(overwrite)}
