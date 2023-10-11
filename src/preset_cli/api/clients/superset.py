@@ -248,6 +248,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         limit: int = 1000,
     ) -> Dict[str, Any]:
         url = self.baseurl / "api/v1/sqllab/execute/"
+        url = str(url)
+        url = url + "/"
         data = {
             "client_id": shortid()[:10],
             "database_id": database_id,
@@ -312,7 +314,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             ]
             if len(time_columns) > 1:
                 options = ", ".join(time_columns)
-                raise Exception(
+                raise Exception(  # pylint: disable=broad-exception-raised
                     f"Unable to determine time column, please pass `time_series` "
                     f"as one of: {options}",
                 )
@@ -419,7 +421,11 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             query = prison.dumps(
                 {
                     "filters": [
-                        dict(col=col, opr=value.operator, value=value.value)
+                        dict(  # pylint: disable=use-dict-literal
+                            col=col,
+                            opr=value.operator,
+                            value=value.value,
+                        )
                         for col, value in operations.items()
                     ],
                     "order_column": "changed_on_delta_humanized",
@@ -452,7 +458,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         url = self.baseurl / "api/v1" / resource_name / ""
         url = str(url)
-        url = url.endswith("/") and url or url + "/"
+        url = url + "/"
 
         _logger.debug("POST %s\n%s", url, json.dumps(kwargs, indent=4))
         response = self.session.post(url, json=kwargs)
@@ -473,6 +479,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Update a resource.
         """
         url = self.baseurl / "api/v1" / resource_name / str(resource_id)
+        url = str(url)
+        url = url + "/"
         if query_args:
             url %= query_args
 
@@ -672,6 +680,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Export one or more of a resource.
         """
         url = self.baseurl / "api/v1" / resource_name / "export/"
+        url = str(url)
+        url = url + "/"
 
         buf = BytesIO()
         with ZipFile(buf, "w") as bundle:
@@ -699,6 +709,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         between IDs and UUIDs in older versions of Superset.
         """
         url = self.baseurl / "api/v1" / resource_name / "export/"
+        url = str(url)
+        url = url + "/"
 
         uuids: Dict[int, UUID] = {}
         for resource in self.get_resources(resource_name):
@@ -728,6 +740,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         key = "bundle" if resource_name == "assets" else "formData"
         files = {key: form_data}
         url = self.baseurl / "api/v1" / resource_name / "import/"
+        url = str(url)
+        url = url + "/"
 
         self.session.headers.update({"Accept": "application/json"})
         data = {"overwrite": json.dumps(overwrite)}
@@ -1058,16 +1072,20 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 datasets = self.get_datasets(table_name=table)
 
             if not datasets:
-                raise Exception(f"Cannot find table: {table}")
+                raise Exception(  # pylint: disable=broad-exception-raised
+                    f"Cannot find table: {table}",
+                )
             if len(datasets) > 1:
-                raise Exception(f"More than one table found: {table}")
+                raise Exception(  # pylint: disable=broad-exception-raised
+                    f"More than one table found: {table}",
+                )
             table_ids.append(datasets[0]["id"])
 
         role_ids: List[int] = []
         for role_name in rls["roles"]:
             role_id = self.get_role_id(role_name)
             if self.get_role_permissions(role_id):
-                raise Exception(
+                raise Exception(  # pylint: disable=broad-exception-raised
                     f"Role {role_name} currently has permissions associated with it. To "
                     "use it with RLS it should have no permissions.",
                 )
@@ -1114,12 +1132,18 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         soup = BeautifulSoup(response.text, features="html.parser")
         tables = soup.find_all("table")
         if len(tables) < 2:
-            raise Exception(f"Cannot find role: {role_name}")
+            raise Exception(  # pylint: disable=broad-exception-raised
+                f"Cannot find role: {role_name}",
+            )
         trs = tables[1].find_all("tr")
         if len(trs) == 1:
-            raise Exception(f"Cannot find role: {role_name}")
+            raise Exception(  # pylint: disable=broad-exception-raised
+                f"Cannot find role: {role_name}",
+            )
         if len(trs) > 2:
-            raise Exception(f"More than one role found: {role_name}")
+            raise Exception(  # pylint: disable=broad-exception-raised
+                f"More than one role found: {role_name}",
+            )
 
         tds = trs[1].find_all("td")
         td = tds[0]  # pylint: disable=invalid-name
