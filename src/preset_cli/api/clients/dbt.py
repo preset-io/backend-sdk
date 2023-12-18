@@ -25,6 +25,9 @@ _logger = logging.getLogger(__name__)
 
 REST_ENDPOINT = URL("https://cloud.getdbt.com/")
 GRAPHQL_ENDPOINT = URL("https://metadata.cloud.getdbt.com/graphql")
+SEMANTIC_LAYER_GRAPHQL_ENDPOINT = URL(
+    "https://semantic-layer.cloud.getdbt.com/api/graphql"
+)
 
 
 class PostelSchema(Schema):
@@ -603,6 +606,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
     def __init__(self, auth: Auth):
         self.graphql_client = GraphqlClient(endpoint=GRAPHQL_ENDPOINT)
+        self.sl_graphql_client = GraphqlClient(endpoint=SEMANTIC_LAYER_GRAPHQL_ENDPOINT)
         self.baseurl = REST_ENDPOINT
 
         self.session = auth.session
@@ -610,16 +614,6 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         self.session.headers["User-Agent"] = "Preset CLI"
         self.session.headers["X-Client-Version"] = __version__
         self.session.headers["X-dbt-partner-source"] = "preset"
-
-    def execute(self, query: str, **variables: Any) -> DataResponse:
-        """
-        Run a GraphQL query.
-        """
-        return self.graphql_client.execute(
-            query=query,
-            variables=variables,
-            headers=self.session.headers,
-        )
 
     def get_accounts(self) -> List[AccountSchema]:
         """
@@ -701,7 +695,11 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                 }
             }
         """
-        payload = self.execute(query, jobId=job_id)
+        payload = self.graphql_client.execute(
+            query=query,
+            variables={"jobId": job_id},
+            headers=self.session.headers,
+        )
 
         model_schema = ModelSchema()
         models = [model_schema.load(model) for model in payload["data"]["models"]]
@@ -713,25 +711,129 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         Fetch all available metrics.
         """
         query = """
-            query ($jobId: Int!) {
-                metrics(jobId: $jobId) {
-                    uniqueId
-                    name
-                    label
-                    type
-                    sql
-                    filters {
-                        field
-                        operator
-                        value
-                    }
-                    dependsOn
-                    description
-                    meta
-                }
-            }
+query MyQuery {
+  metrics(environmentId: 274124) {
+    name
+    description
+    type
+    typeParams {
+      measure {
+        name
+        filter {
+          whereSqlTemplate
+        }
+        alias
+      }
+      inputMeasures {
+        name
+        filter {
+          whereSqlTemplate
+        }
+        alias
+      }
+      numerator {
+        name
+        filter {
+          whereSqlTemplate
+        }
+        alias
+        offsetWindow {
+          count
+          granularity
+        }
+        offsetToGrain
+      }
+      denominator {
+        name
+        filter {
+          whereSqlTemplate
+        }
+        alias
+        offsetWindow {
+          count
+          granularity
+        }
+        offsetToGrain
+      }
+      expr
+      window {
+        count
+        granularity
+      }
+      grainToDate
+      metrics {
+        name
+        filter {
+          whereSqlTemplate
+        }
+        alias
+        offsetWindow {
+          count
+          granularity
+        }
+        offsetToGrain
+      }
+    }
+    filter {
+      whereSqlTemplate
+    }
+    metadata {
+      repoFilePath
+      fileSlice {
+        filename
+        content
+        startLineNumber
+        endLineNumber
+      }
+    }
+    dimensions {
+      name
+      qualifiedName
+      description
+      type
+      typeParams {
+        timeGranularity
+        validityParams {
+          isStart
+          isEnd
+        }
+      }
+      metadata {
+        repoFilePath
+        fileSlice {
+          filename
+          content
+          startLineNumber
+          endLineNumber
+        }
+      }
+      isPartition
+      expr
+      queryableGranularities
+    }
+    queryableGranularities
+    measures {
+      name
+      aggTimeDimension
+    }
+    entities {
+      name
+      description
+      type
+      role
+      expr
+    }
+  }
+}
         """
-        payload = self.execute(query, jobId=job_id)
+        payload = self.sl_graphql_client.execute(
+            query=query,
+            variables={"jobId": job_id},
+            headers=self.session.headers,
+        )
+        from pprint import pprint
+
+        pprint(payload)
 
         metric_schema = MetricSchema()
         metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
