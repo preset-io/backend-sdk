@@ -126,6 +126,19 @@ dbt_core_metrics = [
     },
 ]
 
+superset_metrics = {
+    "model.superset_examples.messages_channels": [
+        {
+            "description": "",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt",
+            "metric_type": "count",
+            "verbose_name": "",
+        },
+    ],
+}
+
 dbt_cloud_models = [
     {
         "database": "examples_dev",
@@ -148,6 +161,17 @@ dbt_cloud_metrics = [
         "sql": "*",
         "type": "count",
         "unique_id": "metric.superset_examples.cnt",
+    },
+    {
+        "depends_on": ["a", "b"],
+        "description": "",
+        "filters": [],
+        "label": "",
+        "meta": {},
+        "name": "multiple parents",
+        "sql": "*",
+        "type": "count",
+        "unique_id": "c",
     },
 ]
 
@@ -210,7 +234,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     sync_datasets.assert_called_with(
         client,
         dbt_core_models,
-        dbt_core_metrics,
+        superset_metrics,
         sync_database(),
         False,
         "",
@@ -287,7 +311,7 @@ def test_dbt_core_preserve_metadata(
     sync_datasets.assert_called_with(
         client,
         dbt_core_models,
-        dbt_core_metrics,
+        superset_metrics,
         sync_database(),
         False,
         "",
@@ -357,7 +381,7 @@ def test_dbt_core_preserve_columns(
     sync_datasets.assert_called_with(
         client,
         dbt_core_models,
-        dbt_core_metrics,
+        superset_metrics,
         sync_database(),
         False,
         "",
@@ -428,7 +452,7 @@ def test_dbt_core_merge_metadata(
     sync_datasets.assert_called_with(
         client,
         dbt_core_models,
-        dbt_core_metrics,
+        superset_metrics,
         sync_database(),
         False,
         "",
@@ -700,37 +724,10 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             "refs": [],
         },
     ]
-    metrics = [
-        {
-            "meta": {},
-            "depends_on": ["model.superset_examples.messages_channels"],
-            "unique_id": "metric.superset_examples.cnt",
-            "label": "",
-            "sql": "*",
-            "type": "count",
-            "name": "cnt",
-            "description": "",
-            "filters": [],
-            "model": "ref('messages_channels')",
-            "sources": [],
-            "original_file_path": "models/slack/schema.yml",
-            "resource_type": "metric",
-            "tags": [],
-            "path": "slack/schema.yml",
-            "created_at": 1642630986.1942852,
-            "fqn": ["superset_examples", "slack", "cnt"],
-            "package_name": "superset_examples",
-            "timestamp": None,
-            "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
-            "time_grains": [],
-            "refs": [["messages_channels"]],
-            "dimensions": [],
-        },
-    ]
     sync_datasets.assert_called_with(
         client,
         models,
-        metrics,
+        superset_metrics,
         sync_database(),
         False,
         "",
@@ -966,7 +963,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
-    dbt_client.get_metrics.return_value = dbt_cloud_metrics
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database
@@ -987,7 +984,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     sync_datasets.assert_called_with(
         superset_client,
         dbt_cloud_models,
-        dbt_cloud_metrics,
+        superset_metrics,
         database,
         False,
         "",
@@ -1018,7 +1015,7 @@ def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
-    dbt_client.get_metrics.return_value = dbt_cloud_metrics
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database
@@ -1040,7 +1037,7 @@ def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     sync_datasets.assert_called_with(
         superset_client,
         dbt_cloud_models,
-        dbt_cloud_metrics,
+        superset_metrics,
         database,
         False,
         "",
@@ -1071,7 +1068,7 @@ def test_dbt_cloud_preserve_columns(mocker: MockerFixture) -> None:
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
-    dbt_client.get_metrics.return_value = dbt_cloud_metrics
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database
@@ -1093,7 +1090,7 @@ def test_dbt_cloud_preserve_columns(mocker: MockerFixture) -> None:
     sync_datasets.assert_called_with(
         superset_client,
         dbt_cloud_models,
-        dbt_cloud_metrics,
+        superset_metrics,
         database,
         False,
         "",
@@ -1124,7 +1121,7 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
-    dbt_client.get_metrics.return_value = dbt_cloud_metrics
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database
@@ -1146,7 +1143,7 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     sync_datasets.assert_called_with(
         superset_client,
         dbt_cloud_models,
-        dbt_cloud_metrics,
+        superset_metrics,
         database,
         False,
         "",
@@ -1197,7 +1194,7 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
-    dbt_client.get_metrics.return_value = dbt_cloud_metrics
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
     dbt_client.get_accounts.return_value = [{"id": 1, "name": "My account"}]
     dbt_client.get_projects.return_value = [{"id": 1000, "name": "My project"}]
     dbt_client.get_jobs.return_value = [{"id": 123, "name": "My job"}]
@@ -1219,11 +1216,11 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
     assert result.exit_code == 0
     dbt_client.get_database_name.assert_called_with(123)
     dbt_client.get_models.assert_called_with(123)
-    dbt_client.get_metrics.assert_called_with(123)
+    dbt_client.get_og_metrics.assert_called_with(123)
     sync_datasets.assert_called_with(
         superset_client,
         dbt_cloud_models,
-        dbt_cloud_metrics,
+        superset_metrics,
         database,
         False,
         "",
@@ -1556,7 +1553,7 @@ def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> 
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
-    dbt_client.get_metrics.return_value = dbt_cloud_metrics
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database

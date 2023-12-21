@@ -5,6 +5,7 @@ A command to sync dbt models/metrics to Superset and charts/dashboards back as e
 import os.path
 import sys
 import warnings
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -19,6 +20,10 @@ from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
 from preset_cli.cli.superset.sync.dbt.lib import apply_select
+from preset_cli.cli.superset.sync.dbt.metrics import (
+    get_metric_definition,
+    get_metric_models,
+)
 from preset_cli.exceptions import DatabaseNotFoundError
 
 
@@ -192,13 +197,27 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             if ModelKey(dataset["schema"], dataset["table_name"]) in model_map
         ]
     else:
-        metrics = []
+        og_metrics = []
         metric_schema = MetricSchema()
         for config in configs["metrics"].values():
             # conform to the same schema that dbt Cloud uses for metrics
             config["dependsOn"] = config.pop("depends_on")["nodes"]
             config["uniqueId"] = config.pop("unique_id")
-            metrics.append(metric_schema.load(config))
+            og_metrics.append(metric_schema.load(config))
+
+        # store metric definitions for each model
+        superset_metrics = defaultdict(list)
+        for og_metric in og_metrics:
+            metric_models = get_metric_models(og_metric["unique_id"], og_metrics)
+            if len(metric_models) != 1:
+                continue
+
+            metric_definition = get_metric_definition(
+                og_metric["unique_id"],
+                og_metrics,
+            )
+            model = metric_models.pop()
+            superset_metrics[model].append(metric_definition)
 
         try:
             database = sync_database(
@@ -218,7 +237,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         datasets = sync_datasets(
             client,
             models,
-            metrics,
+            superset_metrics,
             database,
             disallow_edits,
             external_url_prefix,
@@ -440,7 +459,18 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
         for model in models
     }
-    metrics = dbt_client.get_metrics(job["id"])
+
+    # store metric definitions for each model
+    superset_metrics = defaultdict(list)
+    og_metrics = dbt_client.get_og_metrics(job["id"])
+    for og_metric in og_metrics:
+        metric_models = get_metric_models(og_metric["unique_id"], og_metrics)
+        if len(metric_models) != 1:
+            continue
+
+        metric_definition = get_metric_definition(og_metric["unique_id"], og_metrics)
+        model = metric_models.pop()
+        superset_metrics[model].append(metric_definition)
 
     if exposures_only:
         datasets = [
@@ -452,7 +482,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         datasets = sync_datasets(
             superset_client,
             models,
-            metrics,
+            superset_metrics,
             database,
             disallow_edits,
             external_url_prefix,

@@ -708,7 +708,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         return models
 
-    def get_metrics(self, job_id: int) -> List[Any]:
+    def get_og_metrics(self, job_id: int) -> List[Any]:
         """
         Fetch all available metrics.
         """

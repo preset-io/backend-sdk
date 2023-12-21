@@ -6,25 +6,27 @@ This module is used to convert dbt metrics into Superset metrics.
 
 # pylint: disable=consider-using-f-string
 
+import json
 import logging
-from typing import Dict, List
+from typing import Dict, List, Set
 
 import sqlparse
 from sqlparse.sql import Identifier, TokenList
 
 from preset_cli.api.clients.dbt import FilterSchema, MetricSchema, ModelSchema
+from preset_cli.api.clients.superset import SupersetMetricDefinition
 
 _logger = logging.getLogger(__name__)
 
 
-def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) -> str:
+def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> str:
     """
     Return a SQL expression for a given dbt metric.
     """
-    if metric_name not in metrics:
-        raise Exception(f"Invalid metric {metric_name}")
+    if unique_id not in metrics:
+        raise Exception(f"Invalid metric {unique_id}")
 
-    metric = metrics[metric_name]
+    metric = metrics[unique_id]
     if "calculation_method" in metric:
         # dbt >= 1.3
         type_ = metric["calculation_method"]
@@ -124,3 +126,45 @@ def get_metrics_for_model(
             related_metrics.append(metric)
 
     return related_metrics
+
+
+def get_metric_models(unique_id: str, metrics: List[MetricSchema]) -> Set[str]:
+    """
+    Given a metric, return the models it depends on.
+    """
+    metric_map = {metric["unique_id"]: metric for metric in metrics}
+    metric = metric_map[unique_id]
+    depends_on = metric["depends_on"]
+
+    if is_derived(metric):
+        return {
+            model
+            for parent in depends_on
+            for model in get_metric_models(parent, metrics)
+        }
+
+    return set(depends_on)
+
+
+def get_metric_definition(
+    unique_id: str,
+    metrics: List[MetricSchema],
+) -> SupersetMetricDefinition:
+    """
+    Build a Superset metric definition from an OG (< 1.6) dbt metric.
+    """
+    metric_map = {metric["unique_id"]: metric for metric in metrics}
+    metric = metric_map[unique_id]
+    name = metric["name"]
+    meta = metric.get("meta", {})
+    kwargs = meta.pop("superset", {})
+
+    return {
+        "expression": get_metric_expression(unique_id, metric_map),
+        "metric_name": name,
+        "metric_type": (metric.get("type") or metric.get("calculation_method")),
+        "verbose_name": metric.get("label", name),
+        "description": metric.get("description", ""),
+        "extra": json.dumps(meta),
+        **kwargs,  # type: ignore
+    }
