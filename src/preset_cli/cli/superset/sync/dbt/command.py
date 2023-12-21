@@ -12,7 +12,7 @@ import click
 import yaml
 from yarl import URL
 
-from preset_cli.api.clients.dbt import DBTClient, MetricSchema, ModelSchema
+from preset_cli.api.clients.dbt import DBTClient, JobSchema, MetricSchema, ModelSchema
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
@@ -282,11 +282,12 @@ def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
         click.echo("Invalid choice")
 
 
-def get_job_id(
+def get_job(
     client: DBTClient,
     account_id: Optional[int] = None,
     project_id: Optional[int] = None,
-) -> int:
+    job_id: Optional[int] = None,
+) -> JobSchema:
     """
     Prompt users for a job ID.
     """
@@ -299,21 +300,29 @@ def get_job_id(
     if not jobs:
         click.echo(click.style("No jobs available", fg="bright_red"))
         sys.exit(1)
-    if len(jobs) == 1:
-        return jobs[0]["id"]
 
-    click.echo("Choose a job:")
-    for i, job in enumerate(jobs):
-        click.echo(f'({i+1}) {job["name"]}')
+    if job_id is None:
+        if len(jobs) == 1:
+            return jobs[0]
 
-    while True:
-        try:
-            choice = int(input("> "))
-        except Exception:  # pylint: disable=broad-except
-            choice = -1
-        if 0 < choice <= len(jobs):
-            return jobs[choice - 1]["id"]
-        click.echo("Invalid choice")
+        click.echo("Choose a job:")
+        for i, job in enumerate(jobs):
+            click.echo(f'({i+1}) {job["name"]}')
+
+        while True:
+            try:
+                choice = int(input("> "))
+            except Exception:  # pylint: disable=broad-except
+                choice = -1
+            if 0 < choice <= len(jobs):
+                return jobs[choice - 1]
+            click.echo("Invalid choice")
+
+    for job in jobs:
+        if job["id"] == job_id:
+            return job
+
+    raise ValueError(f"Job {job_id} not available")
 
 
 @click.command()
@@ -407,11 +416,14 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
     preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
-    if job_id is None:
-        job_id = get_job_id(dbt_client)
+    try:
+        job = get_job(dbt_client, job_id=job_id)
+    except ValueError:
+        click.echo(click.style(f"Job {job_id} not available", fg="bright_red"))
+        sys.exit(2)
 
     # with dbt cloud the database must already exist
-    database_name = dbt_client.get_database_name(job_id)
+    database_name = dbt_client.get_database_name(job["id"])
     databases = superset_client.get_databases(database_name=database_name)
     if not databases:
         click.echo(f'No database named "{database_name}" was found')
@@ -422,13 +434,13 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     # need to get the database by itself so the response has the SQLAlchemy URI
     database = superset_client.get_database(databases[0]["id"])
 
-    models = dbt_client.get_models(job_id)
+    models = dbt_client.get_models(job["id"])
     models = apply_select(models, select, exclude)
     model_map = {
         ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
         for model in models
     }
-    metrics = dbt_client.get_metrics(job_id)
+    metrics = dbt_client.get_metrics(job["id"])
 
     if exposures_only:
         datasets = [

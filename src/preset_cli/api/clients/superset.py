@@ -3,7 +3,7 @@ A simple client for running SQL queries (and more) against Superset:
 
     >>> from yarl import URL
     >>> from preset_cli.api.clients.superset import SupersetClient
-    >>> from preset_cli.auth.password import UsernamePasswordAuth
+    >>> from preset_cli.auth.superset import UsernamePasswordAuth
     >>> url = URL("http://localhost:8088/")
     >>> auth = UsernamePasswordAuth(url, "admin", "admin")  # doctest: +SKIP
     >>> client = SupersetClient(url, auth)  # doctest: +SKIP
