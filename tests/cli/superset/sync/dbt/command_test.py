@@ -867,7 +867,7 @@ def test_dbt_core_no_database(mocker: MockerFixture, fs: FakeFilesystem) -> None
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert result.output == "No database was found, pass ``--import-db`` to create\n"
+    assert "No database was found, pass ``--import-db`` to create" in result.output
 
 
 def test_dbt_core_disallow_edits_superset(

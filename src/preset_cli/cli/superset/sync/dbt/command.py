@@ -5,7 +5,6 @@ A command to sync dbt models/metrics to Superset and charts/dashboards back as e
 import os.path
 import sys
 import warnings
-from collections import defaultdict
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -20,10 +19,7 @@ from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
 from preset_cli.cli.superset.sync.dbt.lib import apply_select
-from preset_cli.cli.superset.sync.dbt.metrics import (
-    get_metric_definition,
-    get_metric_models,
-)
+from preset_cli.cli.superset.sync.dbt.metrics import get_superset_metrics_per_model
 from preset_cli.exceptions import DatabaseNotFoundError
 
 
@@ -205,19 +201,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             config["uniqueId"] = config.pop("unique_id")
             og_metrics.append(metric_schema.load(config))
 
-        # store metric definitions for each model
-        superset_metrics = defaultdict(list)
-        for og_metric in og_metrics:
-            metric_models = get_metric_models(og_metric["unique_id"], og_metrics)
-            if len(metric_models) != 1:
-                continue
-
-            metric_definition = get_metric_definition(
-                og_metric["unique_id"],
-                og_metrics,
-            )
-            model = metric_models.pop()
-            superset_metrics[model].append(metric_definition)
+        superset_metrics = get_superset_metrics_per_model(og_metrics)
 
         try:
             database = sync_database(
@@ -460,17 +444,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         for model in models
     }
 
-    # store metric definitions for each model
-    superset_metrics = defaultdict(list)
     og_metrics = dbt_client.get_og_metrics(job["id"])
-    for og_metric in og_metrics:
-        metric_models = get_metric_models(og_metric["unique_id"], og_metrics)
-        if len(metric_models) != 1:
-            continue
-
-        metric_definition = get_metric_definition(og_metric["unique_id"], og_metrics)
-        model = metric_models.pop()
-        superset_metrics[model].append(metric_definition)
+    superset_metrics = get_superset_metrics_per_model(og_metrics)
 
     if exposures_only:
         datasets = [

@@ -8,6 +8,7 @@ This module is used to convert dbt metrics into Superset metrics.
 
 import json
 import logging
+from collections import defaultdict
 from typing import Dict, List, Set
 
 import sqlparse
@@ -168,3 +169,30 @@ def get_metric_definition(
         "extra": json.dumps(meta),
         **kwargs,  # type: ignore
     }
+
+
+def get_superset_metrics_per_model(
+    metrics: List[MetricSchema],
+) -> Dict[str, List[SupersetMetricDefinition]]:
+    """
+    Build a dictionary of Superset metrics for each dbt model.
+    """
+    superset_metrics = defaultdict(list)
+    for metric in metrics:
+        metric_models = get_metric_models(metric["unique_id"], metrics)
+        if len(metric_models) != 1:
+            _logger.warning(
+                "Metric %s cannot be calculated because it depends on multiple models: %s",
+                metric["name"],
+                ", ".join(sorted(metric_models)),
+            )
+            continue
+
+        metric_definition = get_metric_definition(
+            metric["unique_id"],
+            metrics,
+        )
+        model = metric_models.pop()
+        superset_metrics[model].append(metric_definition)
+
+    return superset_metrics
