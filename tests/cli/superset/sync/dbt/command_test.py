@@ -16,7 +16,7 @@ from pytest_mock import MockerFixture
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.dbt.command import (
     get_account_id,
-    get_job_id,
+    get_job,
     get_project_id,
 )
 from preset_cli.exceptions import DatabaseNotFoundError
@@ -960,6 +960,10 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
     )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job"},
+    )
 
     dbt_client.get_models.return_value = dbt_cloud_models
     dbt_client.get_metrics.return_value = dbt_cloud_metrics
@@ -1007,6 +1011,10 @@ def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job"},
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
@@ -1057,6 +1065,10 @@ def test_dbt_cloud_preserve_columns(mocker: MockerFixture) -> None:
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
     )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job"},
+    )
 
     dbt_client.get_models.return_value = dbt_cloud_models
     dbt_client.get_metrics.return_value = dbt_cloud_metrics
@@ -1105,6 +1117,10 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job"},
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
@@ -1282,32 +1298,43 @@ def test_get_project_id(mocker: MockerFixture) -> None:
     client.get_projects.assert_called_with(42)
 
 
-def test_get_job_id(mocker: MockerFixture) -> None:
+def test_get_job(mocker: MockerFixture) -> None:
     """
-    Test the ``get_job_id`` helper.
+    Test the ``get_job`` helper.
     """
     client = mocker.MagicMock()
 
     client.get_jobs.return_value = []
     with pytest.raises(SystemExit) as excinfo:
-        get_job_id(client, account_id=42, project_id=43)
+        get_job(client, account_id=42, project_id=43)
     assert excinfo.type == SystemExit
     assert excinfo.value.code == 1
 
     client.get_jobs.return_value = [
         {"id": 1, "name": "My job"},
     ]
-    assert get_job_id(client, account_id=42, project_id=43) == 1
+    assert get_job(client, account_id=42, project_id=43) == {"id": 1, "name": "My job"}
 
     client.get_jobs.return_value = [
         {"id": 1, "name": "My job"},
         {"id": 3, "name": "My other job"},
     ]
+    assert get_job(client, account_id=42, project_id=43, job_id=3) == {
+        "id": 3,
+        "name": "My other job",
+    }
+    with pytest.raises(ValueError) as excinfo:
+        get_job(client, account_id=42, project_id=43, job_id=2)
+    assert str(excinfo.value) == "Job 2 not available"
+
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.input",
         side_effect=["invalid", "2"],
     )
-    assert get_job_id(client, account_id=42, project_id=43) == 3
+    assert get_job(client, account_id=42, project_id=43) == {
+        "id": 3,
+        "name": "My other job",
+    }
 
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_account_id",
@@ -1316,7 +1343,7 @@ def test_get_job_id(mocker: MockerFixture) -> None:
     client.get_jobs.return_value = [
         {"id": 1, "name": "My job"},
     ]
-    assert get_job_id(client, project_id=43) == 1
+    assert get_job(client, project_id=43) == {"id": 1, "name": "My job"}
     client.get_jobs.assert_called_with(42, 43)
 
 
@@ -1335,6 +1362,10 @@ def test_dbt_cloud_no_database(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     dbt_client.get_database_name.return_value = "my_db"
     superset_client.get_databases.return_value = []
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job"},
+    )
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1350,6 +1381,42 @@ def test_dbt_cloud_no_database(mocker: MockerFixture) -> None:
     )
     assert result.exit_code == 0
     assert result.output == 'No database named "my_db" was found\n'
+
+
+def test_dbt_cloud_invalid_job_id(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command when an invalid job ID is passed.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    dbt_client.get_database_name.return_value = "my_db"
+    superset_client.get_databases.return_value = []
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        side_effect=ValueError("Job 123 not available"),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "123",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 2
+    assert result.output == "Job 123 not available\n"
 
 
 def test_dbt_cloud_multiple_databases(mocker: MockerFixture) -> None:
@@ -1373,6 +1440,10 @@ def test_dbt_cloud_multiple_databases(mocker: MockerFixture) -> None:
         mocker.MagicMock(),
         mocker.MagicMock(),
     ]
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job"},
+    )
 
     runner = CliRunner()
     with pytest.raises(Exception) as excinfo:
@@ -1478,6 +1549,10 @@ def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> 
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job"},
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
