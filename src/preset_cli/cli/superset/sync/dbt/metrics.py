@@ -7,12 +7,17 @@ This module is used to convert dbt metrics into Superset metrics.
 # pylint: disable=consider-using-f-string
 
 import logging
-from typing import Dict, List
+from typing import Dict, List, Set
 
 import sqlparse
 from sqlparse.sql import Identifier, TokenList
 
-from preset_cli.api.clients.dbt import FilterSchema, MetricSchema, ModelSchema
+from preset_cli.api.clients.dbt import (
+    FilterSchema,
+    MetricSchema,
+    MFMetricSchema,
+    ModelSchema,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -26,7 +31,7 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
 
     metric = metrics[metric_name]
     if "calculation_method" in metric:
-        # dbt >= 1.3
+        # dbt >= 1.3, < 1.6
         type_ = metric["calculation_method"]
         sql = metric["expression"]
     else:
@@ -124,3 +129,21 @@ def get_metrics_for_model(
             related_metrics.append(metric)
 
     return related_metrics
+
+
+def get_metric_models(unique_id: str, metrics: List[MetricSchema]) -> Set[str]:
+    """
+    Given a metric, return the models it depends on.
+    """
+    metric_map = {metric["unique_id"]: metric for metric in metrics}
+    metric = metric_map[unique_id]
+    depends_on = metric["depends_on"]
+
+    if is_derived(metric):
+        return {
+            model
+            for parent in depends_on
+            for model in get_metric_models(parent, metrics)
+        }
+
+    return set(depends_on)

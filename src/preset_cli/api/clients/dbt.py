@@ -475,7 +475,7 @@ class TimeSchema(PostelSchema):
 
 class StringOrSchema(fields.Field):
     """
-    Dynamic schema constructor for fields that could have a string or another schema
+    Dynamic schema constructor for fields that could have a string or another schema.
     """
 
     def __init__(self, nested_schema, *args, **kwargs):
@@ -598,6 +598,10 @@ class DataResponse(TypedDict):
     data: Dict[str, Any]
 
 
+# XXX
+MFMetricSchema = Dict[str, Any]
+
+
 class DBTClient:  # pylint: disable=too-few-public-methods
 
     """
@@ -706,13 +710,76 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         return models
 
-    def get_metrics(self, job_id: int) -> List[Any]:
+    def get_og_metrics(self, job_id: int) -> List[Any]:
         """
         Fetch all available metrics.
         """
         query = """
-query MyQuery {
-  metrics(environmentId: 274124) {
+            query ($jobId: Int!) {
+                metrics(jobId: $jobId) {
+                    uniqueId
+                    name
+                    label
+                    type
+                    sql
+                    filters {
+                        field
+                        operator
+                        value
+                    }
+                    dependsOn
+                    description
+                    meta
+                }
+            }
+        """
+        payload = self.graphql_client.execute(
+            query=query,
+            variables={"jobId": job_id},
+            headers=self.session.headers,
+        )
+
+        metric_schema = MetricSchema()
+        metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
+
+        return metrics
+
+    def get_sl_metric_sql(self, metrics: List[str], environment_id: int) -> List[Any]:
+        """
+        Fetch metric SQL.
+        """
+        for metric in metrics:
+            query = """
+                mutation CompileSql($metricsInput: [MetricInput!]) {
+                    compileSql(
+                        environmentId: $environmentId
+                        metrics: $metricsInput
+                        groupBy: []
+                    ) {
+                        sql
+                    }
+                }
+            """
+            payload = self.sl_graphql_client.execute(
+                query=query,
+                variables={
+                    "environmentId": environment_id,
+                    "metricsInput": [{"name": metric}],
+                },
+                headers=self.session.headers,
+            )
+            print(payload)
+
+        return []
+
+    def get_sl_metrics(self, environment_id: int) -> List[Any]:
+        """
+        Fetch all available metrics from the semantic layer.
+        """
+        print("ENVIRONMENT ID", environment_id, 274124)
+        query = """
+query GetMetrics($environmentId: BigInt!) {
+  metrics(environmentId: $environmentId) {
     name
     description
     type
@@ -828,17 +895,10 @@ query MyQuery {
         """
         payload = self.sl_graphql_client.execute(
             query=query,
-            variables={"jobId": job_id},
+            variables={"environmentId": environment_id},
             headers=self.session.headers,
         )
-        from pprint import pprint
-
-        pprint(payload)
-
-        metric_schema = MetricSchema()
-        metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
-
-        return metrics
+        return payload
 
     def get_database_name(self, job_id: int) -> str:
         """

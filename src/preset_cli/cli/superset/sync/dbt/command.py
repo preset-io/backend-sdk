@@ -2,6 +2,7 @@
 A command to sync dbt models/metrics to Superset and charts/dashboards back as exposures.
 """
 
+import logging
 import os.path
 import sys
 import warnings
@@ -12,14 +13,20 @@ import click
 import yaml
 from yarl import URL
 
-from preset_cli.api.clients.dbt import DBTClient, MetricSchema, ModelSchema
+from preset_cli.api.clients.dbt import DBTClient, JobSchema, MetricSchema, ModelSchema
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
 from preset_cli.cli.superset.sync.dbt.lib import apply_select
+from preset_cli.cli.superset.sync.dbt.metrics import (
+    convert_og_metrics,
+    convert_sl_metrics,
+)
 from preset_cli.exceptions import DatabaseNotFoundError
+
+_logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -282,11 +289,12 @@ def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
         click.echo("Invalid choice")
 
 
-def get_job_id(
+def get_job(
     client: DBTClient,
     account_id: Optional[int] = None,
     project_id: Optional[int] = None,
-) -> int:
+    job_id: Optional[int] = None,
+) -> JobSchema:
     """
     Prompt users for a job ID.
     """
@@ -299,21 +307,30 @@ def get_job_id(
     if not jobs:
         click.echo(click.style("No jobs available", fg="bright_red"))
         sys.exit(1)
-    if len(jobs) == 1:
-        return jobs[0]["id"]
 
-    click.echo("Choose a job:")
-    for i, job in enumerate(jobs):
-        click.echo(f'({i+1}) {job["name"]}')
+    if job_id is None:
+        if len(jobs) == 1:
+            return jobs[0]
 
-    while True:
-        try:
-            choice = int(input("> "))
-        except Exception:  # pylint: disable=broad-except
-            choice = -1
-        if 0 < choice <= len(jobs):
-            return jobs[choice - 1]["id"]
-        click.echo("Invalid choice")
+        click.echo("Choose a job:")
+        for i, job in enumerate(jobs):
+            click.echo(f'({i+1}) {job["name"]}')
+
+        while True:
+            try:
+                choice = int(input("> "))
+            except Exception:  # pylint: disable=broad-except
+                choice = -1
+            if 0 < choice <= len(jobs):
+                return jobs[choice - 1]
+            click.echo("Invalid choice")
+
+    for job in jobs:
+        if job["id"] == job_id:
+            return job
+
+    click.echo(click.style(f"Job {job_id} not available", fg="bright_red"))
+    sys.exit(2)
 
 
 @click.command()
@@ -407,8 +424,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
     preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
-    if job_id is None:
-        job_id = get_job_id(dbt_client)
+    job = get_job(dbt_client, job_id=job_id)
 
     # with dbt cloud the database must already exist
     database_name = dbt_client.get_database_name(job_id)
@@ -428,7 +444,11 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
         for model in models
     }
-    metrics = dbt_client.get_metrics(job_id)
+
+    og_metrics = dbt_client.get_og_metrics(job["id"])
+    sl_metrics = dbt_client.get_sl_metrics(job["environment_id"])
+    metrics = convert_og_metrics(og_metrics) + convert_sl_metrics(sl_metrics)
+    # print(dbt_client.get_sl_metric_sql(sl_metrics, job["environment_id"]))
 
     if exposures_only:
         datasets = [
