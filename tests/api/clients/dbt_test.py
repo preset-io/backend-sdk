@@ -1152,9 +1152,9 @@ def test_dbt_client_get_models(mocker: MockerFixture) -> None:
     ]
 
 
-def test_dbt_client_get_metrics(mocker: MockerFixture) -> None:
+def test_dbt_client_get_og_metrics(mocker: MockerFixture) -> None:
     """
-    Test the ``get_metrics`` method.
+    Test the ``get_og_metrics`` method.
     """
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
@@ -1178,7 +1178,7 @@ def test_dbt_client_get_metrics(mocker: MockerFixture) -> None:
     }
     auth = Auth()
     client = DBTClient(auth)
-    assert client.get_metrics(108380) == [
+    assert client.get_og_metrics(108380) == [
         {
             "meta": {},
             "name": "new_customers",

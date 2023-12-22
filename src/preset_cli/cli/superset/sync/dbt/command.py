@@ -19,6 +19,7 @@ from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
 from preset_cli.cli.superset.sync.dbt.lib import apply_select
+from preset_cli.cli.superset.sync.dbt.metrics import get_superset_metrics_per_model
 from preset_cli.exceptions import DatabaseNotFoundError
 
 
@@ -192,13 +193,15 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             if ModelKey(dataset["schema"], dataset["table_name"]) in model_map
         ]
     else:
-        metrics = []
+        og_metrics = []
         metric_schema = MetricSchema()
         for config in configs["metrics"].values():
             # conform to the same schema that dbt Cloud uses for metrics
             config["dependsOn"] = config.pop("depends_on")["nodes"]
             config["uniqueId"] = config.pop("unique_id")
-            metrics.append(metric_schema.load(config))
+            og_metrics.append(metric_schema.load(config))
+
+        superset_metrics = get_superset_metrics_per_model(og_metrics)
 
         try:
             database = sync_database(
@@ -218,7 +221,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         datasets = sync_datasets(
             client,
             models,
-            metrics,
+            superset_metrics,
             database,
             disallow_edits,
             external_url_prefix,
@@ -440,7 +443,9 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
         for model in models
     }
-    metrics = dbt_client.get_metrics(job["id"])
+
+    og_metrics = dbt_client.get_og_metrics(job["id"])
+    superset_metrics = get_superset_metrics_per_model(og_metrics)
 
     if exposures_only:
         datasets = [
@@ -452,7 +457,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         datasets = sync_datasets(
             superset_client,
             models,
-            metrics,
+            superset_metrics,
             database,
             disallow_edits,
             external_url_prefix,

@@ -136,6 +136,26 @@ def convert_to_adhoc_metric(expression: str) -> MetricType:
     }
 
 
+class SupersetMetricDefinition(TypedDict, total=False):
+    """
+    Definition of a Superset metric.
+
+    Used in the PUT API for datasets.
+    """
+
+    id: int
+    expression: str
+    metric_name: str
+    metric_type: str
+    verbose_name: str
+    description: str
+    extra: str
+    warning_text: str
+    d3format: str
+    currency: str
+    uuid: str
+
+
 class ColumnType(TypedDict):
     """
     Schema for an adhoc column in the Chart API.

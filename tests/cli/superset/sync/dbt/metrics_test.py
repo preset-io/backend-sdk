@@ -10,6 +10,7 @@ from pytest_mock import MockerFixture
 from preset_cli.api.clients.dbt import MetricSchema
 from preset_cli.cli.superset.sync.dbt.metrics import (
     get_metric_expression,
+    get_metric_models,
     get_metrics_for_model,
 )
 
@@ -351,3 +352,59 @@ def test_get_metrics_derived_dbt_cloud() -> None:
     ]
     model = {"unique_id": "model.jaffle_shop.customers"}
     assert get_metrics_for_model(model, metrics) == metrics  # type: ignore
+
+
+def test_get_metric_models() -> None:
+    """
+    Tests for ``get_metric_models``.
+    """
+    metric_schema = MetricSchema()
+    metrics = [
+        metric_schema.load(
+            {
+                "unique_id": "metric.superset.a",
+                "depends_on": ["model.superset.table"],
+                "name": "a",
+            },
+        ),
+        metric_schema.load(
+            {
+                "unique_id": "metric.superset.b",
+                "depends_on": ["model.superset.table"],
+                "name": "b",
+            },
+        ),
+        metric_schema.load(
+            {
+                "unique_id": "metric.superset.c",
+                "depends_on": ["model.superset.other_table"],
+                "name": "c",
+            },
+        ),
+        metric_schema.load(
+            {
+                "unique_id": "metric.superset.d",
+                "depends_on": ["metric.superset.a", "metric.superset.b"],
+                "name": "d",
+                "calculation_method": "derived",
+            },
+        ),
+        metric_schema.load(
+            {
+                "unique_id": "metric.superset.e",
+                "depends_on": ["metric.superset.a", "metric.superset.c"],
+                "name": "e",
+                "calculation_method": "derived",
+            },
+        ),
+    ]
+    assert get_metric_models("metric.superset.a", metrics) == {"model.superset.table"}
+    assert get_metric_models("metric.superset.b", metrics) == {"model.superset.table"}
+    assert get_metric_models("metric.superset.c", metrics) == {
+        "model.superset.other_table",
+    }
+    assert get_metric_models("metric.superset.d", metrics) == {"model.superset.table"}
+    assert get_metric_models("metric.superset.e", metrics) == {
+        "model.superset.other_table",
+        "model.superset.table",
+    }

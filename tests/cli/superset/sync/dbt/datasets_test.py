@@ -5,7 +5,7 @@ Tests for ``preset_cli.cli.superset.sync.dbt.datasets``.
 
 import copy
 import json
-from typing import List, cast
+from typing import Dict, List, cast
 from unittest import mock
 
 import pytest
@@ -13,6 +13,7 @@ from pytest_mock import MockerFixture
 from sqlalchemy.engine.url import make_url
 
 from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
+from preset_cli.api.clients.superset import SupersetMetricDefinition
 from preset_cli.cli.superset.sync.dbt.datasets import (
     create_dataset,
     model_in_database,
@@ -20,21 +21,19 @@ from preset_cli.cli.superset.sync.dbt.datasets import (
 )
 
 metric_schema = MetricSchema()
-metrics: List[MetricSchema] = [
-    metric_schema.load(
+
+metrics: Dict[str, List[SupersetMetricDefinition]] = {
+    "model.superset_examples.messages_channels": [
         {
-            "depends_on": ["model.superset_examples.messages_channels"],
             "description": "",
-            "filters": [],
-            "meta": {},
-            "name": "cnt",
-            "label": "",
-            "sql": "*",
-            "type": "count",
-            "unique_id": "metric.superset_examples.cnt",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt",
+            "metric_type": "count",
+            "verbose_name": "",
         },
-    ),
-]
+    ],
+}
 
 model_schema = ModelSchema()
 models: List[ModelSchema] = [
@@ -234,7 +233,7 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
     sync_datasets(
         client=client,
         models=models,
-        metrics=[],
+        metrics={},
         database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
         disallow_edits=False,
         external_url_prefix="",
@@ -290,7 +289,7 @@ def test_sync_datasets_custom_certification(mocker: MockerFixture) -> None:
     sync_datasets(
         client=client,
         models=models,
-        metrics=[],
+        metrics={},
         database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
         disallow_edits=False,
         external_url_prefix="",
@@ -523,18 +522,15 @@ def test_sync_datasets_preserve_metadata(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     metrics_ = copy.deepcopy(metrics)
-    metrics_.append(
+    metrics_["model.superset_examples.messages_channels"].append(
         metric_schema.load(
             {
-                "depends_on": ["model.superset_examples.messages_channels"],
                 "description": "",
-                "filters": [],
-                "meta": {},
-                "name": "max_id",
-                "label": "",
-                "sql": "id",
-                "type": "max",
-                "unique_id": "metric.superset_examples.cnt",
+                "expression": "MAX(id)",
+                "extra": "{}",
+                "metric_name": "max_id",
+                "metric_type": "max",
+                "verbose_name": "",
             },
         ),
     )
@@ -641,18 +637,15 @@ def test_sync_datasets_merge_metadata(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     metrics_ = copy.deepcopy(metrics)
-    metrics_.append(
+    metrics_["model.superset_examples.messages_channels"].append(
         metric_schema.load(
             {
-                "depends_on": ["model.superset_examples.messages_channels"],
                 "description": "",
-                "filters": [],
-                "meta": {},
-                "name": "max_id",
-                "label": "",
-                "sql": "id",
-                "type": "max",
-                "unique_id": "metric.superset_examples.cnt",
+                "expression": "MAX(id)",
+                "extra": "{}",
+                "metric_name": "max_id",
+                "metric_type": "max",
+                "verbose_name": "",
             },
         ),
     )

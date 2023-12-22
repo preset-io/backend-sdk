@@ -13,13 +13,9 @@ from sqlalchemy.engine.url import URL as SQLAlchemyURL
 from sqlalchemy.engine.url import make_url
 from yarl import URL
 
-from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
-from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.api.clients.dbt import ModelSchema
+from preset_cli.api.clients.superset import SupersetClient, SupersetMetricDefinition
 from preset_cli.api.operators import OneToMany
-from preset_cli.cli.superset.sync.dbt.metrics import (
-    get_metric_expression,
-    get_metrics_for_model,
-)
 
 DEFAULT_CERTIFICATION = {"details": "This table is produced by dbt"}
 
@@ -83,7 +79,7 @@ def create_dataset(
 def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments, too-many-statements # noqa:C901
     client: SupersetClient,
     models: List[ModelSchema],
-    metrics: List[MetricSchema],
+    metrics: Dict[str, List[SupersetMetricDefinition]],
     database: Any,
     disallow_edits: bool,
     external_url_prefix: str,
@@ -146,7 +142,8 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         dataset_metrics = []
         current_metrics = {}
         model_metrics = {
-            metric["name"]: metric for metric in get_metrics_for_model(model, metrics)
+            metric["metric_name"]: metric
+            for metric in metrics.get(model["unique_id"], [])
         }
 
         if not reload_columns:
@@ -160,23 +157,8 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                 if not merge_metadata or name not in model_metrics:
                     dataset_metrics.append(metric)
 
-        for name, metric in model_metrics.items():
-            meta = metric.get("meta", {})
-            kwargs = meta.pop("superset", {})
-
+        for name, metric_definition in model_metrics.items():
             if reload_columns or name not in current_metrics or merge_metadata:
-                metric_definition = {
-                    "expression": get_metric_expression(name, model_metrics),
-                    "metric_name": name,
-                    "metric_type": (
-                        metric.get("type")  # dbt < 1.3
-                        or metric.get("calculation_method")  # dbt >= 1.3
-                    ),
-                    "verbose_name": metric.get("label", name),
-                    "description": metric.get("description", ""),
-                    "extra": json.dumps(meta),
-                    **kwargs,  # include additional metric metadata defined in metric.meta.superset
-                }
                 if merge_metadata and name in current_metrics:
                     metric_definition["id"] = current_metrics[name]["id"]
                 dataset_metrics.append(metric_definition)
