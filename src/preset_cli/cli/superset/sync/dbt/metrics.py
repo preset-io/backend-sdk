@@ -11,8 +11,8 @@ import logging
 from collections import defaultdict
 from typing import Dict, List, Set
 
-import sqlparse
-from sqlparse.sql import Identifier, TokenList
+import sqlglot
+from sqlglot import exp
 
 from preset_cli.api.clients.dbt import FilterSchema, MetricSchema, ModelSchema
 from preset_cli.api.clients.superset import SupersetMetricDefinition
@@ -22,7 +22,7 @@ _logger = logging.getLogger(__name__)
 
 def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> str:
     """
-    Return a SQL expression for a given dbt metric.
+    Return a SQL expression for a given dbt metric using sqlglot.
     """
     if unique_id not in metrics:
         raise Exception(f"Invalid metric {unique_id}")
@@ -56,18 +56,16 @@ def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> s
         return f"COUNT(DISTINCT {sql})"
 
     if type_ in {"expression", "derived"}:
-        statement = sqlparse.parse(sql)[0]
-        tokens = statement.tokens[:]
-        while tokens:
-            token = tokens.pop(0)
+        expression = sqlglot.parse_one(sql)
+        tokens = expression.find_all(exp.Column)
 
-            if isinstance(token, Identifier) and token.value in metrics:
-                parent_sql = get_metric_expression(token.value, metrics)
-                token.tokens = sqlparse.parse(parent_sql)[0].tokens
-            elif isinstance(token, TokenList):
-                tokens.extend(token.tokens)
+        for token in tokens:
+            if token.sql() in metrics:
+                parent_sql = get_metric_expression(token.sql(), metrics)
+                parent_expression = sqlglot.parse_one(parent_sql)
+                token.replace(parent_expression)
 
-        return str(statement)
+        return expression.sql()
 
     sorted_metric = dict(sorted(metric.items()))
     raise Exception(f"Unable to generate metric expression from: {sorted_metric}")

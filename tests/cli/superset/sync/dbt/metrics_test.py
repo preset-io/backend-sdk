@@ -76,8 +76,8 @@ def test_get_metric_expression() -> None:
     assert get_metric_expression("two", metrics) == "COUNT(DISTINCT user_id)"
 
     assert get_metric_expression("three", metrics) == (
-        "COUNT(CASE WHEN is_paying is true AND lifetime_value >= 100 AND "
-        "company_name != 'Acme, Inc' AND signup_date >= '2020-01-01' THEN user_id END) "
+        "COUNT(CASE WHEN is_paying IS TRUE AND lifetime_value >= 100 AND "
+        "company_name <> 'Acme, Inc' AND signup_date >= '2020-01-01' THEN user_id END) "
         "- COUNT(DISTINCT user_id)"
     )
 

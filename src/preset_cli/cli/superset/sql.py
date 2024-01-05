@@ -15,14 +15,14 @@ from prompt_toolkit.lexers import PygmentsLexer
 from prompt_toolkit.styles.pygments import style_from_pygments_cls
 from pygments.lexers.sql import SqlLexer
 from pygments.styles import get_style_by_name
-from sqlparse.keywords import KEYWORDS
+from sqlglot.tokens import Tokenizer
 from tabulate import tabulate
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.exceptions import SupersetError
 
-sql_completer = WordCompleter(list(KEYWORDS))
+sql_completer = WordCompleter(list(Tokenizer.KEYWORDS))
 style = style_from_pygments_cls(get_style_by_name("stata-dark"))
 
 
