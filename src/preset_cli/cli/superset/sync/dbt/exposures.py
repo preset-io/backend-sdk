@@ -9,6 +9,7 @@ from typing import Any, Dict, List, NamedTuple, Optional
 
 import yaml
 
+from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient
 
 # XXX: DashboardResponseType and DatasetResponseType
@@ -26,8 +27,8 @@ class ModelKey(NamedTuple):
 def get_chart_depends_on(
     client: SupersetClient,
     chart: Any,
-    model_map: Dict[ModelKey, str],
-) -> List[str]:
+    model_map: Dict[ModelKey, ModelSchema],
+) -> List[ModelSchema]:
     """
     Get all the dbt dependencies for a given chart.
     """
@@ -58,8 +59,8 @@ def get_chart_depends_on(
 def get_dashboard_depends_on(
     client: SupersetClient,
     dashboard: Any,
-    model_map: Dict[ModelKey, str],
-) -> List[str]:
+    model_map: Dict[ModelKey, ModelSchema],
+) -> List[ModelSchema]:
     """
     Get all the dbt dependencies for a given dashboard.
     """
@@ -94,7 +95,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
     client: SupersetClient,
     exposures_path: Path,
     datasets: List[Any],
-    model_map: Dict[ModelKey, str],
+    model_map: Dict[ModelKey, ModelSchema],
 ) -> None:
     """
     Write dashboards back to dbt as exposures.
@@ -125,6 +126,11 @@ def sync_exposures(  # pylint: disable=too-many-locals
         asset_title = re.sub(" ", "_", chart["slice_name"])
         asset_title = re.sub(r"\W", "", asset_title)
 
+        depends_on = [
+            f"ref('{model['name']}')"
+            for model in get_chart_depends_on(client, chart, model_map)
+        ]
+
         exposure = {
             "name": asset_title + "_chart_" + str(chart_id),
             "label": chart["slice_name"] + " [chart]",
@@ -136,7 +142,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
                 % {"form_data": json.dumps({"slice_id": chart_id})},
             ),
             "description": chart["description"] or "",
-            "depends_on": get_chart_depends_on(client, chart, model_map),
+            "depends_on": depends_on,
             "owner": {
                 "name": first_owner["first_name"] + " " + first_owner["last_name"],
                 "email": first_owner.get("email", "unknown"),
@@ -151,6 +157,11 @@ def sync_exposures(  # pylint: disable=too-many-locals
         asset_title = re.sub(" ", "_", dashboard["dashboard_title"])
         asset_title = re.sub(r"\W", "", asset_title)
 
+        depends_on = [
+            f"ref('{model['name']}')"
+            for model in get_dashboard_depends_on(client, dashboard, model_map)
+        ]
+
         exposure = {
             "name": asset_title + "_dashboard_" + str(dashboard_id),
             "label": dashboard["dashboard_title"] + " [dashboard]",
@@ -160,7 +171,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
             else "low",
             "url": str(client.baseurl / dashboard["url"].lstrip("/")),
             "description": "",
-            "depends_on": get_dashboard_depends_on(client, dashboard, model_map),
+            "depends_on": depends_on,
             "owner": {
                 "name": first_owner["first_name"] + " " + first_owner["last_name"],
                 "email": first_owner.get("email", "unknown"),

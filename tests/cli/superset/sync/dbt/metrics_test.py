@@ -2,6 +2,8 @@
 Tests for metrics.
 """
 
+# pylint: disable=line-too-long
+
 from typing import Dict
 
 import pytest
@@ -9,6 +11,7 @@ from pytest_mock import MockerFixture
 
 from preset_cli.api.clients.dbt import MetricSchema
 from preset_cli.cli.superset.sync.dbt.metrics import (
+    convert_query_to_projection,
     get_metric_expression,
     get_metric_models,
     get_metrics_for_model,
@@ -408,3 +411,200 @@ def test_get_metric_models() -> None:
         "model.superset.other_table",
         "model.superset.table",
     }
+
+
+def test_convert_query_to_projection() -> None:
+    """
+    Test the ``convert_query_to_projection`` function.
+    """
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT COUNT(DISTINCT customer_id) AS customers_with_orders
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_96
+            """,
+            "BIGQUERY",
+        )
+        == "COUNT(DISTINCT customer_id)"
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        convert_query_to_projection(
+            """
+                SELECT
+                    COUNT(DISTINCT customers_with_orders) AS new_customer
+                FROM (
+                    SELECT
+                        customers_src_178.customer_type AS customer__customer_type
+                    , orders_src_181.customer_id AS customers_with_orders
+                    FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_181
+                    LEFT OUTER JOIN `dbt-tutorial-347100`.`dbt_beto`.`customers` customers_src_178
+                    ON orders_src_181.customer_id = customers_src_178.customer_id
+                ) subq_423
+                WHERE customer__customer_type  = 'new'
+            """,
+            "BIGQUERY",
+        )
+    assert str(excinfo.value) == "Unable to convert metrics with JOINs"
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    SUM(order_total) AS order_total
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_141
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(order_total)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+  SUM(order_count) AS large_order
+FROM (
+  SELECT
+    order_total AS order_id__order_total_dim
+    , 1 AS order_count
+  FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_106
+) subq_796
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(1)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+  SUM(order_count) AS large_order
+FROM (
+  SELECT
+    order_total AS order_id__order_total_dim
+    , 1 AS order_count
+  FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_106
+) subq_796
+WHERE order_id__order_total_dim >= 20
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(CASE WHEN order_total >= 20 THEN 1 END)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    SUM(1) AS orders
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_143
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(1)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    SUM(order_count) AS food_orders
+                FROM (
+                    SELECT
+                        is_food_order AS order_id__is_food_order
+                      , 1 AS order_count
+                    FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_99
+                ) subq_549
+                WHERE order_id__is_food_order = true
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(CASE WHEN is_food_order = TRUE THEN 1 END)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    SUM(product_price) AS revenue
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_111
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(product_price)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    SUM(order_cost) AS order_cost
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_99
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(order_cost)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    SUM(case when is_food_item = 1 then product_price else 0 end) AS food_revenue
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_140
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(CASE WHEN is_food_item = 1 THEN product_price ELSE 0 END)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    CAST(SUM(case when is_food_item = 1 then product_price else 0 end) AS FLOAT64) / CAST(NULLIF(SUM(product_price), 0) AS FLOAT64) AS food_revenue_pct
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_98
+            """,
+            "BIGQUERY",
+        )
+        == "CAST(SUM(CASE WHEN is_food_item = 1 THEN product_price ELSE 0 END) AS DOUBLE) / CAST(NULLIF(SUM(product_price), 0) AS DOUBLE)"
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        convert_query_to_projection(
+            """
+                SELECT
+                    revenue - cost AS order_gross_profit
+                FROM (
+                    SELECT
+                        MAX(subq_565.revenue) AS revenue
+                      , MAX(subq_570.cost) AS cost
+                    FROM (
+                        SELECT
+                            SUM(product_price) AS revenue
+                        FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_93
+                    ) subq_565
+                    CROSS JOIN (
+                        SELECT
+                            SUM(order_cost) AS cost
+                        FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_94
+                    ) subq_570
+                ) subq_571
+            """,
+            "BIGQUERY",
+        )
+    assert str(excinfo.value) == "Unable to convert metrics with JOINs"
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    SUM(product_price) AS cumulative_revenue
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_114
+            """,
+            "BIGQUERY",
+        )
+        == "SUM(product_price)"
+    )

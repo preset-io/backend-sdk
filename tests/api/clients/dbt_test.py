@@ -37,33 +37,6 @@ def test_postel_enum_field() -> None:
     assert isinstance(PostelEnumField(RawEnum), fields.Raw)
 
 
-def test_dbt_client_execute(mocker: MockerFixture) -> None:
-    """
-    Test the ``execute`` method.
-    """
-    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
-    auth = Auth()
-    client = DBTClient(auth)
-    query = """
-        query ($jobId: Int!) {
-            models(jobId: $jobId) {
-                uniqueId
-                name
-                database
-                schema
-                description
-                meta
-            }
-        }
-    """
-    client.execute(query, jobId=1)
-    GraphqlClient().execute.assert_called_with(
-        query=query,
-        variables={"jobId": 1},
-        headers=client.session.headers,
-    )
-
-
 def test_dbt_client_get_accounts(requests_mock: Mocker) -> None:
     """
     Test the ``get_accounts`` method.
