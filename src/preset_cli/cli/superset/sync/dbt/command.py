@@ -472,8 +472,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
                         "sql": sql,
                         "dialect": dialect,
                         "model": model["unique_id"],
-                    }
-                )
+                    },
+                ),
             )
 
     superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)

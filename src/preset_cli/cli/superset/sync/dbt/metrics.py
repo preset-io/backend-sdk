@@ -22,7 +22,7 @@ from preset_cli.api.clients.dbt import (
     FilterSchema,
     MetricSchema,
     MFMetricWithSQLSchema,
-    MFSQLEngineSchema,
+    MFSQLEngine,
     ModelSchema,
 )
 from preset_cli.api.clients.superset import SupersetMetricDefinition
@@ -32,12 +32,12 @@ _logger = logging.getLogger(__name__)
 
 # dbt => sqlglot
 DIALECT_MAP = {
-    MFSQLEngineSchema.BIGQUERY: "bigquery",
-    MFSQLEngineSchema.DUCKDB: "duckdb",
-    MFSQLEngineSchema.REDSHIFT: "redshift",
-    MFSQLEngineSchema.POSTGRES: "postgres",
-    MFSQLEngineSchema.SNOWFLAKE: "snowflake",
-    MFSQLEngineSchema.DATABRICKS: "databricks",
+    MFSQLEngine.BIGQUERY: "bigquery",
+    MFSQLEngine.DUCKDB: "duckdb",
+    MFSQLEngine.REDSHIFT: "redshift",
+    MFSQLEngine.POSTGRES: "postgres",
+    MFSQLEngine.SNOWFLAKE: "snowflake",
+    MFSQLEngine.DATABRICKS: "databricks",
 }
 
 
@@ -244,7 +244,7 @@ def extract_aliases(parsed_query: Expression) -> Dict[str, str]:
     return aliases
 
 
-def convert_query_to_projection(sql: str, dialect: str) -> str:
+def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
     """
     Convert a MetricFlow compiled SQL to a projection.
     """
@@ -293,7 +293,7 @@ def convert_metric_flow_to_superset(
     description: str,
     metric_type: str,
     sql: str,
-    dialect: str,
+    dialect: MFSQLEngine,
 ) -> SupersetMetricDefinition:
     """
     Convert a MetricFlow metric to a Superset metric.
@@ -337,7 +337,7 @@ class MultipleModelsError(Exception):
 
 def get_model_from_sql(
     sql: str,
-    dialect: str,
+    dialect: MFSQLEngine,
     model_map: Dict[ModelKey, ModelSchema],
 ) -> ModelSchema:
     """
@@ -347,7 +347,7 @@ def get_model_from_sql(
     sources = list(parsed_query.find_all(Table))
     if len(sources) > 1:
         raise MultipleModelsError(
-            f"Unable to convert metrics with multiple sources: {sql}"
+            f"Unable to convert metrics with multiple sources: {sql}",
         )
 
     table = sources[0]

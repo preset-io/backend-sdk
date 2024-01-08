@@ -9,7 +9,7 @@ from typing import Dict
 import pytest
 from pytest_mock import MockerFixture
 
-from preset_cli.api.clients.dbt import MetricSchema
+from preset_cli.api.clients.dbt import MetricSchema, MFSQLEngine
 from preset_cli.cli.superset.sync.dbt.metrics import (
     convert_query_to_projection,
     get_metric_expression,
@@ -423,7 +423,7 @@ def test_convert_query_to_projection() -> None:
                 SELECT COUNT(DISTINCT customer_id) AS customers_with_orders
                 FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_96
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "COUNT(DISTINCT customer_id)"
     )
@@ -443,7 +443,7 @@ def test_convert_query_to_projection() -> None:
                 ) subq_423
                 WHERE customer__customer_type  = 'new'
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
     assert str(excinfo.value) == "Unable to convert metrics with JOINs"
 
@@ -454,7 +454,7 @@ def test_convert_query_to_projection() -> None:
                     SUM(order_total) AS order_total
                 FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_141
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(order_total)"
     )
@@ -471,7 +471,7 @@ FROM (
   FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_106
 ) subq_796
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(1)"
     )
@@ -489,7 +489,7 @@ FROM (
 ) subq_796
 WHERE order_id__order_total_dim >= 20
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(CASE WHEN order_total >= 20 THEN 1 END)"
     )
@@ -501,7 +501,7 @@ WHERE order_id__order_total_dim >= 20
                     SUM(1) AS orders
                 FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_143
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(1)"
     )
@@ -519,7 +519,7 @@ WHERE order_id__order_total_dim >= 20
                 ) subq_549
                 WHERE order_id__is_food_order = true
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(CASE WHEN is_food_order = TRUE THEN 1 END)"
     )
@@ -531,7 +531,7 @@ WHERE order_id__order_total_dim >= 20
                     SUM(product_price) AS revenue
                 FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_111
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(product_price)"
     )
@@ -543,7 +543,7 @@ WHERE order_id__order_total_dim >= 20
                     SUM(order_cost) AS order_cost
                 FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_99
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(order_cost)"
     )
@@ -555,7 +555,7 @@ WHERE order_id__order_total_dim >= 20
                     SUM(case when is_food_item = 1 then product_price else 0 end) AS food_revenue
                 FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_140
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(CASE WHEN is_food_item = 1 THEN product_price ELSE 0 END)"
     )
@@ -567,7 +567,7 @@ WHERE order_id__order_total_dim >= 20
                     CAST(SUM(case when is_food_item = 1 then product_price else 0 end) AS FLOAT64) / CAST(NULLIF(SUM(product_price), 0) AS FLOAT64) AS food_revenue_pct
                 FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_98
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "CAST(SUM(CASE WHEN is_food_item = 1 THEN product_price ELSE 0 END) AS DOUBLE) / CAST(NULLIF(SUM(product_price), 0) AS DOUBLE)"
     )
@@ -593,7 +593,7 @@ WHERE order_id__order_total_dim >= 20
                     ) subq_570
                 ) subq_571
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
     assert str(excinfo.value) == "Unable to convert metrics with JOINs"
 
@@ -604,7 +604,7 @@ WHERE order_id__order_total_dim >= 20
                     SUM(product_price) AS cumulative_revenue
                 FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_114
             """,
-            "BIGQUERY",
+            MFSQLEngine.BIGQUERY,
         )
         == "SUM(product_price)"
     )

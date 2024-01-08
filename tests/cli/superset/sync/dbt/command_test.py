@@ -245,7 +245,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client,
         exposures,
         sync_datasets(),
-        {("public", "messages_channels"): "ref('messages_channels')"},
+        {("public", "messages_channels"): dbt_core_models[0]},
     )
 
 
@@ -322,7 +322,7 @@ def test_dbt_core_preserve_metadata(
         client,
         exposures,
         sync_datasets(),
-        {("public", "messages_channels"): "ref('messages_channels')"},
+        {("public", "messages_channels"): dbt_core_models[0]},
     )
 
 
@@ -463,7 +463,7 @@ def test_dbt_core_merge_metadata(
         client,
         exposures,
         sync_datasets(),
-        {("public", "messages_channels"): "ref('messages_channels')"},
+        {("public", "messages_channels"): dbt_core_models[0]},
     )
 
 
@@ -738,7 +738,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client,
         exposures,
         sync_datasets(),
-        {("public", "messages_channels"): "ref('messages_channels')"},
+        {("public", "messages_channels"): dbt_core_models[0]},
     )
 
 
@@ -959,7 +959,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
-        return_value={"id": 123, "name": "My job"},
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
@@ -1011,7 +1011,7 @@ def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
-        return_value={"id": 123, "name": "My job"},
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
@@ -1064,7 +1064,7 @@ def test_dbt_cloud_preserve_columns(mocker: MockerFixture) -> None:
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
-        return_value={"id": 123, "name": "My job"},
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
@@ -1117,7 +1117,7 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
-        return_value={"id": 123, "name": "My job"},
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
@@ -1197,7 +1197,9 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
     dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
     dbt_client.get_accounts.return_value = [{"id": 1, "name": "My account"}]
     dbt_client.get_projects.return_value = [{"id": 1000, "name": "My project"}]
-    dbt_client.get_jobs.return_value = [{"id": 123, "name": "My job"}]
+    dbt_client.get_jobs.return_value = [
+        {"id": 123, "name": "My job", "environment_id": 456},
+    ]
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database
@@ -1308,17 +1310,22 @@ def test_get_job(mocker: MockerFixture) -> None:
     assert excinfo.value.code == 1
 
     client.get_jobs.return_value = [
-        {"id": 1, "name": "My job"},
+        {"id": 1, "name": "My job", "environment_id": 456},
     ]
-    assert get_job(client, account_id=42, project_id=43) == {"id": 1, "name": "My job"}
+    assert get_job(client, account_id=42, project_id=43) == {
+        "id": 1,
+        "name": "My job",
+        "environment_id": 456,
+    }
 
     client.get_jobs.return_value = [
-        {"id": 1, "name": "My job"},
-        {"id": 3, "name": "My other job"},
+        {"id": 1, "name": "My job", "environment_id": 456},
+        {"id": 3, "name": "My other job", "environment_id": 456},
     ]
     assert get_job(client, account_id=42, project_id=43, job_id=3) == {
         "id": 3,
         "name": "My other job",
+        "environment_id": 456,
     }
     with pytest.raises(ValueError) as excinfo:
         get_job(client, account_id=42, project_id=43, job_id=2)
@@ -1331,6 +1338,7 @@ def test_get_job(mocker: MockerFixture) -> None:
     assert get_job(client, account_id=42, project_id=43) == {
         "id": 3,
         "name": "My other job",
+        "environment_id": 456,
     }
 
     mocker.patch(
@@ -1338,9 +1346,13 @@ def test_get_job(mocker: MockerFixture) -> None:
         return_value=42,
     )
     client.get_jobs.return_value = [
-        {"id": 1, "name": "My job"},
+        {"id": 1, "name": "My job", "environment_id": 456},
     ]
-    assert get_job(client, project_id=43) == {"id": 1, "name": "My job"}
+    assert get_job(client, project_id=43) == {
+        "id": 1,
+        "name": "My job",
+        "environment_id": 456,
+    }
     client.get_jobs.assert_called_with(42, 43)
 
 
@@ -1361,7 +1373,7 @@ def test_dbt_cloud_no_database(mocker: MockerFixture) -> None:
     superset_client.get_databases.return_value = []
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
-        return_value={"id": 123, "name": "My job"},
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
     )
 
     runner = CliRunner()
@@ -1439,7 +1451,7 @@ def test_dbt_cloud_multiple_databases(mocker: MockerFixture) -> None:
     ]
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
-        return_value={"id": 123, "name": "My job"},
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
     )
 
     runner = CliRunner()
@@ -1515,7 +1527,7 @@ def test_dbt_core_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> N
         [
             {"schema": "public", "table_name": "messages_channels"},
         ],
-        {("public", "messages_channels"): "ref('messages_channels')"},
+        {("public", "messages_channels"): dbt_core_models[0]},
     )
 
 
@@ -1549,7 +1561,7 @@ def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> 
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
-        return_value={"id": 123, "name": "My job"},
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
@@ -1581,5 +1593,5 @@ def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> 
         [
             {"schema": "public", "table_name": "messages_channels"},
         ],
-        {("public", "messages_channels"): "ref('messages_channels')"},
+        {("public", "messages_channels"): dbt_cloud_models[0]},
     )

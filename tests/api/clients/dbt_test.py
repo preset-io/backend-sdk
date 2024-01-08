@@ -1051,40 +1051,42 @@ def test_dbt_client_get_models(mocker: MockerFixture) -> None:
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
         "data": {
-            "models": [
-                {
-                    "uniqueId": "model.jaffle_shop.customers",
-                    "name": "customers",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "One record per customer",
-                    "meta": {"superset": {"cache_timeout": 600}},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_customers",
-                    "name": "stg_customers",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up customer data",
-                    "meta": {},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_orders",
-                    "name": "stg_orders",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up order data",
-                    "meta": {},
-                },
-                {
-                    "uniqueId": "model.metrics.dbt_metrics_default_calendar",
-                    "name": "dbt_metrics_default_calendar",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "",
-                    "meta": {},
-                },
-            ],
+            "job": {
+                "models": [
+                    {
+                        "uniqueId": "model.jaffle_shop.customers",
+                        "name": "customers",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "One record per customer",
+                        "meta": {"superset": {"cache_timeout": 600}},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_customers",
+                        "name": "stg_customers",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up customer data",
+                        "meta": {},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_orders",
+                        "name": "stg_orders",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up order data",
+                        "meta": {},
+                    },
+                    {
+                        "uniqueId": "model.metrics.dbt_metrics_default_calendar",
+                        "name": "dbt_metrics_default_calendar",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "",
+                        "meta": {},
+                    },
+                ],
+            },
         },
     }
     auth = Auth()
@@ -1173,40 +1175,42 @@ def test_dbt_client_get_database_name(mocker: MockerFixture) -> None:
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
         "data": {
-            "models": [
-                {
-                    "uniqueId": "model.jaffle_shop.customers",
-                    "name": "customers",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "One record per customer",
-                    "meta": {"superset": {"cache_timeout": 600}},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_customers",
-                    "name": "stg_customers",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up customer data",
-                    "meta": {},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_orders",
-                    "name": "stg_orders",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up order data",
-                    "meta": {},
-                },
-                {
-                    "uniqueId": "model.metrics.dbt_metrics_default_calendar",
-                    "name": "dbt_metrics_default_calendar",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "",
-                    "meta": {},
-                },
-            ],
+            "job": {
+                "models": [
+                    {
+                        "uniqueId": "model.jaffle_shop.customers",
+                        "name": "customers",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "One record per customer",
+                        "meta": {"superset": {"cache_timeout": 600}},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_customers",
+                        "name": "stg_customers",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up customer data",
+                        "meta": {},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_orders",
+                        "name": "stg_orders",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up order data",
+                        "meta": {},
+                    },
+                    {
+                        "uniqueId": "model.metrics.dbt_metrics_default_calendar",
+                        "name": "dbt_metrics_default_calendar",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "",
+                        "meta": {},
+                    },
+                ],
+            },
         },
     }
     auth = Auth()
@@ -1219,7 +1223,7 @@ def test_dbt_client_get_database_name_no_models(mocker: MockerFixture) -> None:
     Test the ``get_database_name`` method when there are no models.
     """
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
-    GraphqlClient().execute.return_value = {"data": {"models": []}}
+    GraphqlClient().execute.return_value = {"data": {"job": {"models": []}}}
     auth = Auth()
     client = DBTClient(auth)
 
@@ -1237,24 +1241,26 @@ def test_dbt_client_get_database_name_multiple(mocker: MockerFixture) -> None:
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
         "data": {
-            "models": [
-                {
-                    "uniqueId": "model.jaffle_shop.customers",
-                    "name": "customers",
-                    "database": "database_two",
-                    "schema": "dbt_beto",
-                    "description": "One record per customer",
-                    "meta": {"superset": {"cache_timeout": 600}},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_customers",
-                    "name": "stg_customers",
-                    "database": "database_one",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up customer data",
-                    "meta": {},
-                },
-            ],
+            "job": {
+                "models": [
+                    {
+                        "uniqueId": "model.jaffle_shop.customers",
+                        "name": "customers",
+                        "database": "database_two",
+                        "schema": "dbt_beto",
+                        "description": "One record per customer",
+                        "meta": {"superset": {"cache_timeout": 600}},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_customers",
+                        "name": "stg_customers",
+                        "database": "database_one",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up customer data",
+                        "meta": {},
+                    },
+                ],
+            },
         },
     }
     auth = Auth()

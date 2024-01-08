@@ -611,7 +611,7 @@ class MFMetricSchema(PostelSchema):
     type = PostelEnumField(MFMetricType)
 
 
-class MFSQLEngineSchema(str, Enum):
+class MFSQLEngine(str, Enum):
     """
     Databases supported by MetricFlow.
     """
@@ -630,7 +630,7 @@ class MFMetricWithSQLSchema(MFMetricSchema):
     """
 
     sql = fields.String()
-    dialect = PostelEnumField(MFSQLEngineSchema)
+    dialect = PostelEnumField(MFSQLEngine)
     model = fields.String()
 
 
@@ -851,7 +851,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         return payload["data"]["compileSql"]["sql"]
 
-    def get_sl_dialect(self, environment_id: int) -> str:
+    def get_sl_dialect(self, environment_id: int) -> MFSQLEngine:
         """
         Get the dialect used in the MetricFlow project.
         """
@@ -868,7 +868,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             headers=self.session.headers,
         )
 
-        return payload["data"]["environmentInfo"]["dialect"]
+        return MFSQLEngine(payload["data"]["environmentInfo"]["dialect"])
 
     # def get_sl_metric_sql(self,
 
