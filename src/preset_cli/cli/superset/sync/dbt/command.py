@@ -470,7 +470,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
                         "type": metric["type"],
                         "description": metric["description"],
                         "sql": sql,
-                        "dialect": dialect,
+                        "dialect": dialect.value,
                         "model": model["unique_id"],
                     },
                 ),

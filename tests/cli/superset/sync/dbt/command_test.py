@@ -13,6 +13,7 @@ from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
+from preset_cli.api.clients.dbt import MFSQLEngine
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.dbt.command import (
     get_account_id,
@@ -970,7 +971,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
 
     dbt_client.get_models.return_value = dbt_cloud_models
     dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
-    dbt_client.get_sl_dialect.return_value = "BIGQUERY"
+    dbt_client.get_sl_dialect.return_value = MFSQLEngine.BIGQUERY
     dbt_client.get_sl_metrics.return_value = dbt_metricflow_metrics
     dbt_client.get_sl_metric_sql.side_effect = [
         "SELECT COUNT(*) FROM public.messages_channels",
