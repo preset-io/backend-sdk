@@ -175,6 +175,12 @@ dbt_cloud_metrics = [
     },
 ]
 
+dbt_metricflow_metrics = [
+    {"name": "a", "type": "Simple", "description": "The simplest metric"},
+    {"name": "b", "type": "derived", "description": "Too complex for Superset"},
+    {"name": "c", "type": "derived", "description": "Multiple models"},
+]
+
 
 def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
@@ -964,6 +970,13 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
 
     dbt_client.get_models.return_value = dbt_cloud_models
     dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
+    dbt_client.get_sl_dialect.return_value = "BIGQUERY"
+    dbt_client.get_sl_metrics.return_value = dbt_metricflow_metrics
+    dbt_client.get_sl_metric_sql.side_effect = [
+        "SELECT COUNT(*) FROM public.messages_channels",
+        "SELECT COUNT(*) FROM public.messages_channels JOIN some_other_table",
+        None,
+    ]
     database = mocker.MagicMock()
     superset_client.get_databases.return_value = [database]
     superset_client.get_database.return_value = database
@@ -984,7 +997,25 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     sync_datasets.assert_called_with(
         superset_client,
         dbt_cloud_models,
-        superset_metrics,
+        {
+            "model.superset_examples.messages_channels": [
+                {
+                    "description": "",
+                    "expression": "COUNT(*)",
+                    "extra": "{}",
+                    "metric_name": "cnt",
+                    "metric_type": "count",
+                    "verbose_name": "",
+                },
+                {
+                    "description": "The simplest metric",
+                    "expression": "COUNT(*)",
+                    "metric_name": "a",
+                    "metric_type": "Simple",
+                    "verbose_name": "a",
+                },
+            ],
+        },
         database,
         False,
         "",

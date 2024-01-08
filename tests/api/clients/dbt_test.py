@@ -1269,3 +1269,74 @@ def test_dbt_client_get_database_name_multiple(mocker: MockerFixture) -> None:
     with pytest.raises(Exception) as excinfo:
         client.get_database_name(108380)
     assert str(excinfo.value) == "Multiple databases found"
+
+
+def test_dbt_client_get_sl_metrics(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_metrics`` method.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": {
+            "metrics": [
+                {"name": "a", "description": "A", "type": "SIMPLE"},
+            ],
+        },
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_metrics(108380) == [
+        {"name": "a", "description": "A", "type": "SIMPLE"},
+    ]
+
+
+def test_dbt_client_get_sl_metric_sql(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_metric_sql`` method.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": {"compileSql": {"sql": "SELECT 1 FROM a"}},
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_metric_sql("metric", 108380) == "SELECT 1 FROM a"
+
+
+def test_dbt_client_get_sl_metric_sql_error(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_metric_sql`` method when there's an error.
+    """
+    _logger = mocker.patch("preset_cli.api.clients.dbt._logger")
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": None,
+        "errors": [
+            {"message": "Something went wrong"},
+        ],
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_metric_sql("metric", 108380) is None
+    _logger.warning.assert_called_with(
+        "Unable to convert metric %s: %s",
+        "metric",
+        "Something went wrong",
+    )
+
+
+def test_dbt_client_get_sl_dialect(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_dialect`` method.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": {"environmentInfo": {"dialect": "BIGQUERY"}},
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_dialect(108380) == "BIGQUERY"

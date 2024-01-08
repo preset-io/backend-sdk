@@ -9,12 +9,17 @@ from typing import Dict
 import pytest
 from pytest_mock import MockerFixture
 
-from preset_cli.api.clients.dbt import MetricSchema, MFSQLEngine
+from preset_cli.api.clients.dbt import MetricSchema, MFMetricWithSQLSchema, MFSQLEngine
+from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
 from preset_cli.cli.superset.sync.dbt.metrics import (
+    MultipleModelsError,
+    convert_metric_flow_to_superset,
     convert_query_to_projection,
     get_metric_expression,
     get_metric_models,
     get_metrics_for_model,
+    get_model_from_sql,
+    get_superset_metrics_per_model,
 )
 
 
@@ -608,3 +613,158 @@ WHERE order_id__order_total_dim >= 20
         )
         == "SUM(product_price)"
     )
+
+    with pytest.raises(ValueError) as excinfo:
+        convert_query_to_projection(
+            "SELECT COUNT(*), COUNT(DISTINCT user_id) FROM t",
+            MFSQLEngine.BIGQUERY,
+        )
+    assert (
+        str(excinfo.value)
+        == "Unable to convert metrics with multiple selected expressions"
+    )
+
+
+def test_convert_metric_flow_to_superset(mocker: MockerFixture) -> None:
+    """
+    Test the ``convert_metric_flow_to_superset`` function.
+    """
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.metrics.convert_query_to_projection",
+        return_value="SUM(order_total)",
+    )
+
+    assert convert_metric_flow_to_superset(
+        name="sales",
+        description="All sales",
+        metric_type="SIMPLE",
+        sql="SELECT SUM(order_total) AS order_total FROM orders",
+        dialect=MFSQLEngine.BIGQUERY,
+    ) == {
+        "expression": "SUM(order_total)",
+        "metric_name": "sales",
+        "metric_type": "SIMPLE",
+        "verbose_name": "sales",
+        "description": "All sales",
+    }
+
+
+def test_get_model_from_sql() -> None:
+    """
+    Test the ``get_model_from_sql`` function.
+    """
+    model_map = {
+        ModelKey("schema", "table"): {"name": "table"},
+    }
+
+    assert get_model_from_sql(
+        "SELECT 1 FROM project.schema.table",
+        MFSQLEngine.BIGQUERY,
+        model_map,  # type: ignore
+    ) == {"name": "table"}
+
+    with pytest.raises(MultipleModelsError) as excinfo:
+        get_model_from_sql(
+            "SELECT 1 FROM schema.a JOIN schema.b",
+            MFSQLEngine.BIGQUERY,
+            {},
+        )
+    assert (
+        str(excinfo.value)
+        == "Unable to convert metrics with multiple sources: SELECT 1 FROM schema.a JOIN schema.b"
+    )
+
+
+def test_get_superset_metrics_per_model() -> None:
+    """
+    Tests for the ``get_superset_metrics_per_model`` function.
+    """
+    mf_metric_schema = MFMetricWithSQLSchema()
+    og_metric_schema = MetricSchema()
+
+    og_metrics = [
+        og_metric_schema.load(obj)
+        for obj in [
+            {
+                "name": "sales",
+                "unique_id": "sales",
+                "depends_on": ["orders"],
+                "calculation_method": "sum",
+                "expression": "1",
+            },
+            {
+                "name": "multi-model",
+                "unique_id": "multi-model",
+                "depends_on": ["a", "b"],
+                "calculation_method": "derived",
+            },
+            {
+                "name": "a",
+                "unique_id": "a",
+                "depends_on": ["orders"],
+                "calculation_method": "sum",
+                "expression": "1",
+            },
+            {
+                "name": "b",
+                "unique_id": "b",
+                "depends_on": ["customers"],
+                "calculation_method": "sum",
+                "expression": "1",
+            },
+        ]
+    ]
+
+    sl_metrics = [
+        mf_metric_schema.load(obj)
+        for obj in [
+            {
+                "name": "new",
+                "description": "New metric",
+                "type": "SIMPLE",
+                "sql": "SELECT COUNT(1) FROM a.b.c",
+                "dialect": MFSQLEngine.BIGQUERY,
+                "model": "new-model",
+            },
+        ]
+    ]
+
+    assert get_superset_metrics_per_model(og_metrics, sl_metrics) == {
+        "orders": [
+            {
+                "expression": "SUM(1)",
+                "metric_name": "sales",
+                "metric_type": "sum",
+                "verbose_name": "sales",
+                "description": "",
+                "extra": "{}",
+            },
+            {
+                "expression": "SUM(1)",
+                "metric_name": "a",
+                "metric_type": "sum",
+                "verbose_name": "a",
+                "description": "",
+                "extra": "{}",
+            },
+        ],
+        "customers": [
+            {
+                "expression": "SUM(1)",
+                "metric_name": "b",
+                "metric_type": "sum",
+                "verbose_name": "b",
+                "description": "",
+                "extra": "{}",
+            },
+        ],
+        "new-model": [
+            {
+                "expression": "COUNT(1)",
+                "metric_name": "new",
+                "metric_type": "SIMPLE",
+                "verbose_name": "new",
+                "description": "New metric",
+            },
+        ],
+    }
