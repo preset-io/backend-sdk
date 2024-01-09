@@ -6,20 +6,30 @@ import os.path
 import sys
 import warnings
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import click
 import yaml
 from yarl import URL
 
-from preset_cli.api.clients.dbt import DBTClient, JobSchema, MetricSchema, ModelSchema
+from preset_cli.api.clients.dbt import (
+    DBTClient,
+    JobSchema,
+    MetricSchema,
+    MFMetricWithSQLSchema,
+    ModelSchema,
+)
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
 from preset_cli.cli.superset.sync.dbt.lib import apply_select
-from preset_cli.cli.superset.sync.dbt.metrics import get_superset_metrics_per_model
+from preset_cli.cli.superset.sync.dbt.metrics import (
+    MultipleModelsError,
+    get_model_from_sql,
+    get_superset_metrics_per_model,
+)
 from preset_cli.exceptions import DatabaseNotFoundError
 
 
@@ -181,10 +191,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             config["columns"] = list(config["columns"].values())
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
-    model_map = {
-        ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
-        for model in models
-    }
+    model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
 
     if exposures_only:
         datasets = [
@@ -439,13 +446,37 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
 
     models = dbt_client.get_models(job["id"])
     models = apply_select(models, select, exclude)
-    model_map = {
-        ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
-        for model in models
-    }
+    model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
 
+    # original dbt <= 1.6 metrics
     og_metrics = dbt_client.get_og_metrics(job["id"])
-    superset_metrics = get_superset_metrics_per_model(og_metrics)
+
+    # MetricFlow metrics
+    dialect = dbt_client.get_sl_dialect(job["environment_id"])
+    mf_metric_schema = MFMetricWithSQLSchema()
+    sl_metrics: List[MFMetricWithSQLSchema] = []
+    for metric in dbt_client.get_sl_metrics(job["environment_id"]):
+        sql = dbt_client.get_sl_metric_sql(metric["name"], job["environment_id"])
+        if sql is not None:
+            try:
+                model = get_model_from_sql(sql, dialect, model_map)
+            except MultipleModelsError:
+                continue
+
+            sl_metrics.append(
+                mf_metric_schema.load(
+                    {
+                        "name": metric["name"],
+                        "type": metric["type"],
+                        "description": metric["description"],
+                        "sql": sql,
+                        "dialect": dialect.value,
+                        "model": model["unique_id"],
+                    },
+                ),
+            )
+
+    superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
 
     if exposures_only:
         datasets = [

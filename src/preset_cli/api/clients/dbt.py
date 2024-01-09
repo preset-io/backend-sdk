@@ -24,7 +24,10 @@ from preset_cli.auth.main import Auth
 _logger = logging.getLogger(__name__)
 
 REST_ENDPOINT = URL("https://cloud.getdbt.com/")
-GRAPHQL_ENDPOINT = URL("https://metadata.cloud.getdbt.com/graphql")
+METADATA_GRAPHQL_ENDPOINT = URL("https://metadata.cloud.getdbt.com/graphql")
+SEMANTIC_LAYER_GRAPHQL_ENDPOINT = URL(
+    "https://semantic-layer.cloud.getdbt.com/api/graphql",
+)
 
 
 class PostelSchema(Schema):
@@ -472,7 +475,7 @@ class TimeSchema(PostelSchema):
 
 class StringOrSchema(fields.Field):
     """
-    Dynamic schema constructor for fields that could have a string or another schema
+    Dynamic schema constructor for fields that could have a string or another schema.
     """
 
     def __init__(self, nested_schema, *args, **kwargs):
@@ -587,6 +590,50 @@ class MetricSchema(PostelSchema):
     expression = fields.String()
 
 
+class MFMetricType(str, Enum):
+    """
+    Type of the MetricFlow metric.
+    """
+
+    SIMPLE = "SIMPLE"
+    RATIO = "RATIO"
+    CUMULATIVE = "CUMULATIVE"
+    DERIVED = "DERIVED"
+
+
+class MFMetricSchema(PostelSchema):
+    """
+    Schema for a MetricFlow metric.
+    """
+
+    name = fields.String()
+    description = fields.String()
+    type = PostelEnumField(MFMetricType)
+
+
+class MFSQLEngine(str, Enum):
+    """
+    Databases supported by MetricFlow.
+    """
+
+    BIGQUERY = "BIGQUERY"
+    DUCKDB = "DUCKDB"
+    REDSHIFT = "REDSHIFT"
+    POSTGRES = "POSTGRES"
+    SNOWFLAKE = "SNOWFLAKE"
+    DATABRICKS = "DATABRICKS"
+
+
+class MFMetricWithSQLSchema(MFMetricSchema):
+    """
+    MetricFlow metric with dialect and SQL, as well as model.
+    """
+
+    sql = fields.String()
+    dialect = PostelEnumField(MFSQLEngine)
+    model = fields.String()
+
+
 class DataResponse(TypedDict):
     """
     Type for the GraphQL response.
@@ -602,7 +649,10 @@ class DBTClient:  # pylint: disable=too-few-public-methods
     """
 
     def __init__(self, auth: Auth):
-        self.graphql_client = GraphqlClient(endpoint=GRAPHQL_ENDPOINT)
+        self.metadata_graphql_client = GraphqlClient(endpoint=METADATA_GRAPHQL_ENDPOINT)
+        self.semantic_layer_graphql_client = GraphqlClient(
+            endpoint=SEMANTIC_LAYER_GRAPHQL_ENDPOINT,
+        )
         self.baseurl = REST_ENDPOINT
 
         self.session = auth.session
@@ -610,16 +660,6 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         self.session.headers["User-Agent"] = "Preset CLI"
         self.session.headers["X-Client-Version"] = __version__
         self.session.headers["X-dbt-partner-source"] = "preset"
-
-    def execute(self, query: str, **variables: Any) -> DataResponse:
-        """
-        Run a GraphQL query.
-        """
-        return self.graphql_client.execute(
-            query=query,
-            variables=variables,
-            headers=self.session.headers,
-        )
 
     def get_accounts(self) -> List[AccountSchema]:
         """
@@ -683,37 +723,46 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         Fetch all available models.
         """
         query = """
-            query ($jobId: Int!) {
-                models(jobId: $jobId) {
-                    uniqueId
-                    dependsOn
-                    childrenL1
-                    name
-                    database
-                    schema
-                    description
-                    meta
-                    tags
-                    columns {
+            query Models($jobId: BigInt!) {
+                job(id: $jobId) {
+                    models {
+                        uniqueId
+                        dependsOn
+                        childrenL1
                         name
+                        database
+                        schema
                         description
+                        meta
+                        tags
+                        columns {
+                            name
+                            description
+                            type
+                        }
                     }
                 }
             }
         """
-        payload = self.execute(query, jobId=job_id)
+        payload = self.metadata_graphql_client.execute(
+            query=query,
+            variables={"jobId": job_id},
+            headers=self.session.headers,
+        )
 
         model_schema = ModelSchema()
-        models = [model_schema.load(model) for model in payload["data"]["models"]]
+        models = [
+            model_schema.load(model) for model in payload["data"]["job"]["models"]
+        ]
 
         return models
 
-    def get_og_metrics(self, job_id: int) -> List[Any]:
+    def get_og_metrics(self, job_id: int) -> List[MetricSchema]:
         """
         Fetch all available metrics.
         """
         query = """
-            query ($jobId: Int!) {
+            query GetMetrics($jobId: Int!) {
                 metrics(jobId: $jobId) {
                     uniqueId
                     name
@@ -731,12 +780,97 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                 }
             }
         """
-        payload = self.execute(query, jobId=job_id)
+        payload = self.metadata_graphql_client.execute(
+            query=query,
+            variables={"jobId": job_id},
+            headers=self.session.headers,
+        )
 
         metric_schema = MetricSchema()
         metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
 
         return metrics
+
+    def get_sl_metrics(self, environment_id: int) -> List[MFMetricSchema]:
+        """
+        Fetch all available metrics.
+        """
+        query = """
+            query GetMetrics($environmentId: BigInt!) {
+                metrics(environmentId: $environmentId) {
+                    name
+                    description
+                    type
+                }
+            }
+        """
+        payload = self.semantic_layer_graphql_client.execute(
+            query=query,
+            variables={"environmentId": environment_id},
+            headers=self.session.headers,
+        )
+
+        metric_schema = MFMetricSchema()
+        metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
+
+        return metrics
+
+    def get_sl_metric_sql(self, metric: str, environment_id: int) -> Optional[str]:
+        """
+        Fetch metric SQL.
+
+        We fetch one metric at a time because if one metric fails to compile, the entire
+        query fails.
+        """
+        query = """
+            mutation CompileSql($environmentId: BigInt!, $metricsInput: [MetricInput!]) {
+                compileSql(
+                    environmentId: $environmentId
+                    metrics: $metricsInput
+                    groupBy: []
+                ) {
+                    sql
+                }
+            }
+        """
+        payload = self.semantic_layer_graphql_client.execute(
+            query=query,
+            variables={
+                "environmentId": environment_id,
+                "metricsInput": [{"name": metric}],
+            },
+            headers=self.session.headers,
+        )
+
+        if payload["data"] is None:
+            errors = "\n\n".join(
+                error["message"] for error in payload.get("errors", [])
+            )
+            _logger.warning("Unable to convert metric %s: %s", metric, errors)
+            return None
+
+        return payload["data"]["compileSql"]["sql"]
+
+    def get_sl_dialect(self, environment_id: int) -> MFSQLEngine:
+        """
+        Get the dialect used in the MetricFlow project.
+        """
+        query = """
+            query GetEnvironmentInfo($environmentId: BigInt!) {
+                environmentInfo(environmentId: $environmentId) {
+                    dialect
+                }
+            }
+        """
+        payload = self.semantic_layer_graphql_client.execute(
+            query=query,
+            variables={"environmentId": environment_id},
+            headers=self.session.headers,
+        )
+
+        return MFSQLEngine(payload["data"]["environmentInfo"]["dialect"])
+
+    # def get_sl_metric_sql(self,
 
     def get_database_name(self, job_id: int) -> str:
         """
