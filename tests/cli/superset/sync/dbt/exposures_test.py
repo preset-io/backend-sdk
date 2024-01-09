@@ -758,7 +758,7 @@ def test_get_chart_depends_on_from_dataset(mocker: MockerFixture) -> None:
     depends_on = get_chart_depends_on(
         client,
         chart_response["result"],
-        {key: "ref('messages_channels')"},
+        {key: {"name": "messages_channels"}},  # type: ignore
     )
     assert depends_on == ["ref('messages_channels')"]
 
@@ -798,6 +798,6 @@ def test_get_dashboard_depends_on_from_dataset(mocker: MockerFixture) -> None:
     depends_on = get_dashboard_depends_on(
         client,
         dashboard_response["result"],
-        {key: "ref('messages_channels')"},
+        {key: {"name": "messages_channels"}},  # type: ignore
     )
     assert depends_on == ["ref('messages_channels')"]

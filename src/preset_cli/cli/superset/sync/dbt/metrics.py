@@ -9,15 +9,35 @@ This module is used to convert dbt metrics into Superset metrics.
 import json
 import logging
 from collections import defaultdict
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
-import sqlglot
-from sqlglot import exp
+from sqlglot import Expression, exp, parse_one
+from sqlglot.expressions import Alias, Case, Identifier, If, Join, Select, Table, Where
+from sqlglot.optimizer import traverse_scope
+from sqlparse.sql import Identifier as SQLParseIdentifier
+from sqlparse.sql import TokenList
 
-from preset_cli.api.clients.dbt import FilterSchema, MetricSchema, ModelSchema
+from preset_cli.api.clients.dbt import (
+    FilterSchema,
+    MetricSchema,
+    MFMetricWithSQLSchema,
+    MFSQLEngine,
+    ModelSchema,
+)
 from preset_cli.api.clients.superset import SupersetMetricDefinition
+from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
 
 _logger = logging.getLogger(__name__)
+
+# dbt => sqlglot
+DIALECT_MAP = {
+    MFSQLEngine.BIGQUERY: "bigquery",
+    MFSQLEngine.DUCKDB: "duckdb",
+    MFSQLEngine.REDSHIFT: "redshift",
+    MFSQLEngine.POSTGRES: "postgres",
+    MFSQLEngine.SNOWFLAKE: "snowflake",
+    MFSQLEngine.DATABRICKS: "databricks",
+}
 
 
 def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> str:
@@ -170,14 +190,15 @@ def get_metric_definition(
 
 
 def get_superset_metrics_per_model(
-    metrics: List[MetricSchema],
+    og_metrics: List[MetricSchema],
+    sl_metrics: Optional[List[MFMetricWithSQLSchema]] = None,
 ) -> Dict[str, List[SupersetMetricDefinition]]:
     """
     Build a dictionary of Superset metrics for each dbt model.
     """
     superset_metrics = defaultdict(list)
-    for metric in metrics:
-        metric_models = get_metric_models(metric["unique_id"], metrics)
+    for metric in og_metrics:
+        metric_models = get_metric_models(metric["unique_id"], og_metrics)
         if len(metric_models) != 1:
             _logger.warning(
                 "Metric %s cannot be calculated because it depends on multiple models: %s",
@@ -188,9 +209,145 @@ def get_superset_metrics_per_model(
 
         metric_definition = get_metric_definition(
             metric["unique_id"],
-            metrics,
+            og_metrics,
         )
         model = metric_models.pop()
         superset_metrics[model].append(metric_definition)
 
+    for sl_metric in sl_metrics or []:
+        metric_definition = convert_metric_flow_to_superset(
+            sl_metric["name"],
+            sl_metric["description"],
+            sl_metric["type"],
+            sl_metric["sql"],
+            sl_metric["dialect"],
+        )
+        model = sl_metric["model"]
+        superset_metrics[model].append(metric_definition)
+
     return superset_metrics
+
+
+def extract_aliases(parsed_query: Expression) -> Dict[str, str]:
+    """
+    Extract column aliases from a SQL query.
+    """
+    aliases = {}
+    for expression in parsed_query.find_all(Alias):
+        alias_name = expression.alias
+        expression_text = expression.this.sql()
+        aliases[alias_name] = expression_text
+
+    return aliases
+
+
+def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
+    """
+    Convert a MetricFlow compiled SQL to a projection.
+    """
+    parsed_query = parse_one(sql, dialect=DIALECT_MAP.get(dialect))
+
+    # extract aliases from inner query
+    scopes = traverse_scope(parsed_query)
+    has_subquery = len(scopes) > 1
+    aliases = extract_aliases(scopes[0].expression) if has_subquery else {}
+
+    # find the metric expression
+    select_expression = parsed_query.find(Select)
+    if select_expression.find(Join):
+        raise ValueError("Unable to convert metrics with JOINs")
+
+    projection = select_expression.args["expressions"]
+    if len(projection) > 1:
+        raise ValueError("Unable to convert metrics with multiple selected expressions")
+
+    metric_expression = (
+        projection[0].this if isinstance(projection[0], Alias) else projection[0]
+    )
+
+    # replace aliases with their original expressions
+    for node, _, _ in metric_expression.walk():
+        if isinstance(node, Identifier) and node.sql() in aliases:
+            node.replace(parse_one(aliases[node.sql()]))
+
+    # convert WHERE predicate to a CASE statement
+    where_expression = parsed_query.find(Where)
+    if where_expression:
+        for node, _, _ in where_expression.walk():
+            if isinstance(node, Identifier) and node.sql() in aliases:
+                node.replace(parse_one(aliases[node.sql()]))
+
+        case_expression = Case(
+            ifs=[If(this=where_expression.this, true=metric_expression.this)],
+        )
+        metric_expression.set("this", case_expression)
+
+    return metric_expression.sql()
+
+
+def convert_metric_flow_to_superset(
+    name: str,
+    description: str,
+    metric_type: str,
+    sql: str,
+    dialect: MFSQLEngine,
+) -> SupersetMetricDefinition:
+    """
+    Convert a MetricFlow metric to a Superset metric.
+
+    Before MetricFlow we could build the metrics based on the metadata returned by the
+    GraphQL API. With MetricFlow we only have access to the compiled SQL used to
+    compute the metric, so we need to parse it and build a single projection for
+    Superset.
+
+    For example, this:
+
+        SELECT
+            SUM(order_count) AS large_order
+        FROM (
+            SELECT
+                order_total AS order_id__order_total_dim
+                , 1 AS order_count
+            FROM `dbt-tutorial-347100`.`dbt_beto`.`orders` orders_src_106
+        ) subq_796
+        WHERE order_id__order_total_dim >= 20
+
+    Becomes:
+
+        SUM(CASE WHEN order_total > 20 THEN 1 END)
+
+    """
+    return {
+        "expression": convert_query_to_projection(sql, dialect),
+        "metric_name": name,
+        "metric_type": metric_type,
+        "verbose_name": name,
+        "description": description,
+    }
+
+
+class MultipleModelsError(Exception):
+    """
+    Raised when a metric depends on multiple models.
+    """
+
+
+def get_model_from_sql(
+    sql: str,
+    dialect: MFSQLEngine,
+    model_map: Dict[ModelKey, ModelSchema],
+) -> ModelSchema:
+    """
+    Return the model associated with a SQL query.
+    """
+    parsed_query = parse_one(sql, dialect=DIALECT_MAP.get(dialect))
+    sources = list(parsed_query.find_all(Table))
+    if len(sources) > 1:
+        raise MultipleModelsError(
+            f"Unable to convert metrics with multiple sources: {sql}",
+        )
+
+    table = sources[0]
+    key = ModelKey(table.db, table.name)
+
+    return model_map[key]

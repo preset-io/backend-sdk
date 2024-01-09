@@ -9,6 +9,7 @@ from typing import Any, Dict, List, NamedTuple, Optional
 
 import yaml
 
+from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient
 
 # XXX: DashboardResponseType and DatasetResponseType
@@ -26,7 +27,7 @@ class ModelKey(NamedTuple):
 def get_chart_depends_on(
     client: SupersetClient,
     chart: Any,
-    model_map: Dict[ModelKey, str],
+    model_map: Dict[ModelKey, ModelSchema],
 ) -> List[str]:
     """
     Get all the dbt dependencies for a given chart.
@@ -50,7 +51,8 @@ def get_chart_depends_on(
 
     key = ModelKey(dataset["schema"], dataset["table_name"])
     if dataset["datasource_type"] == "table" and key in model_map:
-        return [model_map[key]]
+        model = model_map[key]
+        return [f"ref('{model['name']}')"]
 
     return []
 
@@ -58,7 +60,7 @@ def get_chart_depends_on(
 def get_dashboard_depends_on(
     client: SupersetClient,
     dashboard: Any,
-    model_map: Dict[ModelKey, str],
+    model_map: Dict[ModelKey, ModelSchema],
 ) -> List[str]:
     """
     Get all the dbt dependencies for a given dashboard.
@@ -85,7 +87,8 @@ def get_dashboard_depends_on(
         if "depends_on" in extra:
             depends_on.append(extra["depends_on"])
         elif full_dataset["datasource_type"] == "table" and key in model_map:
-            depends_on.append(model_map[key])
+            model = model_map[key]
+            depends_on.append(f"ref('{model['name']}')")
 
     return depends_on
 
@@ -94,7 +97,7 @@ def sync_exposures(  # pylint: disable=too-many-locals
     client: SupersetClient,
     exposures_path: Path,
     datasets: List[Any],
-    model_map: Dict[ModelKey, str],
+    model_map: Dict[ModelKey, ModelSchema],
 ) -> None:
     """
     Write dashboards back to dbt as exposures.
