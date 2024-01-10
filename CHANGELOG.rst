@@ -5,6 +5,11 @@ Changelog
 Next
 ====
 
+Version 0.2.10 - 2024-01-10
+===========================
+
+- Small improvements to the dbt sync logic (`#258 <https://github.com/preset-io/backend-sdk/pull/258>_` and `#259 <https://github.com/preset-io/backend-sdk/pull/259>_`).
+
 Version 0.2.9 - 2024-01-10
 ==========================
 
