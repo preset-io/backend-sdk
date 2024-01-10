@@ -11,11 +11,10 @@ import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Set
 
+import sqlglot
 from sqlglot import Expression, exp, parse_one
 from sqlglot.expressions import Alias, Case, Identifier, If, Join, Select, Table, Where
 from sqlglot.optimizer import traverse_scope
-from sqlparse.sql import Identifier as SQLParseIdentifier
-from sqlparse.sql import TokenList
 
 from preset_cli.api.clients.dbt import (
     FilterSchema,
