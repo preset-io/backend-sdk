@@ -5,6 +5,11 @@ Changelog
 Next
 ====
 
+Version 0.2.9 - 2024-01-10
+==========================
+
+- Initial support for syncing metrics from dbt/MetricFlow (`#256 <https://github.com/preset-io/backend-sdk/pull/256>_`).
+
 Version 0.2.8 - 2023-09-12
 ==========================
 
