@@ -325,28 +325,19 @@ def convert_metric_flow_to_superset(
     }
 
 
-class MultipleModelsError(Exception):
-    """
-    Raised when a metric depends on multiple models.
-    """
-
-
-def get_model_from_sql(
+def get_models_from_sql(
     sql: str,
     dialect: MFSQLEngine,
     model_map: Dict[ModelKey, ModelSchema],
-) -> ModelSchema:
+) -> List[ModelSchema]:
     """
     Return the model associated with a SQL query.
     """
     parsed_query = parse_one(sql, dialect=DIALECT_MAP.get(dialect))
     sources = list(parsed_query.find_all(Table))
-    if len(sources) > 1:
-        raise MultipleModelsError(
-            f"Unable to convert metrics with multiple sources: {sql}",
-        )
 
-    table = sources[0]
-    key = ModelKey(table.db, table.name)
+    for table in sources:
+        if ModelKey(table.db, table.name) not in model_map:
+            raise ValueError(f"Unable to find model for SQL source {table}")
 
-    return model_map[key]
+    return [model_map[ModelKey(table.db, table.name)] for table in sources]

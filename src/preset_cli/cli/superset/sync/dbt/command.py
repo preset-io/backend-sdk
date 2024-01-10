@@ -26,8 +26,7 @@ from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
 from preset_cli.cli.superset.sync.dbt.lib import apply_select
 from preset_cli.cli.superset.sync.dbt.metrics import (
-    MultipleModelsError,
-    get_model_from_sql,
+    get_models_from_sql,
     get_superset_metrics_per_model,
 )
 from preset_cli.exceptions import DatabaseNotFoundError
@@ -351,10 +350,10 @@ def process_sl_metrics(
         if sql is None:
             continue
 
-        try:
-            model = get_model_from_sql(sql, dialect, model_map)
-        except MultipleModelsError:
+        models = get_models_from_sql(sql, dialect, model_map)
+        if len(models) > 1:
             continue
+        model = models[0]
 
         sl_metrics.append(
             mf_metric_schema.load(
