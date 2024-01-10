@@ -149,6 +149,14 @@ dbt_cloud_models = [
         "schema": "public",
         "unique_id": "model.superset_examples.messages_channels",
     },
+    {
+        "database": "some_other_table",
+        "description": "",
+        "meta": {},
+        "name": "some_other_table",
+        "schema": "public",
+        "unique_id": "model.superset_examples.some_other_table",
+    },
 ]
 
 dbt_cloud_metrics = [
@@ -975,7 +983,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     dbt_client.get_sl_metrics.return_value = dbt_metricflow_metrics
     dbt_client.get_sl_metric_sql.side_effect = [
         "SELECT COUNT(*) FROM public.messages_channels",
-        "SELECT COUNT(*) FROM public.messages_channels JOIN some_other_table",
+        "SELECT COUNT(*) FROM public.messages_channels JOIN public.some_other_table",
         None,
     ]
     database = mocker.MagicMock()
@@ -1624,6 +1632,10 @@ def test_dbt_cloud_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> 
         exposures,
         [
             {"schema": "public", "table_name": "messages_channels"},
+            {"schema": "public", "table_name": "some_other_table"},
         ],
-        {("public", "messages_channels"): dbt_cloud_models[0]},
+        {
+            ("public", "messages_channels"): dbt_cloud_models[0],
+            ("public", "some_other_table"): dbt_cloud_models[1],
+        },
     )

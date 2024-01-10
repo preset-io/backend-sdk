@@ -12,13 +12,12 @@ from pytest_mock import MockerFixture
 from preset_cli.api.clients.dbt import MetricSchema, MFMetricWithSQLSchema, MFSQLEngine
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
 from preset_cli.cli.superset.sync.dbt.metrics import (
-    MultipleModelsError,
     convert_metric_flow_to_superset,
     convert_query_to_projection,
     get_metric_expression,
     get_metric_models,
     get_metrics_for_model,
-    get_model_from_sql,
+    get_models_from_sql,
     get_superset_metrics_per_model,
 )
 
@@ -649,30 +648,31 @@ def test_convert_metric_flow_to_superset(mocker: MockerFixture) -> None:
     }
 
 
-def test_get_model_from_sql() -> None:
+def test_get_models_from_sql() -> None:
     """
-    Test the ``get_model_from_sql`` function.
+    Test the ``get_models_from_sql`` function.
     """
     model_map = {
         ModelKey("schema", "table"): {"name": "table"},
+        ModelKey("schema", "a"): {"name": "a"},
+        ModelKey("schema", "b"): {"name": "b"},
     }
 
-    assert get_model_from_sql(
+    assert get_models_from_sql(
         "SELECT 1 FROM project.schema.table",
         MFSQLEngine.BIGQUERY,
         model_map,  # type: ignore
-    ) == {"name": "table"}
+    ) == [{"name": "table"}]
 
-    with pytest.raises(MultipleModelsError) as excinfo:
-        get_model_from_sql(
-            "SELECT 1 FROM schema.a JOIN schema.b",
-            MFSQLEngine.BIGQUERY,
-            {},
-        )
-    assert (
-        str(excinfo.value)
-        == "Unable to convert metrics with multiple sources: SELECT 1 FROM schema.a JOIN schema.b"
-    )
+    assert get_models_from_sql(
+        "SELECT 1 FROM schema.a JOIN schema.b",
+        MFSQLEngine.BIGQUERY,
+        model_map,  # type: ignore
+    ) == [{"name": "a"}, {"name": "b"}]
+
+    with pytest.raises(ValueError) as excinfo:
+        get_models_from_sql("SELECT 1 FROM schema.c", MFSQLEngine.BIGQUERY, {})
+    assert str(excinfo.value) == "Unable to find model for SQL source schema.c"
 
 
 def test_get_superset_metrics_per_model() -> None:
