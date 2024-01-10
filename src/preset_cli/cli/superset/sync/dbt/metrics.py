@@ -11,12 +11,10 @@ import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Set
 
-import sqlparse
-from sqlglot import Expression, parse_one
+import sqlglot
+from sqlglot import Expression, exp, parse_one
 from sqlglot.expressions import Alias, Case, Identifier, If, Join, Select, Table, Where
 from sqlglot.optimizer import traverse_scope
-from sqlparse.sql import Identifier as SQLParseIdentifier
-from sqlparse.sql import TokenList
 
 from preset_cli.api.clients.dbt import (
     FilterSchema,
@@ -43,7 +41,7 @@ DIALECT_MAP = {
 
 def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> str:
     """
-    Return a SQL expression for a given dbt metric.
+    Return a SQL expression for a given dbt metric using sqlglot.
     """
     if unique_id not in metrics:
         raise Exception(f"Invalid metric {unique_id}")
@@ -77,18 +75,16 @@ def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> s
         return f"COUNT(DISTINCT {sql})"
 
     if type_ in {"expression", "derived"}:
-        statement = sqlparse.parse(sql)[0]
-        tokens = statement.tokens[:]
-        while tokens:
-            token = tokens.pop(0)
+        expression = sqlglot.parse_one(sql)
+        tokens = expression.find_all(exp.Column)
 
-            if isinstance(token, SQLParseIdentifier) and token.value in metrics:
-                parent_sql = get_metric_expression(token.value, metrics)
-                token.tokens = sqlparse.parse(parent_sql)[0].tokens
-            elif isinstance(token, TokenList):
-                tokens.extend(token.tokens)
+        for token in tokens:
+            if token.sql() in metrics:
+                parent_sql = get_metric_expression(token.sql(), metrics)
+                parent_expression = sqlglot.parse_one(parent_sql)
+                token.replace(parent_expression)
 
-        return str(statement)
+        return expression.sql()
 
     sorted_metric = dict(sorted(metric.items()))
     raise Exception(f"Unable to generate metric expression from: {sorted_metric}")
