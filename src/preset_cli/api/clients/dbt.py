@@ -670,11 +670,7 @@ def get_custom_urls(access_url: Optional[str] = None) -> Dict[str, URL]:
                 [a-zA-Z0-9]
             )?
         )
-        \.
-        (?P<domain>
-            (?:get)?    # Docs are not clear if we should dbt.com
-            dbt\.com    # or getdbt.com
-        )
+        \.dbt.com
         $
     """
 
@@ -682,13 +678,13 @@ def get_custom_urls(access_url: Optional[str] = None) -> Dict[str, URL]:
     if match := re.match(regex_pattern, parsed.host, re.VERBOSE):
         return {
             "admin": parsed.with_host(
-                f"{match['code']}.{match['region']}.{match['domain']}",
+                f"{match['code']}.{match['region']}.dbt.com",
             ),
             "discovery": parsed.with_host(
-                f"{match['code']}.metadata.{match['region']}.{match['domain']}",
+                f"{match['code']}.metadata.{match['region']}.dbt.com",
             ),
             "semantic-layer": parsed.with_host(
-                f"{match['code']}.semantic-layer.{match['region']}.{match['domain']}",
+                f"{match['code']}.semantic-layer.{match['region']}.dbt.com",
             ),
         }
 
