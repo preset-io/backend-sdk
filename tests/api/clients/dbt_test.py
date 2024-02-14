@@ -11,9 +11,10 @@ import pytest
 from marshmallow import fields
 from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
+from yarl import URL
 
 from preset_cli import __version__
-from preset_cli.api.clients.dbt import DBTClient, PostelEnumField
+from preset_cli.api.clients.dbt import DBTClient, PostelEnumField, get_custom_urls
 from preset_cli.auth.main import Auth
 
 
@@ -1340,3 +1341,24 @@ def test_dbt_client_get_sl_dialect(mocker: MockerFixture) -> None:
     client = DBTClient(auth)
 
     assert client.get_sl_dialect(108380) == "BIGQUERY"
+
+
+def test_get_custom_urls() -> None:
+    """
+    Test the ``get_custom_urls`` function.
+    """
+    assert get_custom_urls() == {
+        "admin": URL("https://cloud.getdbt.com/"),
+        "discovery": URL("https://metadata.cloud.getdbt.com/graphql"),
+        "semantic-layer": URL("https://semantic-layer.cloud.getdbt.com/api/graphql"),
+    }
+
+    assert get_custom_urls("https://ab123.us1.dbt.com") == {
+        "admin": URL("https://ab123.us1.dbt.com"),
+        "discovery": URL("https://ab123.metadata.us1.dbt.com"),
+        "semantic-layer": URL("https://ab123.semantic-layer.us1.dbt.com"),
+    }
+
+    with pytest.raises(Exception) as excinfo:
+        get_custom_urls("https://preset.io")
+    assert str(excinfo.value) == "Invalid host in custom URL"

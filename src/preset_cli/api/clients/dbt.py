@@ -11,6 +11,7 @@ References:
 # pylint: disable=invalid-name, too-few-public-methods
 
 import logging
+import re
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type, TypedDict
 
@@ -642,18 +643,67 @@ class DataResponse(TypedDict):
     data: Dict[str, Any]
 
 
+def get_custom_urls(access_url: Optional[str] = None) -> Dict[str, URL]:
+    """
+    Return new custom URLs for dbt Cloud access.
+    """
+    if access_url is None:
+        return {
+            "admin": REST_ENDPOINT,
+            "discovery": METADATA_GRAPHQL_ENDPOINT,
+            "semantic-layer": SEMANTIC_LAYER_GRAPHQL_ENDPOINT,
+        }
+
+    regex_pattern = r"""
+        (?P<code>
+            [a-zA-Z0-9]
+            (?:
+                [a-zA-Z0-9-]{0,61}
+                [a-zA-Z0-9]
+            )?
+        )
+        \.
+        (?P<region>
+            [a-zA-Z0-9]
+            (?:
+                [a-zA-Z0-9-]{0,61}
+                [a-zA-Z0-9]
+            )?
+        )
+        \.dbt.com
+        $
+    """
+
+    parsed = URL(access_url)
+    if match := re.match(regex_pattern, parsed.host, re.VERBOSE):
+        return {
+            "admin": parsed.with_host(
+                f"{match['code']}.{match['region']}.dbt.com",
+            ),
+            "discovery": parsed.with_host(
+                f"{match['code']}.metadata.{match['region']}.dbt.com",
+            ),
+            "semantic-layer": parsed.with_host(
+                f"{match['code']}.semantic-layer.{match['region']}.dbt.com",
+            ),
+        }
+
+    raise Exception("Invalid host in custom URL")
+
+
 class DBTClient:  # pylint: disable=too-few-public-methods
 
     """
     A client for the dbt API.
     """
 
-    def __init__(self, auth: Auth):
-        self.metadata_graphql_client = GraphqlClient(endpoint=METADATA_GRAPHQL_ENDPOINT)
+    def __init__(self, auth: Auth, access_url: Optional[str] = None):
+        urls = get_custom_urls(access_url)
+        self.metadata_graphql_client = GraphqlClient(endpoint=urls["discovery"])
         self.semantic_layer_graphql_client = GraphqlClient(
-            endpoint=SEMANTIC_LAYER_GRAPHQL_ENDPOINT,
+            endpoint=urls["semantic-layer"],
         )
-        self.baseurl = REST_ENDPOINT
+        self.baseurl = urls["admin"]
 
         self.session = auth.session
         self.session.headers.update(auth.get_headers())

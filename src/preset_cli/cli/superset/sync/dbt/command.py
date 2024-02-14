@@ -422,6 +422,10 @@ def process_sl_metrics(
     default=False,
     help="Update Preset configurations based on dbt metadata. Preset-only metrics are preserved",
 )
+@click.option(
+    "--access-url",
+    help="Custom API URL for dbt Cloud (eg, https://ab123.us1.dbt.com)",
+)
 @click.pass_context
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
@@ -436,6 +440,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
+    access_url: Optional[str] = None,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
@@ -445,7 +450,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     superset_client = SupersetClient(url, superset_auth)
 
     dbt_auth = TokenAuth(token)
-    dbt_client = DBTClient(dbt_auth)
+    dbt_client = DBTClient(dbt_auth, access_url)
 
     if (preserve_columns or preserve_metadata) and merge_metadata:
         click.echo(
