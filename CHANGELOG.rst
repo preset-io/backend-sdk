@@ -5,6 +5,11 @@ Changelog
 Next
 ====
 
+Version 0.2.11 - 2024-02-14
+===========================
+
+- Support for custom access URLs when connecting to dbt Cloud APIs (`#262 <https://github.com/preset-io/backend-sdk/pull/262>_`.
+
 Version 0.2.10 - 2024-01-10
 ===========================
 
