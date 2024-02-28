@@ -249,10 +249,14 @@ def get_account_id(client: DBTClient) -> int:
         click.echo(click.style("No accounts available", fg="bright_red"))
         sys.exit(1)
     if len(accounts) == 1:
-        return accounts[0]["id"]
+        account = accounts[0]
+        click.echo(
+            f'Using account {account["name"]} [id={account["id"]}] since it\'s the only one',
+        )
+        return account["id"]
     click.echo("Choose an account:")
     for i, account in enumerate(accounts):
-        click.echo(f'({i+1}) {account["name"]}')
+        click.echo(f'({i+1}) {account["name"]} [id={account["id"]}]')
 
     while True:
         try:
@@ -279,7 +283,7 @@ def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
         return projects[0]["id"]
     click.echo("Choose a project:")
     for i, project in enumerate(projects):
-        click.echo(f'({i+1}) {project["name"]}')
+        click.echo(f'({i+1}) {project["name"]} [id={project["id"]}]')
 
     while True:
         try:
@@ -316,7 +320,7 @@ def get_job(
 
         click.echo("Choose a job:")
         for i, job in enumerate(jobs):
-            click.echo(f'({i+1}) {job["name"]}')
+            click.echo(f'({i+1}) {job["name"]} [id={job["id"]}]')
 
         while True:
             try:
@@ -373,6 +377,8 @@ def process_sl_metrics(
 
 @click.command()
 @click.argument("token")
+@click.argument("account_id", type=click.INT, required=False, default=None)
+@click.argument("project_id", type=click.INT, required=False, default=None)
 @click.argument("job_id", type=click.INT, required=False, default=None)
 @click.option(
     "--disallow-edits",
@@ -433,6 +439,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     select: Tuple[str, ...],
     exclude: Tuple[str, ...],
     exposures: Optional[str] = None,
+    account_id: Optional[int] = None,
+    project_id: Optional[int] = None,
     job_id: Optional[int] = None,
     disallow_edits: bool = False,
     external_url_prefix: str = "",
@@ -468,7 +476,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
     try:
-        job = get_job(dbt_client, job_id=job_id)
+        job = get_job(dbt_client, account_id, project_id, job_id)
     except ValueError:
         click.echo(click.style(f"Job {job_id} not available", fg="bright_red"))
         sys.exit(2)
