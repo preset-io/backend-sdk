@@ -198,8 +198,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
     model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
-    
-    failures = []
+
+    failures: List[str] = []
 
     if exposures_only:
         datasets = [
@@ -247,7 +247,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     if exposures:
         exposures = os.path.expanduser(exposures)
         sync_exposures(client, Path(exposures), datasets, model_map)
-    
+
     if failures and raise_failures:
         list_failed_models(failures)
 
@@ -520,7 +520,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     sl_metrics = process_sl_metrics(dbt_client, job["environment_id"], model_map)
     superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
 
-    failures = []
+    failures: List[str] = []
 
     if exposures_only:
         datasets = [

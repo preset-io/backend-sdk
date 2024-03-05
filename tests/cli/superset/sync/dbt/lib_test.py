@@ -621,6 +621,7 @@ def test_apply_select_using_path(fs: FakeFilesystem) -> None:
         "three",
     }
 
+
 def test_list_failed_models_single_model(capsys) -> None:
     """
     Test ``list_failed_models()`` with a single failed model
@@ -630,10 +631,11 @@ def test_list_failed_models_single_model(capsys) -> None:
 
     captured = capsys.readouterr()
     expected_output = "Below model(s) failed to sync:\n - single_failure\n"
-    
+
     assert captured.out == expected_output
     assert excinfo.type == SystemExit
     assert excinfo.value.code == 1
+
 
 def test_list_failed_models_multiple_models(capsys) -> None:
     """
@@ -643,8 +645,10 @@ def test_list_failed_models_multiple_models(capsys) -> None:
         list_failed_models(["single_failure", "another_failure"])
 
     captured = capsys.readouterr()
-    expected_output = "Below model(s) failed to sync:\n - single_failure\n - another_failure\n"
-    
+    expected_output = (
+        "Below model(s) failed to sync:\n - single_failure\n - another_failure\n"
+    )
+
     assert captured.out == expected_output
     assert excinfo.type == SystemExit
     assert excinfo.value.code == 1

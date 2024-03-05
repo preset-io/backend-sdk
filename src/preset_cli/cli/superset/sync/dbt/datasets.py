@@ -178,7 +178,9 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             fragment = "!/model/{unique_id}".format(**model)
             update["external_url"] = str(base_url.with_fragment(fragment))
         try:
-            client.update_dataset(dataset["id"], override_columns=reload_columns, **update)
+            client.update_dataset(
+                dataset["id"], override_columns=reload_columns, **update
+            )
         except SupersetError:
             failed_datasets.append(model["unique_id"])
             continue

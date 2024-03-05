@@ -462,6 +462,7 @@ def apply_select(
 
     return list(selected.values())
 
+
 def list_failed_models(failed_models: List[str]) -> None:
     """
     List models that failed to sync and ends execution with an error code

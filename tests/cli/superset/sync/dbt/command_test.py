@@ -510,10 +510,10 @@ def test_dbt_core_raise_failures_flag_no_failures(
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
-        return_value=["working_dataset", []],
+        return_value=(["working_dataset"], []),
     )
     list_failed_models = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.list_failed_models"
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
     )
 
     runner = CliRunner()
@@ -530,8 +530,28 @@ def test_dbt_core_raise_failures_flag_no_failures(
         ],
         catch_exceptions=False,
     )
-    list_failed_models.assert_not_called()
     assert result.exit_code == 0
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "default",
+        "default",
+        None,
+        False,
+        False,
+        "",
+    )
+    sync_datasets.assert_called_with(
+        client,
+        dbt_core_models,
+        superset_metrics,
+        sync_database(),
+        False,
+        "",
+        reload_columns=False,
+        merge_metadata=True,
+    )
+    list_failed_models.assert_not_called()
 
 
 def test_dbt_core_raise_failures_flag_with_failures(
@@ -559,10 +579,10 @@ def test_dbt_core_raise_failures_flag_with_failures(
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
-        return_value=["working_dataset", ["failed_dataset", "another_failure"]],
+        return_value=(["working_dataset"], ["failed_dataset", "another_failure"]),
     )
     list_failed_models = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.list_failed_models"
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
     )
 
     runner = CliRunner()
@@ -579,9 +599,28 @@ def test_dbt_core_raise_failures_flag_with_failures(
         ],
         catch_exceptions=False,
     )
-    list_failed_models.assert_called_once_with(
-        ["failed_dataset", "another_failure"]
+    assert result.exit_code == 0
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "default",
+        "default",
+        None,
+        False,
+        False,
+        "",
     )
+    sync_datasets.assert_called_with(
+        client,
+        dbt_core_models,
+        superset_metrics,
+        sync_database(),
+        False,
+        "",
+        reload_columns=False,
+        merge_metadata=True,
+    )
+    list_failed_models.assert_called_once_with(["failed_dataset", "another_failure"])
 
 
 def test_dbt_core_preserve_and_merge(
