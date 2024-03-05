@@ -24,7 +24,7 @@ from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
-from preset_cli.cli.superset.sync.dbt.lib import apply_select
+from preset_cli.cli.superset.sync.dbt.lib import apply_select, list_failed_models
 from preset_cli.cli.superset.sync.dbt.metrics import (
     get_models_from_sql,
     get_superset_metrics_per_model,
@@ -95,6 +95,12 @@ from preset_cli.exceptions import DatabaseNotFoundError
     default=False,
     help="Update Preset configurations based on dbt metadata. Preset-only metrics are preserved",
 )
+@click.option(
+    "--raise-failures",
+    is_flag=True,
+    default=False,
+    help="Ends the execution with an error in case a model failed to be synced",
+)
 @click.pass_context
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements
     ctx: click.core.Context,
@@ -112,6 +118,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
+    raise_failures: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Core to Superset and charts/dashboards to dbt exposures.
@@ -191,6 +198,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
     model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
+    
+    failures = []
 
     if exposures_only:
         datasets = [
@@ -224,7 +233,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             click.echo("No database was found, pass ``--import-db`` to create")
             return
 
-        datasets = sync_datasets(
+        datasets, failures = sync_datasets(
             client,
             models,
             superset_metrics,
@@ -238,6 +247,9 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     if exposures:
         exposures = os.path.expanduser(exposures)
         sync_exposures(client, Path(exposures), datasets, model_map)
+    
+    if failures and raise_failures:
+        list_failed_models(failures)
 
 
 def get_account_id(client: DBTClient) -> int:
@@ -432,6 +444,12 @@ def process_sl_metrics(
     "--access-url",
     help="Custom API URL for dbt Cloud (eg, https://ab123.us1.dbt.com)",
 )
+@click.option(
+    "--raise-failures",
+    is_flag=True,
+    default=False,
+    help="Ends the execution with an error in case a model failed to be synced",
+)
 @click.pass_context
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
@@ -448,6 +466,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
+    raise_failures: bool = False,
     access_url: Optional[str] = None,
 ) -> None:
     """
@@ -501,6 +520,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     sl_metrics = process_sl_metrics(dbt_client, job["environment_id"], model_map)
     superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
 
+    failures = []
+
     if exposures_only:
         datasets = [
             dataset
@@ -508,7 +529,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
             if ModelKey(dataset["schema"], dataset["table_name"]) in model_map
         ]
     else:
-        datasets = sync_datasets(
+        datasets, failures = sync_datasets(
             superset_client,
             models,
             superset_metrics,
@@ -522,3 +543,6 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     if exposures:
         exposures = os.path.expanduser(exposures)
         sync_exposures(superset_client, Path(exposures), datasets, model_map)
+
+    if failures and raise_failures:
+        list_failed_models(failures)

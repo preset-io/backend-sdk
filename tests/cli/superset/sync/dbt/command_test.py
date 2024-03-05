@@ -214,6 +214,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
@@ -259,7 +260,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     sync_exposures.assert_called_with(
         client,
         exposures,
-        sync_datasets(),
+        sync_datasets()[0],
         {("public", "messages_channels"): dbt_core_models[0]},
     )
 
@@ -290,6 +291,7 @@ def test_dbt_core_preserve_metadata(
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
@@ -336,7 +338,7 @@ def test_dbt_core_preserve_metadata(
     sync_exposures.assert_called_with(
         client,
         exposures,
-        sync_datasets(),
+        sync_datasets()[0],
         {("public", "messages_channels"): dbt_core_models[0]},
     )
 
@@ -365,6 +367,7 @@ def test_dbt_core_preserve_columns(
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
 
     runner = CliRunner()
@@ -431,6 +434,7 @@ def test_dbt_core_merge_metadata(
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
@@ -477,8 +481,106 @@ def test_dbt_core_merge_metadata(
     sync_exposures.assert_called_with(
         client,
         exposures,
-        sync_datasets(),
+        sync_datasets()[0],
         {("public", "messages_channels"): dbt_core_models[0]},
+    )
+
+
+def test_dbt_core_raise_failures_flag_no_failures(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with the ``--raise-failures`` flag.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=["working_dataset", []],
+    )
+    list_failed_models = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    list_failed_models.assert_not_called()
+    assert result.exit_code == 0
+
+
+def test_dbt_core_raise_failures_flag_with_failures(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with the ``--raise-failures`` flag
+    when datasets fail to sync.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=["working_dataset", ["failed_dataset", "another_failure"]],
+    )
+    list_failed_models = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    list_failed_models.assert_called_once_with(
+        ["failed_dataset", "another_failure"]
     )
 
 
@@ -636,6 +738,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
@@ -752,7 +855,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     sync_exposures.assert_called_with(
         client,
         exposures,
-        sync_datasets(),
+        sync_datasets()[0],
         {("public", "messages_channels"): dbt_core_models[0]},
     )
 
@@ -771,7 +874,10 @@ def test_dbt_core_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> Non
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.SupersetClient")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_database")
-    mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_datasets")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
+    )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
     )
@@ -814,7 +920,10 @@ def test_dbt_core_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> 
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
-    mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_datasets")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
+    )
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_exposures")
     # pylint: disable=redefined-outer-name
     os = mocker.patch("preset_cli.cli.superset.sync.dbt.command.os")
@@ -971,6 +1080,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
@@ -1050,6 +1160,7 @@ def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
@@ -1105,6 +1216,7 @@ def test_dbt_cloud_preserve_columns(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
@@ -1160,6 +1272,7 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
@@ -1241,6 +1354,7 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models

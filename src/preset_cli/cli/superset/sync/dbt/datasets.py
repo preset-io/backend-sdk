@@ -6,7 +6,7 @@ Sync dbt datasets/metrics to Superset.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.engine import create_engine
 from sqlalchemy.engine.url import URL as SQLAlchemyURL
@@ -16,6 +16,7 @@ from yarl import URL
 from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient, SupersetMetricDefinition
 from preset_cli.api.operators import OneToMany
+from preset_cli.exceptions import SupersetError
 
 DEFAULT_CERTIFICATION = {"details": "This table is produced by dbt"}
 
@@ -86,7 +87,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     certification: Optional[Dict[str, Any]] = None,
     reload_columns: bool = True,
     merge_metadata: bool = False,
-) -> List[Any]:
+) -> Tuple[List[Any], List[str]]:
     """
     Read the dbt manifest and import models as datasets with metrics.
     """
@@ -94,6 +95,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
 
     # add datasets
     datasets = []
+    failed_datasets = []
     for model in models:
         # load additional metadata from dbt model definition
         model_kwargs = model.get("meta", {}).pop("superset", {})
@@ -123,6 +125,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                 dataset = create_dataset(client, database, model)
             except Exception:  # pylint: disable=broad-except
                 _logger.exception("Unable to create dataset")
+                failed_datasets.append(model["unique_id"])
                 continue
 
         extra = {
@@ -174,13 +177,21 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
         if base_url:
             fragment = "!/model/{unique_id}".format(**model)
             update["external_url"] = str(base_url.with_fragment(fragment))
-        client.update_dataset(dataset["id"], override_columns=reload_columns, **update)
+        try:
+            client.update_dataset(dataset["id"], override_columns=reload_columns, **update)
+        except SupersetError:
+            failed_datasets.append(model["unique_id"])
+            continue
 
         if reload_columns and dataset_metrics:
             update = {
                 "metrics": dataset_metrics,
             }
-            client.update_dataset(dataset["id"], override_columns=False, **update)
+            try:
+                client.update_dataset(dataset["id"], override_columns=False, **update)
+            except SupersetError:
+                failed_datasets.append(model["unique_id"])
+                continue
 
         # update column descriptions
         if columns := model.get("columns"):
@@ -199,13 +210,15 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
                 # https://github.com/preset-io/backend-sdk/issues/163
                 if "is_active" in column and column["is_active"] is None:
                     del column["is_active"]
-
-            client.update_dataset(
-                dataset["id"],
-                override_columns=reload_columns,
-                columns=current_columns,
-            )
+            try:
+                client.update_dataset(
+                    dataset["id"],
+                    override_columns=reload_columns,
+                    columns=current_columns,
+                )
+            except SupersetError:
+                failed_datasets.append(model["unique_id"])
 
         datasets.append(dataset)
 
-    return datasets
+    return datasets, failed_datasets

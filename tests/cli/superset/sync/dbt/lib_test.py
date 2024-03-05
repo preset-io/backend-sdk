@@ -19,6 +19,7 @@ from preset_cli.cli.superset.sync.dbt.lib import (
     build_sqlalchemy_params,
     env_var,
     filter_models,
+    list_failed_models,
     load_profiles,
 )
 
@@ -619,3 +620,31 @@ def test_apply_select_using_path(fs: FakeFilesystem) -> None:
         "two",
         "three",
     }
+
+def test_list_failed_models_single_model(capsys) -> None:
+    """
+    Test ``list_failed_models()`` with a single failed model
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        list_failed_models(["single_failure"])
+
+    captured = capsys.readouterr()
+    expected_output = "Below model(s) failed to sync:\n - single_failure\n"
+    
+    assert captured.out == expected_output
+    assert excinfo.type == SystemExit
+    assert excinfo.value.code == 1
+
+def test_list_failed_models_multiple_models(capsys) -> None:
+    """
+    Test ``list_failed_models()`` with multipled failed models
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        list_failed_models(["single_failure", "another_failure"])
+
+    captured = capsys.readouterr()
+    expected_output = "Below model(s) failed to sync:\n - single_failure\n - another_failure\n"
+    
+    assert captured.out == expected_output
+    assert excinfo.type == SystemExit
+    assert excinfo.value.code == 1
