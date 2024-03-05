@@ -2,6 +2,7 @@
 A command to sync dbt models/metrics to Superset and charts/dashboards back as exposures.
 """
 
+import logging
 import os.path
 import subprocess
 import sys
@@ -32,6 +33,8 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_superset_metrics_per_model,
 )
 from preset_cli.exceptions import DatabaseNotFoundError
+
+_logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -360,8 +363,22 @@ def get_sl_metric(
 
     command = ["mf", "query", "--explain", "--metrics", metric["name"]]
     try:
+        _logger.info(
+            "Using `mf` command to retrieve SQL syntax for metric %s",
+            metric["name"],
+        )
         result = subprocess.run(command, capture_output=True, text=True, check=True)
+    except FileNotFoundError:
+        _logger.warning(
+            "`mf` command not found, if you're using Metricflow make sure you have it "
+            "installed in order to sync metrics",
+        )
+        return None
     except subprocess.CalledProcessError:
+        _logger.warning(
+            "Could not generate SQL for metric %s (this happens for some metrics)",
+            metric["name"],
+        )
         return None
 
     output = result.stdout.strip()

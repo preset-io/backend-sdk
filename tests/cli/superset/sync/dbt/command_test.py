@@ -1616,6 +1616,61 @@ FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_2""",
     )
 
 
+def test_dbt_core_metricflow_not_found(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command when ``mf`` is not found.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_metricflow_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles, contents=profiles_contents)
+    exposures = root / "models/exposures.yml"
+    fs.create_file(exposures)
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.subprocess.run",
+        side_effect=FileNotFoundError(2, "No such file or directory: 'mf'"),
+    )
+    _logger = mocker.patch("preset_cli.cli.superset.sync.dbt.command._logger")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--exposures",
+            str(exposures),
+            "--project",
+            "default",
+            "--target",
+            "dev",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    _logger.warning.assert_called_with(
+        "`mf` command not found, if you're using Metricflow make sure you have it "
+        "installed in order to sync metrics",
+    )
+
+
 def test_dbt_core_preserve_metadata(
     mocker: MockerFixture,
     fs: FakeFilesystem,
