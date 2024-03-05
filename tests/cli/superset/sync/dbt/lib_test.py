@@ -639,7 +639,7 @@ def test_list_failed_models_single_model(capsys) -> None:
 
 def test_list_failed_models_multiple_models(capsys) -> None:
     """
-    Test ``list_failed_models()`` with multipled failed models
+    Test ``list_failed_models()`` with multiple failed models
     """
     with pytest.raises(SystemExit) as excinfo:
         list_failed_models(["single_failure", "another_failure"])

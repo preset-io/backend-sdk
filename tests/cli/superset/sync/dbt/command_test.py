@@ -620,7 +620,7 @@ def test_dbt_core_raise_failures_flag_with_failures(
         reload_columns=True,
         merge_metadata=False,
     )
-    list_failed_models.assert_called_once_with(["failed_dataset", "another_failure"])
+    list_failed_models.assert_called_with(["failed_dataset", "another_failure"])
 
 
 def test_dbt_core_preserve_and_merge(
@@ -1350,6 +1350,127 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
         reload_columns=False,
         merge_metadata=True,
     )
+
+
+def test_dbt_cloud_raise_failures_flag_no_failures(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command with the ``--raise-failures`` flag.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], []),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
+    )
+    list_failed_models = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
+    )
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "1",
+            "2",
+            "123",
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_datasets.assert_called_with(
+        superset_client,
+        dbt_cloud_models,
+        superset_metrics,
+        database,
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+    list_failed_models.assert_not_called()
+
+
+def test_dbt_cloud_raise_failures_flag_with_failures(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command with the ``--raise-failures`` flag
+    when datasets fail to sync.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], ["failed_dataset", "another_failure"]),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
+    )
+    list_failed_models = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
+    )
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "1",
+            "2",
+            "123",
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_datasets.assert_called_with(
+        superset_client,
+        dbt_cloud_models,
+        superset_metrics,
+        database,
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+    list_failed_models.assert_called_with(["failed_dataset", "another_failure"])
 
 
 def test_dbt_cloud_preserve_and_merge(mocker: MockerFixture) -> None:

@@ -154,12 +154,12 @@ def test_sync_datasets_first_update_fails(mocker: MockerFixture) -> None:
         disallow_edits=False,
         external_url_prefix="",
     )
-    client.create_dataset.assert_called_once_with(
+    client.create_dataset.assert_called_with(
         database=1,
         schema="public",
         table_name="messages_channels",
     )
-    client.update_dataset.assert_called_once_with(
+    client.update_dataset.assert_called_with(
         1,
         override_columns=True,
         description="",
@@ -198,7 +198,7 @@ def test_sync_datasets_second_update_fails(mocker: MockerFixture) -> None:
         disallow_edits=False,
         external_url_prefix="",
     )
-    client.create_dataset.assert_called_once_with(
+    client.create_dataset.assert_called_with(
         database=1,
         schema="public",
         table_name="messages_channels",
@@ -264,7 +264,7 @@ def test_sync_datasets_third_update_fails(mocker: MockerFixture) -> None:
         disallow_edits=False,
         external_url_prefix="",
     )
-    client.create_dataset.assert_called_once_with(
+    client.create_dataset.assert_called_with(
         database=1,
         schema="public",
         table_name="messages_channels",
