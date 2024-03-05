@@ -104,6 +104,10 @@ def test_get_metric_expression() -> None:
         get_metric_expression("five", metrics)
     assert str(excinfo.value) == "Invalid metric five"
 
+    with pytest.raises(Exception) as excinfo:
+        get_metric_expression("six", {"six": {}})  # type: ignore
+    assert str(excinfo.value) == "Unable to generate metric expression from: {}"
+
 
 def test_get_metric_expression_new_schema() -> None:
     """

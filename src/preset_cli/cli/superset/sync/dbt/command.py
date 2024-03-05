@@ -139,9 +139,6 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
 
     if profiles is None:
         profiles = os.path.expanduser("~/.dbt/profiles.yml")
-    with open(profiles, encoding="utf-8") as inp:
-        config = yaml.safe_load(inp)
-        dialect = MFSQLEngine(config[project]["outputs"][target]["type"].upper())
 
     file_path = Path(file)
 
@@ -184,6 +181,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
 
     with open(manifest, encoding="utf-8") as input_:
         configs = yaml.load(input_, Loader=yaml.SafeLoader)
+
+    with open(profiles, encoding="utf-8") as input_:
+        config = yaml.safe_load(input_)
+    dialect = MFSQLEngine(config[project]["outputs"][target]["type"].upper())
 
     model_schema = ModelSchema()
     models = []
