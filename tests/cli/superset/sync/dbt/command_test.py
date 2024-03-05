@@ -548,8 +548,8 @@ def test_dbt_core_raise_failures_flag_no_failures(
         sync_database(),
         False,
         "",
-        reload_columns=False,
-        merge_metadata=True,
+        reload_columns=True,
+        merge_metadata=False,
     )
     list_failed_models.assert_not_called()
 
@@ -617,8 +617,8 @@ def test_dbt_core_raise_failures_flag_with_failures(
         sync_database(),
         False,
         "",
-        reload_columns=False,
-        merge_metadata=True,
+        reload_columns=True,
+        merge_metadata=False,
     )
     list_failed_models.assert_called_once_with(["failed_dataset", "another_failure"])
 
