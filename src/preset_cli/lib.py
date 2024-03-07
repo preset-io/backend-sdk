@@ -4,8 +4,10 @@ Basic helper functions.
 
 import json
 import logging
+import sys
+import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, NoReturn, Optional, Type, cast
 
 import click
 from requests import Response
@@ -122,3 +124,28 @@ def dict_merge(base: Dict[Any, Any], overrides: Dict[Any, Any]) -> None:
             dict_merge(base[k], overrides[k])
         else:
             base[k] = overrides[k]
+
+
+def log_warning(warn_message: str, warn_type: Type[Warning]) -> None:
+    """
+    Logs a warning message.
+    """
+    warnings.warn(
+        warn_message,
+        category=warn_type,
+        stacklevel=2,
+    )
+
+
+def raise_error(exit_code: int, error_message: Optional[str] = None) -> NoReturn:
+    """
+    Exits the execution with an error code.
+    """
+    if error_message:
+        click.echo(
+            click.style(
+                error_message,
+                fg="bright_red",
+            ),
+        )
+    sys.exit(exit_code)

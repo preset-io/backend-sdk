@@ -7,11 +7,9 @@ import json
 import logging
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
 
-import click
 import yaml
 from jinja2 import Environment
 from sqlalchemy.engine.url import URL
@@ -463,18 +461,12 @@ def apply_select(
     return list(selected.values())
 
 
-def list_failed_models(failed_models: List[str]) -> None:
+def list_failed_models(failed_models: List[str]) -> str:
     """
-    List models that failed to sync and ends execution with an error code
+    List models that failed to sync.
     """
     error_message = "Below model(s) failed to sync:"
     for failed_model in failed_models:
         error_message += f"\n - {failed_model}"
 
-    click.echo(
-        click.style(
-            error_message,
-            fg="bright_red",
-        ),
-    )
-    sys.exit(1)
+    return error_message

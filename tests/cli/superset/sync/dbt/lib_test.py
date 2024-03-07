@@ -622,33 +622,20 @@ def test_apply_select_using_path(fs: FakeFilesystem) -> None:
     }
 
 
-def test_list_failed_models_single_model(capsys) -> None:
+def test_list_failed_models_single_model(capsys: pytest.CaptureFixture[str]) -> None:
     """
     Test ``list_failed_models()`` with a single failed model
     """
-    with pytest.raises(SystemExit) as excinfo:
-        list_failed_models(["single_failure"])
-
-    captured = capsys.readouterr()
-    expected_output = "Below model(s) failed to sync:\n - single_failure\n"
-
-    assert captured.out == expected_output
-    assert excinfo.type == SystemExit
-    assert excinfo.value.code == 1
+    error_list = list_failed_models(["single_failure"])
+    assert error_list == "Below model(s) failed to sync:\n - single_failure"
 
 
-def test_list_failed_models_multiple_models(capsys) -> None:
+def test_list_failed_models_multiple_models() -> None:
     """
     Test ``list_failed_models()`` with multiple failed models
     """
-    with pytest.raises(SystemExit) as excinfo:
-        list_failed_models(["single_failure", "another_failure"])
-
-    captured = capsys.readouterr()
-    expected_output = (
-        "Below model(s) failed to sync:\n - single_failure\n - another_failure\n"
+    error_list = list_failed_models(["single_failure", "another_failure"])
+    assert (
+        error_list
+        == "Below model(s) failed to sync:\n - single_failure\n - another_failure"
     )
-
-    assert captured.out == expected_output
-    assert excinfo.type == SystemExit
-    assert excinfo.value.code == 1

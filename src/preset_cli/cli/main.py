@@ -21,7 +21,7 @@ from preset_cli.auth.jwt import JWTAuth
 from preset_cli.auth.lib import get_credentials_path, store_credentials
 from preset_cli.auth.preset import JWTTokenError, PresetAuth
 from preset_cli.cli.superset.main import superset
-from preset_cli.lib import setup_logging, split_comma
+from preset_cli.lib import raise_error, setup_logging, split_comma
 
 _logger = logging.getLogger(__name__)
 
@@ -139,13 +139,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                     api_token = credentials["api_token"]
                     api_secret = credentials["api_secret"]
                 except Exception:  # pylint: disable=broad-except
-                    click.echo(
-                        click.style(
-                            "Couldn't read credentials",
-                            fg="bright_red",
-                        ),
-                    )
-                    sys.exit(1)
+                    raise_error(1, "Couldn't read credentials")
             else:
                 manager_url = URL(baseurl.replace("api.", "manage."))
                 click.echo(
@@ -166,14 +160,11 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
         try:
             ctx.obj["AUTH"] = PresetAuth(manager_api_url, api_token, api_secret)
         except JWTTokenError:
-            click.echo(
-                click.style(
-                    "Failed to auth using the provided credentials."
-                    " Please run ``preset-cli auth``",
-                    fg="bright_red",
-                ),
+            error_message = (
+                "Failed to auth using the provided credentials."
+                " Please run ``preset-cli auth``"
             )
-            sys.exit(1)
+            raise_error(1, error_message)
 
     if not workspaces and ctx.invoked_subcommand == "superset" and not is_help():
         client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
@@ -189,13 +180,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                 i += 1
 
         if i == 0:
-            click.echo(
-                click.style(
-                    "No workspaces available",
-                    fg="bright_red",
-                ),
-            )
-            sys.exit(1)
+            raise_error(1, "No workspaces available")
         if i == 1:
             workspaces = hostnames
 
@@ -232,16 +217,11 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
 
     if show:
         if not credentials_path.exists():
-            click.echo(
-                click.style(
-                    (
-                        f"The file {credentials_path} doesn't exist. "
-                        "Run ``preset-cli auth`` to create it."
-                    ),
-                    fg="bright_red",
-                ),
+            error_message = (
+                f"The file {credentials_path} doesn't exist. "
+                "Run ``preset-cli auth`` to create it."
             )
-            sys.exit(1)
+            raise_error(1, error_message)
 
         ruler = "=" * len(str(credentials_path))
         with open(credentials_path, encoding="utf-8") as input_:
@@ -251,16 +231,11 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
         sys.exit(0)
 
     if credentials_path.exists() and not overwrite:
-        click.echo(
-            click.style(
-                (
-                    f"The file {credentials_path} already exists. "
-                    "Pass ``--overwrite`` to replace it."
-                ),
-                fg="bright_red",
-            ),
+        error_message = (
+            f"The file {credentials_path} already exists. "
+            "Pass ``--overwrite`` to replace it."
         )
-        sys.exit(1)
+        raise_error(1, error_message)
 
     manager_url = URL(baseurl.replace("api.", "manage."))
     manager_api_url = URL(baseurl)
@@ -288,13 +263,7 @@ def get_teams(client: PresetClient) -> List[str]:
         i += 1
 
     if i == 0:
-        click.echo(
-            click.style(
-                "No teams available",
-                fg="bright_red",
-            ),
-        )
-        sys.exit(1)
+        raise_error(1, "No teams available")
     if i == 1:
         return all_teams
 
@@ -351,13 +320,10 @@ def list_group_membership(
 
     # in case --save-report was used, confirm if a valid option was used before sending requests
     if save_report and save_report.casefold() not in {"yaml", "csv"}:
-        click.echo(
-            click.style(
-                "Invalid option. Please use ``--save-report=csv`` or ``--save-report=yaml``",
-                fg="bright_red",
-            ),
+        raise_error(
+            1,
+            "Invalid option. Please use ``--save-report=csv`` or ``--save-report=yaml``",
         )
-        sys.exit(1)
 
     for team in teams:
         # print the team name in case multiple teams were provided and it's not an export
