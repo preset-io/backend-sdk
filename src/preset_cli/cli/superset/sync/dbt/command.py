@@ -5,7 +5,6 @@ A command to sync dbt models/metrics to Superset and charts/dashboards back as e
 import logging
 import os.path
 import subprocess
-import sys
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -27,12 +26,13 @@ from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
-from preset_cli.cli.superset.sync.dbt.lib import apply_select
+from preset_cli.cli.superset.sync.dbt.lib import apply_select, list_failed_models
 from preset_cli.cli.superset.sync.dbt.metrics import (
     get_models_from_sql,
     get_superset_metrics_per_model,
 )
-from preset_cli.exceptions import DatabaseNotFoundError
+from preset_cli.exceptions import CLIError, DatabaseNotFoundError
+from preset_cli.lib import log_warning, raise_cli_errors
 
 _logger = logging.getLogger(__name__)
 
@@ -100,6 +100,13 @@ _logger = logging.getLogger(__name__)
     default=False,
     help="Update Preset configurations based on dbt metadata. Preset-only metrics are preserved",
 )
+@click.option(
+    "--raise-failures",
+    is_flag=True,
+    default=False,
+    help="End the execution with an error if a model fails to sync or a deprecated feature is used",
+)
+@raise_cli_errors
 @click.pass_context
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements
     ctx: click.core.Context,
@@ -117,6 +124,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
+    raise_failures: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Core to Superset and charts/dashboards to dbt exposures.
@@ -124,18 +132,16 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
+    deprecation_notice: bool = False
+    if raise_failures:
+        warnings.simplefilter("always", DeprecationWarning)
 
     if (preserve_columns or preserve_metadata) and merge_metadata:
-        click.echo(
-            click.style(
-                """
-                ``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``
-                can't be combined. Please include only one to the command.
-                """,
-                fg="bright_red",
-            ),
+        error_message = (
+            "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``\n"
+            "can't be combined. Please include only one to the command."
         )
-        sys.exit(1)
+        raise CLIError(error_message, 1)
 
     reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
     preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
@@ -146,24 +152,18 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     file_path = Path(file)
 
     if "MANAGER_URL" not in ctx.obj and disallow_edits:
-        warnings.warn(
-            (
-                "The managed externally feature was only introduced in Superset v1.5."
-                "Make sure you are running a compatible version."
-            ),
-            category=UserWarning,
-            stacklevel=2,
+        warn_message = (
+            "The managed externally feature was only introduced in Superset v1.5."
+            "Make sure you are running a compatible version."
         )
-
+        log_warning(warn_message, UserWarning)
     if file_path.name == "manifest.json":
-        warnings.warn(
-            (
-                "Passing the manifest.json file is deprecated. "
-                "Please pass the dbt_project.yml file instead."
-            ),
-            category=DeprecationWarning,
-            stacklevel=2,
+        deprecation_notice = True
+        warn_message = (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
         )
+        log_warning(warn_message, DeprecationWarning)
         manifest = file_path
         profile = project = project or "default"
     elif file_path.name == "dbt_project.yml":
@@ -174,13 +174,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         profile = dbt_project["profile"]
         project = project or dbt_project["name"]
     else:
-        click.echo(
-            click.style(
-                "FILE should be either ``manifest.json`` or ``dbt_project.yml``",
-                fg="bright_red",
-            ),
+        raise CLIError(
+            "FILE should be either ``manifest.json`` or ``dbt_project.yml``",
+            1,
         )
-        sys.exit(1)
 
     with open(manifest, encoding="utf-8") as input_:
         configs = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -200,6 +197,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
     model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
+
+    failures: List[str] = []
 
     if exposures_only:
         datasets = [
@@ -237,7 +236,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             click.echo("No database was found, pass ``--import-db`` to create")
             return
 
-        datasets = sync_datasets(
+        datasets, failures = sync_datasets(
             client,
             models,
             superset_metrics,
@@ -252,6 +251,13 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         exposures = os.path.expanduser(exposures)
         sync_exposures(client, Path(exposures), datasets, model_map)
 
+    if failures and raise_failures:
+        failed_models = list_failed_models(failures)
+        raise CLIError(failed_models, 1)
+
+    if deprecation_notice and raise_failures:
+        raise CLIError("Review deprecation warnings", 1)
+
 
 def get_account_id(client: DBTClient) -> int:
     """
@@ -259,8 +265,7 @@ def get_account_id(client: DBTClient) -> int:
     """
     accounts = client.get_accounts()
     if not accounts:
-        click.echo(click.style("No accounts available", fg="bright_red"))
-        sys.exit(1)
+        raise CLIError("No accounts available", 1)
     if len(accounts) == 1:
         account = accounts[0]
         click.echo(
@@ -290,8 +295,7 @@ def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
 
     projects = client.get_projects(account_id)
     if not projects:
-        click.echo(click.style("No project available", fg="bright_red"))
-        sys.exit(1)
+        raise CLIError("No project available", 1)
     if len(projects) == 1:
         return projects[0]["id"]
     click.echo("Choose a project:")
@@ -324,8 +328,7 @@ def get_job(
 
     jobs = client.get_jobs(account_id, project_id)
     if not jobs:
-        click.echo(click.style("No jobs available", fg="bright_red"))
-        sys.exit(1)
+        raise CLIError("No jobs available", 1)
 
     if job_id is None:
         if len(jobs) == 1:
@@ -496,7 +499,14 @@ def fetch_sl_metrics(
     "--access-url",
     help="Custom API URL for dbt Cloud (eg, https://ab123.us1.dbt.com)",
 )
+@click.option(
+    "--raise-failures",
+    is_flag=True,
+    default=False,
+    help="End the execution with an error if a model fails to sync or a deprecated feature is used",
+)
 @click.pass_context
+@raise_cli_errors
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
     token: str,
@@ -512,6 +522,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
+    raise_failures: bool = False,
     access_url: Optional[str] = None,
 ) -> None:
     """
@@ -525,25 +536,20 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     dbt_client = DBTClient(dbt_auth, access_url)
 
     if (preserve_columns or preserve_metadata) and merge_metadata:
-        click.echo(
-            click.style(
-                """
-                ``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``
-                can't be combined. Please include only one to the command.
-                """,
-                fg="bright_red",
-            ),
+        error_message = (
+            "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``\n"
+            "can't be combined. Please include only one to the command."
         )
-        sys.exit(1)
+        raise CLIError(error_message, 1)
 
     reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
     preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
     try:
         job = get_job(dbt_client, account_id, project_id, job_id)
-    except ValueError:
-        click.echo(click.style(f"Job {job_id} not available", fg="bright_red"))
-        sys.exit(2)
+    except ValueError as excinfo:
+        error_message = f"Job {job_id} not available"
+        raise CLIError(error_message, 2) from excinfo
 
     # with dbt cloud the database must already exist
     database_name = dbt_client.get_database_name(job["id"])
@@ -565,6 +571,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     sl_metrics = fetch_sl_metrics(dbt_client, job["environment_id"], model_map)
     superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
 
+    failures: List[str] = []
+
     if exposures_only:
         datasets = [
             dataset
@@ -572,7 +580,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
             if ModelKey(dataset["schema"], dataset["table_name"]) in model_map
         ]
     else:
-        datasets = sync_datasets(
+        datasets, failures = sync_datasets(
             superset_client,
             models,
             superset_metrics,
@@ -586,3 +594,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     if exposures:
         exposures = os.path.expanduser(exposures)
         sync_exposures(superset_client, Path(exposures), datasets, model_map)
+
+    if failures and raise_failures:
+        failed_models = list_failed_models(failures)
+        raise CLIError(failed_models, 1)

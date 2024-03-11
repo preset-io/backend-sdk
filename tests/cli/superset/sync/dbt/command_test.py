@@ -4,7 +4,6 @@ Tests for the dbt import command.
 # pylint: disable=invalid-name, too-many-lines, line-too-long
 
 import os
-import warnings
 from pathlib import Path
 from subprocess import CalledProcessError
 
@@ -21,7 +20,7 @@ from preset_cli.cli.superset.sync.dbt.command import (
     get_job,
     get_project_id,
 )
-from preset_cli.exceptions import DatabaseNotFoundError
+from preset_cli.exceptions import CLIError, DatabaseNotFoundError
 
 dirname, _ = os.path.split(os.path.abspath(__file__))
 with open(os.path.join(dirname, "manifest.json"), encoding="utf-8") as fp:
@@ -1376,11 +1375,13 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    log_warning = mocker.patch("preset_cli.cli.superset.sync.dbt.command.log_warning")
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
@@ -1406,6 +1407,13 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
+    log_warning.assert_called_with(
+        (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
+        ),
+        DeprecationWarning,
+    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -1430,7 +1438,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     sync_exposures.assert_called_with(
         client,
         exposures,
-        sync_datasets(),
+        sync_datasets()[0],
         {("public", "messages_channels"): dbt_core_models[0]},
     )
 
@@ -1691,12 +1699,14 @@ def test_dbt_core_preserve_metadata(
         "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
     )
     client = SupersetClient()
+    log_warning = mocker.patch("preset_cli.cli.superset.sync.dbt.command.log_warning")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
@@ -1723,6 +1733,13 @@ def test_dbt_core_preserve_metadata(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
+    log_warning.assert_called_with(
+        (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
+        ),
+        DeprecationWarning,
+    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -1747,7 +1764,7 @@ def test_dbt_core_preserve_metadata(
     sync_exposures.assert_called_with(
         client,
         exposures,
-        sync_datasets(),
+        sync_datasets()[0],
         {("public", "messages_channels"): dbt_core_models[0]},
     )
 
@@ -1770,12 +1787,14 @@ def test_dbt_core_preserve_columns(
         "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
     )
     client = SupersetClient()
+    log_warning = mocker.patch("preset_cli.cli.superset.sync.dbt.command.log_warning")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
 
     runner = CliRunner()
@@ -1797,6 +1816,13 @@ def test_dbt_core_preserve_columns(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
+    log_warning.assert_called_with(
+        (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
+        ),
+        DeprecationWarning,
+    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -1841,11 +1867,13 @@ def test_dbt_core_merge_metadata(
     )
     client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    log_warning = mocker.patch("preset_cli.cli.superset.sync.dbt.command.log_warning")
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
@@ -1872,6 +1900,13 @@ def test_dbt_core_merge_metadata(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
+    log_warning.assert_called_with(
+        (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
+        ),
+        DeprecationWarning,
+    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -1896,8 +1931,333 @@ def test_dbt_core_merge_metadata(
     sync_exposures.assert_called_with(
         client,
         exposures,
-        sync_datasets(),
+        sync_datasets()[0],
         {("public", "messages_channels"): dbt_core_models[0]},
+    )
+
+
+def test_dbt_core_raise_failures_flag_no_failures(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with the ``--raise-failures`` flag.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    dbt_project = root / "default/dbt_project.yml"
+    fs.create_file(
+        dbt_project,
+        contents=yaml.dump(
+            {
+                "name": "my_project",
+                "profile": "default",
+                "target-path": "target",
+            },
+        ),
+    )
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles, contents=profiles_contents)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], []),
+    )
+    list_failed_models = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(dbt_project),
+            "--profiles",
+            str(profiles),
+            "--target",
+            "dev",
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "my_project",
+        "default",
+        "dev",
+        False,
+        False,
+        "",
+    )
+    sync_datasets.assert_called_with(
+        client,
+        dbt_core_models,
+        superset_metrics,
+        sync_database(),
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+    list_failed_models.assert_not_called()
+
+
+def test_dbt_core_raise_failures_flag_deprecation_warning(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with the ``--raise-failures`` flag
+    with a deprecation warning.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles, contents=profiles_contents)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], []),
+    )
+    list_failed_models = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
+    )
+    log_warning = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.log_warning",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--target",
+            "dev",
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    log_warning.assert_called_with(
+        (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
+        ),
+        DeprecationWarning,
+    )
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "default",
+        "default",
+        "dev",
+        False,
+        False,
+        "",
+    )
+    sync_datasets.assert_called_with(
+        client,
+        dbt_core_models,
+        superset_metrics,
+        sync_database(),
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+    list_failed_models.assert_not_called()
+
+
+def test_dbt_core_raise_failures_flag_with_failures(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with the ``--raise-failures`` flag
+    when datasets fail to sync.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    dbt_project = root / "default/dbt_project.yml"
+    fs.create_file(
+        dbt_project,
+        contents=yaml.dump(
+            {
+                "name": "my_project",
+                "profile": "default",
+                "target-path": "target",
+            },
+        ),
+    )
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles, contents=profiles_contents)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], ["failed_dataset", "another_failure"]),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(dbt_project),
+            "--profiles",
+            str(profiles),
+            "--target",
+            "dev",
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    assert (
+        "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n"
+        in result.output
+    )
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "my_project",
+        "default",
+        "dev",
+        False,
+        False,
+        "",
+    )
+    sync_datasets.assert_called_with(
+        client,
+        dbt_core_models,
+        superset_metrics,
+        sync_database(),
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+
+
+def test_dbt_core_raise_failures_flag_with_failures_and_deprecation(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command with the ``--raise-failures`` flag
+    when datasets fail to sync.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles, contents=profiles_contents)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], ["failed_dataset", "another_failure"]),
+    )
+    log_warning = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.log_warning",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--target",
+            "dev",
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    log_warning.assert_called_with(
+        (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
+        ),
+        DeprecationWarning,
+    )
+    assert (
+        "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n"
+        in result.output
+    )
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "default",
+        "default",
+        "dev",
+        False,
+        False,
+        "",
+    )
+    sync_datasets.assert_called_with(
+        client,
+        dbt_core_models,
+        superset_metrics,
+        sync_database(),
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
     )
 
 
@@ -1915,8 +2275,6 @@ def test_dbt_core_preserve_and_merge(
     fs.create_file(manifest, contents=manifest_contents)
     profiles = root / ".dbt/profiles.yml"
     fs.create_file(profiles, contents=profiles_contents)
-    exposures = root / "models/exposures.yml"
-    fs.create_file(exposures)
 
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
@@ -1930,8 +2288,6 @@ def test_dbt_core_preserve_and_merge(
             str(manifest),
             "--profiles",
             str(profiles),
-            "--exposures",
-            str(exposures),
             "--preserve-metadata",
             "--merge-metadata",
             "--project",
@@ -1942,6 +2298,11 @@ def test_dbt_core_preserve_and_merge(
         catch_exceptions=False,
     )
     assert result.exit_code == 1
+    assert (
+        "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``"
+        in result.output
+    )
+    assert "can't be combined. Please include only one to the command." in result.output
 
 
 def test_dbt_core_dbt_project(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -2056,11 +2417,15 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    log_warning = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.log_warning",
+    )
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
@@ -2086,6 +2451,13 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
+    log_warning.assert_called_with(
+        (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
+        ),
+        DeprecationWarning,
+    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -2181,7 +2553,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     sync_exposures.assert_called_with(
         client,
         exposures,
-        sync_datasets(),
+        sync_datasets()[0],
         {("public", "messages_channels"): dbt_core_models[0]},
     )
 
@@ -2200,7 +2572,10 @@ def test_dbt_core_no_exposures(mocker: MockerFixture, fs: FakeFilesystem) -> Non
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.SupersetClient")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_database")
-    mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_datasets")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
+    )
     sync_exposures = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_exposures",
     )
@@ -2247,7 +2622,10 @@ def test_dbt_core_default_profile(mocker: MockerFixture, fs: FakeFilesystem) -> 
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
-    mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_datasets")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
+    )
     mocker.patch("preset_cli.cli.superset.sync.dbt.command.sync_exposures")
     # pylint: disable=redefined-outer-name
     os = mocker.patch("preset_cli.cli.superset.sync.dbt.command.os")
@@ -2356,35 +2734,37 @@ def test_dbt_core_disallow_edits_superset(
     )
     client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    log_warning = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.log_warning",
+    )
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
 
     runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(dbt_project),
+            "--profiles",
+            str(profiles),
+            "--target",
+            "dev",
+            "--disallow-edits",
+        ],
+        catch_exceptions=False,
+    )
 
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        result = runner.invoke(
-            superset_cli,
-            [
-                "https://superset.example.org/",
-                "sync",
-                "dbt-core",
-                str(dbt_project),
-                "--profiles",
-                str(profiles),
-                "--disallow-edits",
-                "--target",
-                "dev",
-            ],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0
-
-    assert issubclass(w[0].category, UserWarning)
-    assert (
-        "The managed externally feature was only introduced in Superset v1.5."
-        in str(w[0].message)
+    assert result.exit_code == 0
+    log_warning.assert_called_with(
+        (
+            "The managed externally feature was only introduced in Superset v1.5."
+            "Make sure you are running a compatible version."
+        ),
+        UserWarning,
     )
 
     sync_database.assert_called_with(
@@ -2414,6 +2794,7 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
@@ -2493,6 +2874,7 @@ def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
@@ -2548,6 +2930,7 @@ def test_dbt_cloud_preserve_columns(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
@@ -2603,6 +2986,7 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.get_job",
@@ -2643,12 +3027,158 @@ def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     )
 
 
+def test_dbt_cloud_raise_failures_flag_no_failures(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command with the ``--raise-failures`` flag.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], []),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
+    )
+    list_failed_models = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
+    )
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "1",
+            "2",
+            "123",
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_datasets.assert_called_with(
+        superset_client,
+        dbt_cloud_models,
+        superset_metrics,
+        database,
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+    list_failed_models.assert_not_called()
+
+
+def test_dbt_cloud_raise_failures_flag_with_failures(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command with the ``--raise-failures`` flag
+    when datasets fail to sync.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], ["failed_dataset", "another_failure"]),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
+    )
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "1",
+            "2",
+            "123",
+            "--raise-failures",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    assert (
+        "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n"
+        in result.output
+    )
+    sync_datasets.assert_called_with(
+        superset_client,
+        dbt_cloud_models,
+        superset_metrics,
+        database,
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+
+
 def test_dbt_cloud_preserve_and_merge(mocker: MockerFixture) -> None:
     """
     Test the ``dbt-cloud`` command with both
     the ``--preserve-metadata`` and ``--merge-metadata`` flags.
     """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], ["failed_dataset", "another_failure"]),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
+    )
+
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
 
     runner = CliRunner()
     result = runner.invoke(
@@ -2667,6 +3197,11 @@ def test_dbt_cloud_preserve_and_merge(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 1
+    assert (
+        "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``"
+        in result.output
+    )
+    assert "can't be combined. Please include only one to the command." in result.output
 
 
 def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
@@ -2684,6 +3219,7 @@ def test_dbt_cloud_no_job_id(mocker: MockerFixture) -> None:
     dbt_client = DBTClient()
     sync_datasets = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
     )
 
     dbt_client.get_models.return_value = dbt_cloud_models
@@ -2731,10 +3267,11 @@ def test_get_account_id(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
 
     client.get_accounts.return_value = []
-    with pytest.raises(SystemExit) as excinfo:
+    with pytest.raises(CLIError) as excinfo:
         get_account_id(client)
-    assert excinfo.type == SystemExit
-    assert excinfo.value.code == 1
+    assert excinfo.type == CLIError
+    assert excinfo.value.exit_code == 1
+    assert "No accounts available" in str(excinfo.value)
 
     client.get_accounts.return_value = [
         {"id": 1, "name": "My account"},
@@ -2759,10 +3296,11 @@ def test_get_project_id(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
 
     client.get_projects.return_value = []
-    with pytest.raises(SystemExit) as excinfo:
+    with pytest.raises(CLIError) as excinfo:
         get_project_id(client, account_id=42)
-    assert excinfo.type == SystemExit
-    assert excinfo.value.code == 1
+    assert excinfo.type == CLIError
+    assert excinfo.value.exit_code == 1
+    assert "No project available" in str(excinfo.value)
 
     client.get_projects.return_value = [
         {"id": 1, "name": "My project"},
@@ -2797,10 +3335,11 @@ def test_get_job(mocker: MockerFixture) -> None:
     client = mocker.MagicMock()
 
     client.get_jobs.return_value = []
-    with pytest.raises(SystemExit) as excinfo:
+    with pytest.raises(CLIError) as excinfo:
         get_job(client, account_id=42, project_id=43)
-    assert excinfo.type == SystemExit
-    assert excinfo.value.code == 1
+    assert excinfo.type == CLIError
+    assert excinfo.value.exit_code == 1
+    assert "No jobs available" in str(excinfo.value)
 
     client.get_jobs.return_value = [
         {"id": 1, "name": "My job", "environment_id": 456},
@@ -2908,7 +3447,7 @@ def test_dbt_cloud_invalid_job_id(mocker: MockerFixture) -> None:
     )
 
     runner = CliRunner()
-    result = runner.invoke(
+    runner.invoke(
         superset_cli,
         [
             "https://superset.example.org/",
@@ -2921,8 +3460,6 @@ def test_dbt_cloud_invalid_job_id(mocker: MockerFixture) -> None:
         ],
         catch_exceptions=False,
     )
-    assert result.exit_code == 2
-    assert result.output == "Job 123 not available\n"
 
 
 def test_dbt_cloud_multiple_databases(mocker: MockerFixture) -> None:

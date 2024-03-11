@@ -4,14 +4,16 @@ Basic helper functions.
 
 import json
 import logging
+import sys
+import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, Type, cast
 
 import click
 from requests import Response
 from rich.logging import RichHandler
 
-from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
+from preset_cli.exceptions import CLIError, ErrorLevel, ErrorPayload, SupersetError
 
 _logger = logging.getLogger(__name__)
 
@@ -40,6 +42,7 @@ def setup_logging(loglevel: str) -> None:
         handlers=[RichHandler()],
         force=True,
     )
+    logging.captureWarnings(True)
 
 
 def deserialize_error_level(errors: List[Dict[str, Any]]) -> List[ErrorPayload]:
@@ -122,3 +125,34 @@ def dict_merge(base: Dict[Any, Any], overrides: Dict[Any, Any]) -> None:
             dict_merge(base[k], overrides[k])
         else:
             base[k] = overrides[k]
+
+
+def log_warning(warn_message: str, warn_type: Type[Warning]) -> None:
+    """
+    Logs a warning message.
+    """
+    warnings.warn(
+        warn_message,
+        category=warn_type,
+        stacklevel=2,
+    )
+
+
+def raise_cli_errors(function: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    Decorator to catch any CLIError raised and exits the execution with an error code.
+    """
+
+    def wrapper(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except CLIError as excinfo:
+            click.echo(
+                click.style(
+                    str(excinfo),
+                    fg="bright_red",
+                ),
+            )
+            sys.exit(excinfo.exit_code)
+
+    return wrapper

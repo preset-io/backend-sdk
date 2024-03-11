@@ -3,12 +3,20 @@ Tests for ``preset_cli.lib``.
 """
 
 import logging
+import warnings
 
 import pytest
 from pytest_mock import MockerFixture
 
-from preset_cli.exceptions import ErrorLevel, SupersetError
-from preset_cli.lib import dict_merge, remove_root, setup_logging, validate_response
+from preset_cli.exceptions import CLIError, ErrorLevel, SupersetError
+from preset_cli.lib import (
+    dict_merge,
+    log_warning,
+    raise_cli_errors,
+    remove_root,
+    setup_logging,
+    validate_response,
+)
 
 
 def test_remove_root() -> None:
@@ -104,3 +112,52 @@ def test_dict_merge() -> None:
     overrides = {"a": {"c": 44}, "d": 2, "f": 3}
     dict_merge(base, overrides)
     assert base == {"a": {"b": 42, "c": 44}, "d": 2, "e": 3, "f": 3}
+
+
+def test_log_warning(mocker: MockerFixture) -> None:
+    """
+    Test ``log_warning``.
+    """
+    mock_warn = mocker.patch.object(warnings, "warn")
+    test_warning = "Test warning message"
+    test_warning_type = UserWarning
+    log_warning(test_warning, test_warning_type)
+    mock_warn.assert_called_once_with(
+        test_warning,
+        category=test_warning_type,
+        stacklevel=2,
+    )
+
+
+def test_raise_cli_errors_decorator_when_raising(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Test the ``raise_cli_errors`` decorator when a CLI error is raised.
+    """
+
+    @raise_cli_errors
+    def mock_function():
+        raise CLIError("Error", 1)
+
+    with pytest.raises(SystemExit) as excinfo:
+        mock_function()
+
+    assert excinfo.type == SystemExit
+    assert excinfo.value.code == 1
+
+    output_content = capsys.readouterr()
+    assert "Error" in output_content.out
+
+
+def test_raise_cli_errors_decorator_when_not_raising() -> None:
+    """
+    Test the ``raise_cli_errors`` decorator when no error is raised.
+    """
+
+    @raise_cli_errors
+    def mock_function():
+        return "All good!"
+
+    result = mock_function()
+    assert result == "All good!"

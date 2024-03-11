@@ -19,6 +19,7 @@ from preset_cli.cli.superset.sync.dbt.lib import (
     build_sqlalchemy_params,
     env_var,
     filter_models,
+    list_failed_models,
     load_profiles,
 )
 
@@ -619,3 +620,22 @@ def test_apply_select_using_path(fs: FakeFilesystem) -> None:
         "two",
         "three",
     }
+
+
+def test_list_failed_models_single_model() -> None:
+    """
+    Test ``list_failed_models()`` with a single failed model
+    """
+    error_list = list_failed_models(["single_failure"])
+    assert error_list == "Below model(s) failed to sync:\n - single_failure"
+
+
+def test_list_failed_models_multiple_models() -> None:
+    """
+    Test ``list_failed_models()`` with multiple failed models
+    """
+    error_list = list_failed_models(["single_failure", "another_failure"])
+    assert (
+        error_list
+        == "Below model(s) failed to sync:\n - single_failure\n - another_failure"
+    )

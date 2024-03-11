@@ -459,3 +459,14 @@ def apply_select(
                 del selected[id_]
 
     return list(selected.values())
+
+
+def list_failed_models(failed_models: List[str]) -> str:
+    """
+    List models that failed to sync.
+    """
+    error_message = "Below model(s) failed to sync:"
+    for failed_model in failed_models:
+        error_message += f"\n - {failed_model}"
+
+    return error_message
