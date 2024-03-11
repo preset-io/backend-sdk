@@ -104,7 +104,7 @@ _logger = logging.getLogger(__name__)
     "--raise-failures",
     is_flag=True,
     default=False,
-    help="End the execution with an error if a model faila to sync or a deprecated feature is used",
+    help="End the execution with an error if a model fails to sync or a deprecated feature is used",
 )
 @raise_cli_errors
 @click.pass_context
@@ -503,7 +503,7 @@ def fetch_sl_metrics(
     "--raise-failures",
     is_flag=True,
     default=False,
-    help="End the execution with an error if a model faila to sync or a deprecated feature is used",
+    help="End the execution with an error if a model fails to sync or a deprecated feature is used",
 )
 @click.pass_context
 @raise_cli_errors
