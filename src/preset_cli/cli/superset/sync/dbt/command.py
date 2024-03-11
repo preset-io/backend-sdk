@@ -3,12 +3,12 @@ A command to sync dbt models/metrics to Superset and charts/dashboards back as e
 """
 
 import os.path
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import click
 import yaml
-import warnings
 from yarl import URL
 
 from preset_cli.api.clients.dbt import (
@@ -30,6 +30,7 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
 )
 from preset_cli.exceptions import CLIError, DatabaseNotFoundError
 from preset_cli.lib import log_warning, raise_cli_errors
+
 
 @click.command()
 @click.argument("file", type=click.Path(exists=True, resolve_path=True))
@@ -125,10 +126,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     """
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
-    client = SupersetClient(url, auth)    
+    client = SupersetClient(url, auth)
     deprecation_notice: bool = False
     if raise_failures:
-        warnings.simplefilter('always', DeprecationWarning)
+        warnings.simplefilter("always", DeprecationWarning)
 
     if (preserve_columns or preserve_metadata) and merge_metadata:
         error_message = (
@@ -168,7 +169,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         profile = dbt_project["profile"]
         project = project or dbt_project["name"]
     else:
-        raise CLIError("FILE should be either ``manifest.json`` or ``dbt_project.yml``", 1)
+        raise CLIError(
+            "FILE should be either ``manifest.json`` or ``dbt_project.yml``",
+            1,
+        )
 
     with open(manifest, encoding="utf-8") as input_:
         configs = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -479,9 +483,9 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
 
     try:
         job = get_job(dbt_client, account_id, project_id, job_id)
-    except ValueError:
+    except ValueError as excinfo:
         error_message = f"Job {job_id} not available"
-        raise CLIError(error_message, 2)
+        raise CLIError(error_message, 2) from excinfo
 
     # with dbt cloud the database must already exist
     database_name = dbt_client.get_database_name(job["id"])

@@ -138,19 +138,21 @@ def log_warning(warn_message: str, warn_type: Type[Warning]) -> None:
     )
 
 
-def raise_cli_errors(f: Callable[..., Any]) -> Callable[..., Any]:
+def raise_cli_errors(function: Callable[..., Any]) -> Callable[..., Any]:
     """
     Decorator to catch any CLIError raised and exits the execution with an error code.
     """
+
     def wrapper(*args, **kwargs):
         try:
-            return f(*args, **kwargs)
-        except CLIError as e:
+            return function(*args, **kwargs)
+        except CLIError as excinfo:
             click.echo(
                 click.style(
-                    str(e),
+                    str(excinfo),
                     fg="bright_red",
                 ),
             )
-            sys.exit(e.exit_code)
+            sys.exit(excinfo.exit_code)
+
     return wrapper

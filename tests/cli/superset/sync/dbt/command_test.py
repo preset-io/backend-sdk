@@ -5,7 +5,6 @@ Tests for the dbt import command.
 
 import os
 from pathlib import Path
-from unittest.mock import call
 
 import pytest
 import yaml
@@ -630,7 +629,7 @@ def test_dbt_core_raise_failures_flag_deprecation_warning(
     log_warning = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.log_warning",
     )
-    
+
     runner = CliRunner()
     result = runner.invoke(
         superset_cli,
@@ -730,7 +729,10 @@ def test_dbt_core_raise_failures_flag_with_failures(
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    assert "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n" in result.output
+    assert (
+        "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n"
+        in result.output
+    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -780,7 +782,7 @@ def test_dbt_core_raise_failures_flag_with_failures_and_deprecation(
         "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
         return_value=(["working_dataset"], ["failed_dataset", "another_failure"]),
     )
-    
+
     runner = CliRunner()
     result = runner.invoke(
         superset_cli,
@@ -796,9 +798,12 @@ def test_dbt_core_raise_failures_flag_with_failures_and_deprecation(
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    #assert "manifest.json file is deprecated" in result.output
-    #assert "pass the dbt_project.yml file instead." in result.output
-    assert "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n" in result.output
+    # assert "manifest.json file is deprecated" in result.output
+    # assert "pass the dbt_project.yml file instead." in result.output
+    assert (
+        "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n"
+        in result.output
+    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -857,7 +862,10 @@ def test_dbt_core_preserve_and_merge(
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    assert "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``" in result.output
+    assert (
+        "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``"
+        in result.output
+    )
     assert "can't be combined. Please include only one to the command." in result.output
 
 
@@ -1668,7 +1676,10 @@ def test_dbt_cloud_raise_failures_flag_with_failures(mocker: MockerFixture) -> N
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    assert "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n" in result.output
+    assert (
+        "Below model(s) failed to sync:\n - failed_dataset\n - another_failure\n"
+        in result.output
+    )
     sync_datasets.assert_called_with(
         superset_client,
         dbt_cloud_models,
@@ -1730,7 +1741,10 @@ def test_dbt_cloud_preserve_and_merge(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    assert "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``" in result.output
+    assert (
+        "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``"
+        in result.output
+    )
     assert "can't be combined. Please include only one to the command." in result.output
 
 

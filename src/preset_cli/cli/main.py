@@ -21,8 +21,8 @@ from preset_cli.auth.jwt import JWTAuth
 from preset_cli.auth.lib import get_credentials_path, store_credentials
 from preset_cli.auth.preset import JWTTokenError, PresetAuth
 from preset_cli.cli.superset.main import superset
-from preset_cli.lib import raise_cli_errors, setup_logging, split_comma
 from preset_cli.exceptions import CLIError
+from preset_cli.lib import raise_cli_errors, setup_logging, split_comma
 
 _logger = logging.getLogger(__name__)
 
@@ -140,8 +140,8 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                         credentials = yaml.load(input_, Loader=yaml.SafeLoader)
                     api_token = credentials["api_token"]
                     api_secret = credentials["api_secret"]
-                except Exception:  # pylint: disable=broad-except
-                    raise CLIError("Couldn't read credentials", 1)
+                except Exception as excinfo:  # pylint: disable=broad-except
+                    raise CLIError("Couldn't read credentials", 1) from excinfo
             else:
                 manager_url = URL(baseurl.replace("api.", "manage."))
                 click.echo(
@@ -161,12 +161,12 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
         api_secret = cast(str, api_secret)
         try:
             ctx.obj["AUTH"] = PresetAuth(manager_api_url, api_token, api_secret)
-        except JWTTokenError:
+        except JWTTokenError as excinfo:
             error_message = (
                 "Failed to auth using the provided credentials."
                 " Please run ``preset-cli auth``"
             )
-            raise CLIError(error_message, 1)
+            raise CLIError(error_message, 1) from excinfo
 
     if not workspaces and ctx.invoked_subcommand == "superset" and not is_help():
         client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
