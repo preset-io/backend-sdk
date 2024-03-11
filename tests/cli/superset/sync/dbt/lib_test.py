@@ -622,7 +622,7 @@ def test_apply_select_using_path(fs: FakeFilesystem) -> None:
     }
 
 
-def test_list_failed_models_single_model(capsys: pytest.CaptureFixture[str]) -> None:
+def test_list_failed_models_single_model() -> None:
     """
     Test ``list_failed_models()`` with a single failed model
     """

@@ -54,3 +54,12 @@ class DatabaseNotFoundError(SupersetError):
                 },
             ],
         )
+
+class CLIError(Exception):
+    """
+    Exception raised for errors that occur during the CLI execution that should
+    stop the execution with an exit code.
+    """
+    def __init__(self, message: str, exit_code: int):
+        super().__init__(message)
+        self.exit_code = exit_code

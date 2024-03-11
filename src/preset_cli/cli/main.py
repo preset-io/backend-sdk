@@ -21,7 +21,8 @@ from preset_cli.auth.jwt import JWTAuth
 from preset_cli.auth.lib import get_credentials_path, store_credentials
 from preset_cli.auth.preset import JWTTokenError, PresetAuth
 from preset_cli.cli.superset.main import superset
-from preset_cli.lib import raise_error, setup_logging, split_comma
+from preset_cli.lib import raise_cli_errors, setup_logging, split_comma
+from preset_cli.exceptions import CLIError
 
 _logger = logging.getLogger(__name__)
 
@@ -103,6 +104,7 @@ workspace_role_identifiers = {
 @click.option("--loglevel", default="INFO")
 @click.version_option()
 @click.pass_context
+@raise_cli_errors
 def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-arguments, too-many-statements
     ctx: click.core.Context,
     baseurl: str,
@@ -139,7 +141,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                     api_token = credentials["api_token"]
                     api_secret = credentials["api_secret"]
                 except Exception:  # pylint: disable=broad-except
-                    raise_error(1, "Couldn't read credentials")
+                    raise CLIError("Couldn't read credentials", 1)
             else:
                 manager_url = URL(baseurl.replace("api.", "manage."))
                 click.echo(
@@ -164,7 +166,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                 "Failed to auth using the provided credentials."
                 " Please run ``preset-cli auth``"
             )
-            raise_error(1, error_message)
+            raise CLIError(error_message, 1)
 
     if not workspaces and ctx.invoked_subcommand == "superset" and not is_help():
         client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
@@ -180,7 +182,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
                 i += 1
 
         if i == 0:
-            raise_error(1, "No workspaces available")
+            raise CLIError("No workspaces available", 1)
         if i == 1:
             workspaces = hostnames
 
@@ -209,6 +211,7 @@ def preset_cli(  # pylint: disable=too-many-branches, too-many-locals, too-many-
     default=False,
     help="Show existing credentials",
 )
+@raise_cli_errors
 def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
     """
     Store credentials for auth.
@@ -221,7 +224,7 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
                 f"The file {credentials_path} doesn't exist. "
                 "Run ``preset-cli auth`` to create it."
             )
-            raise_error(1, error_message)
+            raise CLIError(error_message, 1)
 
         ruler = "=" * len(str(credentials_path))
         with open(credentials_path, encoding="utf-8") as input_:
@@ -235,7 +238,7 @@ def auth(baseurl: str, overwrite: bool = False, show: bool = False) -> None:
             f"The file {credentials_path} already exists. "
             "Pass ``--overwrite`` to replace it."
         )
-        raise_error(1, error_message)
+        raise CLIError(error_message, 1)
 
     manager_url = URL(baseurl.replace("api.", "manage."))
     manager_api_url = URL(baseurl)
@@ -263,7 +266,7 @@ def get_teams(client: PresetClient) -> List[str]:
         i += 1
 
     if i == 0:
-        raise_error(1, "No teams available")
+        raise CLIError("No teams available", 1)
     if i == 1:
         return all_teams
 
@@ -283,6 +286,7 @@ def get_teams(client: PresetClient) -> List[str]:
     default="users.yaml",
 )
 @click.pass_context
+@raise_cli_errors
 def invite_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
     """
     Invite users to join Preset teams.
@@ -305,6 +309,7 @@ def invite_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
     help="Save results to a YAML or CSV file instead of priting on the terminal",
 )
 @click.pass_context
+@raise_cli_errors
 def list_group_membership(
     ctx: click.core.Context,
     teams: List[str],
@@ -320,9 +325,9 @@ def list_group_membership(
 
     # in case --save-report was used, confirm if a valid option was used before sending requests
     if save_report and save_report.casefold() not in {"yaml", "csv"}:
-        raise_error(
-            1,
+        raise CLIError(
             "Invalid option. Please use ``--save-report=csv`` or ``--save-report=yaml``",
+            1,
         )
 
     for team in teams:
@@ -430,6 +435,7 @@ def export_group_membership_csv(groups: Dict[str, Any], team: str) -> None:
     default="users.yaml",
 )
 @click.pass_context
+@raise_cli_errors
 def import_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
     """
     Import users by adding them via SCIM.
@@ -595,9 +601,9 @@ def sync_user_role_to_workspace(
     )
 
 
-preset_cli.add_command(auth)
-preset_cli.add_command(invite_users)
-preset_cli.add_command(import_users)
+preset_cli.add_command(auth, name="auth")
+preset_cli.add_command(invite_users, name="invite-users")
+preset_cli.add_command(import_users, name="import-users")
 preset_cli.add_command(sync_roles)
 preset_cli.add_command(superset)
-preset_cli.add_command(list_group_membership)
+preset_cli.add_command(list_group_membership, name="list-group-membership")

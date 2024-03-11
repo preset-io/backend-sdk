@@ -8,11 +8,11 @@ import warnings
 import pytest
 from pytest_mock import MockerFixture
 
-from preset_cli.exceptions import ErrorLevel, SupersetError
+from preset_cli.exceptions import CLIError, ErrorLevel, SupersetError
 from preset_cli.lib import (
     dict_merge,
     log_warning,
-    raise_error,
+    raise_cli_errors,
     remove_root,
     setup_logging,
     validate_response,
@@ -129,27 +129,31 @@ def test_log_warning(mocker: MockerFixture) -> None:
     )
 
 
-def test_raise_error(capsys: pytest.CaptureFixture[str]) -> None:
+def test_raise_cli_errors_decorator(capsys: pytest.CaptureFixture[str]) -> None:
     """
-    Test ``raise_error``.
+    Test the ``raise_cli_errors`` decorator when a CLI error is raised.
     """
+    @raise_cli_errors
+    def mock_function():
+        raise CLIError("Error", 1)
+
     with pytest.raises(SystemExit) as excinfo:
-        raise_error(1, "error message")
-
-    captured = capsys.readouterr()
-    expected_output = "error message\n"
-
-    assert captured.out == expected_output
-    assert excinfo.type == SystemExit
-    assert excinfo.value.code == 1
-
-
-def test_raise_error_no_message() -> None:
-    """
-    Test ``raise_error``.
-    """
-    with pytest.raises(SystemExit) as excinfo:
-        raise_error(1)
+        mock_function()
 
     assert excinfo.type == SystemExit
     assert excinfo.value.code == 1
+    
+    output_content = capsys.readouterr()
+    assert "Error" in output_content.out
+
+
+def test_raise_cli_errors_decorator() -> None:
+    """
+    Test the ``raise_cli_errors`` decorator when no error is raised.
+    """
+    @raise_cli_errors
+    def mock_function():
+        return "All good!"
+
+    result = mock_function()
+    assert result == "All good!"
