@@ -2,10 +2,12 @@
 A command to sync dbt models/metrics to Superset and charts/dashboards back as exposures.
 """
 
+import logging
 import os.path
+import subprocess
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import yaml
@@ -16,6 +18,7 @@ from preset_cli.api.clients.dbt import (
     JobSchema,
     MetricSchema,
     MFMetricWithSQLSchema,
+    MFSQLEngine,
     ModelSchema,
 )
 from preset_cli.api.clients.superset import SupersetClient
@@ -30,6 +33,8 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
 )
 from preset_cli.exceptions import CLIError, DatabaseNotFoundError
 from preset_cli.lib import log_warning, raise_cli_errors
+
+_logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -177,6 +182,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     with open(manifest, encoding="utf-8") as input_:
         configs = yaml.load(input_, Loader=yaml.SafeLoader)
 
+    with open(profiles, encoding="utf-8") as input_:
+        config = yaml.safe_load(input_)
+    dialect = MFSQLEngine(config[project]["outputs"][target]["type"].upper())
+
     model_schema = ModelSchema()
     models = []
     for config in configs["nodes"].values():
@@ -199,14 +208,18 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         ]
     else:
         og_metrics = []
+        sl_metrics = []
         metric_schema = MetricSchema()
         for config in configs["metrics"].values():
-            # conform to the same schema that dbt Cloud uses for metrics
-            config["dependsOn"] = config.pop("depends_on")["nodes"]
-            config["uniqueId"] = config.pop("unique_id")
-            og_metrics.append(metric_schema.load(config))
+            if "calculation_method" in config or "sql" in config:
+                # conform to the same schema that dbt Cloud uses for metrics
+                config["dependsOn"] = config.pop("depends_on")["nodes"]
+                config["uniqueId"] = config.pop("unique_id")
+                og_metrics.append(metric_schema.load(config))
+            elif sl_metric := get_sl_metric(config, model_map, dialect):
+                sl_metrics.append(sl_metric)
 
-        superset_metrics = get_superset_metrics_per_model(og_metrics)
+        superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
 
         try:
             database = sync_database(
@@ -341,7 +354,58 @@ def get_job(
     raise ValueError(f"Job {job_id} not available")
 
 
-def process_sl_metrics(
+def get_sl_metric(
+    metric: Dict[str, Any],
+    model_map: Dict[ModelKey, ModelSchema],
+    dialect: MFSQLEngine,
+) -> Optional[MFMetricWithSQLSchema]:
+    """
+    Compute a SL metric using the ``mf`` CLI.
+    """
+    mf_metric_schema = MFMetricWithSQLSchema()
+
+    command = ["mf", "query", "--explain", "--metrics", metric["name"]]
+    try:
+        _logger.info(
+            "Using `mf` command to retrieve SQL syntax for metric %s",
+            metric["name"],
+        )
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+    except FileNotFoundError:
+        _logger.warning(
+            "`mf` command not found, if you're using Metricflow make sure you have it "
+            "installed in order to sync metrics",
+        )
+        return None
+    except subprocess.CalledProcessError:
+        _logger.warning(
+            "Could not generate SQL for metric %s (this happens for some metrics)",
+            metric["name"],
+        )
+        return None
+
+    output = result.stdout.strip()
+    start = output.find("SELECT")
+    sql = output[start:]
+
+    models = get_models_from_sql(sql, dialect, model_map)
+    if len(models) > 1:
+        return None
+    model = models[0]
+
+    return mf_metric_schema.load(
+        {
+            "name": metric["name"],
+            "type": metric["type"],
+            "description": metric["description"],
+            "sql": sql,
+            "dialect": dialect.value,
+            "model": model["unique_id"],
+        },
+    )
+
+
+def fetch_sl_metrics(
     dbt_client: DBTClient,
     environment_id: int,
     model_map: Dict[ModelKey, ModelSchema],
@@ -504,7 +568,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
 
     og_metrics = dbt_client.get_og_metrics(job["id"])
-    sl_metrics = process_sl_metrics(dbt_client, job["environment_id"], model_map)
+    sl_metrics = fetch_sl_metrics(dbt_client, job["environment_id"], model_map)
     superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
 
     failures: List[str] = []

@@ -51,10 +51,12 @@ def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> s
         # dbt >= 1.3
         type_ = metric["calculation_method"]
         sql = metric["expression"]
-    else:
+    elif "sql" in metric:
         # dbt < 1.3
         type_ = metric["type"]
         sql = metric["sql"]
+    else:
+        raise Exception(f"Unable to generate metric expression from: {metric}")
 
     if metric.get("filters"):
         sql = apply_filters(sql, metric["filters"])
