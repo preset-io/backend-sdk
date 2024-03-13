@@ -3,7 +3,7 @@ A simple client for running SQL queries (and more) against Superset:
 
     >>> from yarl import URL
     >>> from preset_cli.api.clients.superset import SupersetClient
-    >>> from preset_cli.auth.password import UsernamePasswordAuth
+    >>> from preset_cli.auth.superset import UsernamePasswordAuth
     >>> url = URL("http://localhost:8088/")
     >>> auth = UsernamePasswordAuth(url, "admin", "admin")  # doctest: +SKIP
     >>> client = SupersetClient(url, auth)  # doctest: +SKIP
@@ -134,6 +134,26 @@ def convert_to_adhoc_metric(expression: str) -> MetricType:
         "optionName": f"metric_{uuid4()}",
         "sqlExpression": expression,
     }
+
+
+class SupersetMetricDefinition(TypedDict, total=False):
+    """
+    Definition of a Superset metric.
+
+    Used in the PUT API for datasets.
+    """
+
+    id: int
+    expression: str
+    metric_name: str
+    metric_type: str
+    verbose_name: str
+    description: str
+    extra: str
+    warning_text: str
+    d3format: str
+    currency: str
+    uuid: str
 
 
 class ColumnType(TypedDict):

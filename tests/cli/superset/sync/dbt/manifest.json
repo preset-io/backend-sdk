@@ -1,5 +1,16 @@
 {
   "metrics": {
+    "c": {
+      "depends_on": {"nodes": ["a", "b"]},
+      "description": "",
+      "filters": [],
+      "label": "",
+      "meta": {},
+      "name": "multiple parents",
+      "sql": "*",
+      "type": "count",
+      "unique_id": "c"
+    },
     "metric.superset_examples.cnt": {
       "fqn": [
         "superset_examples",

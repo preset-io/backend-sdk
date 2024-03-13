@@ -2,24 +2,39 @@
 A command to sync dbt models/metrics to Superset and charts/dashboards back as exposures.
 """
 
+import logging
 import os.path
-import sys
+import subprocess
 import warnings
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import yaml
 from yarl import URL
 
-from preset_cli.api.clients.dbt import DBTClient, MetricSchema, ModelSchema
+from preset_cli.api.clients.dbt import (
+    DBTClient,
+    JobSchema,
+    MetricSchema,
+    MFMetricWithSQLSchema,
+    MFSQLEngine,
+    ModelSchema,
+)
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
-from preset_cli.cli.superset.sync.dbt.lib import apply_select
-from preset_cli.exceptions import DatabaseNotFoundError
+from preset_cli.cli.superset.sync.dbt.lib import apply_select, list_failed_models
+from preset_cli.cli.superset.sync.dbt.metrics import (
+    get_models_from_sql,
+    get_superset_metrics_per_model,
+)
+from preset_cli.exceptions import CLIError, DatabaseNotFoundError
+from preset_cli.lib import log_warning, raise_cli_errors
+
+_logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -85,6 +100,13 @@ from preset_cli.exceptions import DatabaseNotFoundError
     default=False,
     help="Update Preset configurations based on dbt metadata. Preset-only metrics are preserved",
 )
+@click.option(
+    "--raise-failures",
+    is_flag=True,
+    default=False,
+    help="End the execution with an error if a model fails to sync or a deprecated feature is used",
+)
+@raise_cli_errors
 @click.pass_context
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements
     ctx: click.core.Context,
@@ -102,6 +124,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
+    raise_failures: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Core to Superset and charts/dashboards to dbt exposures.
@@ -109,18 +132,16 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
+    deprecation_notice: bool = False
+    if raise_failures:
+        warnings.simplefilter("always", DeprecationWarning)
 
     if (preserve_columns or preserve_metadata) and merge_metadata:
-        click.echo(
-            click.style(
-                """
-                ``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``
-                can't be combined. Please include only one to the command.
-                """,
-                fg="bright_red",
-            ),
+        error_message = (
+            "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``\n"
+            "can't be combined. Please include only one to the command."
         )
-        sys.exit(1)
+        raise CLIError(error_message, 1)
 
     reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
     preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
@@ -131,24 +152,18 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     file_path = Path(file)
 
     if "MANAGER_URL" not in ctx.obj and disallow_edits:
-        warnings.warn(
-            (
-                "The managed externally feature was only introduced in Superset v1.5."
-                "Make sure you are running a compatible version."
-            ),
-            category=UserWarning,
-            stacklevel=2,
+        warn_message = (
+            "The managed externally feature was only introduced in Superset v1.5."
+            "Make sure you are running a compatible version."
         )
-
+        log_warning(warn_message, UserWarning)
     if file_path.name == "manifest.json":
-        warnings.warn(
-            (
-                "Passing the manifest.json file is deprecated. "
-                "Please pass the dbt_project.yml file instead."
-            ),
-            category=DeprecationWarning,
-            stacklevel=2,
+        deprecation_notice = True
+        warn_message = (
+            "Passing the manifest.json file is deprecated. "
+            "Please pass the dbt_project.yml file instead."
         )
+        log_warning(warn_message, DeprecationWarning)
         manifest = file_path
         profile = project = project or "default"
     elif file_path.name == "dbt_project.yml":
@@ -159,16 +174,17 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         profile = dbt_project["profile"]
         project = project or dbt_project["name"]
     else:
-        click.echo(
-            click.style(
-                "FILE should be either ``manifest.json`` or ``dbt_project.yml``",
-                fg="bright_red",
-            ),
+        raise CLIError(
+            "FILE should be either ``manifest.json`` or ``dbt_project.yml``",
+            1,
         )
-        sys.exit(1)
 
     with open(manifest, encoding="utf-8") as input_:
         configs = yaml.load(input_, Loader=yaml.SafeLoader)
+
+    with open(profiles, encoding="utf-8") as input_:
+        config = yaml.safe_load(input_)
+    dialect = MFSQLEngine(config[project]["outputs"][target]["type"].upper())
 
     model_schema = ModelSchema()
     models = []
@@ -180,10 +196,9 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             config["columns"] = list(config["columns"].values())
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
-    model_map = {
-        ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
-        for model in models
-    }
+    model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
+
+    failures: List[str] = []
 
     if exposures_only:
         datasets = [
@@ -192,13 +207,19 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             if ModelKey(dataset["schema"], dataset["table_name"]) in model_map
         ]
     else:
-        metrics = []
+        og_metrics = []
+        sl_metrics = []
         metric_schema = MetricSchema()
         for config in configs["metrics"].values():
-            # conform to the same schema that dbt Cloud uses for metrics
-            config["dependsOn"] = config.pop("depends_on")["nodes"]
-            config["uniqueId"] = config.pop("unique_id")
-            metrics.append(metric_schema.load(config))
+            if "calculation_method" in config or "sql" in config:
+                # conform to the same schema that dbt Cloud uses for metrics
+                config["dependsOn"] = config.pop("depends_on")["nodes"]
+                config["uniqueId"] = config.pop("unique_id")
+                og_metrics.append(metric_schema.load(config))
+            elif sl_metric := get_sl_metric(config, model_map, dialect):
+                sl_metrics.append(sl_metric)
+
+        superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
 
         try:
             database = sync_database(
@@ -215,10 +236,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             click.echo("No database was found, pass ``--import-db`` to create")
             return
 
-        datasets = sync_datasets(
+        datasets, failures = sync_datasets(
             client,
             models,
-            metrics,
+            superset_metrics,
             database,
             disallow_edits,
             external_url_prefix,
@@ -230,6 +251,13 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         exposures = os.path.expanduser(exposures)
         sync_exposures(client, Path(exposures), datasets, model_map)
 
+    if failures and raise_failures:
+        failed_models = list_failed_models(failures)
+        raise CLIError(failed_models, 1)
+
+    if deprecation_notice and raise_failures:
+        raise CLIError("Review deprecation warnings", 1)
+
 
 def get_account_id(client: DBTClient) -> int:
     """
@@ -237,13 +265,16 @@ def get_account_id(client: DBTClient) -> int:
     """
     accounts = client.get_accounts()
     if not accounts:
-        click.echo(click.style("No accounts available", fg="bright_red"))
-        sys.exit(1)
+        raise CLIError("No accounts available", 1)
     if len(accounts) == 1:
-        return accounts[0]["id"]
+        account = accounts[0]
+        click.echo(
+            f'Using account {account["name"]} [id={account["id"]}] since it\'s the only one',
+        )
+        return account["id"]
     click.echo("Choose an account:")
     for i, account in enumerate(accounts):
-        click.echo(f'({i+1}) {account["name"]}')
+        click.echo(f'({i+1}) {account["name"]} [id={account["id"]}]')
 
     while True:
         try:
@@ -264,13 +295,12 @@ def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
 
     projects = client.get_projects(account_id)
     if not projects:
-        click.echo(click.style("No project available", fg="bright_red"))
-        sys.exit(1)
+        raise CLIError("No project available", 1)
     if len(projects) == 1:
         return projects[0]["id"]
     click.echo("Choose a project:")
     for i, project in enumerate(projects):
-        click.echo(f'({i+1}) {project["name"]}')
+        click.echo(f'({i+1}) {project["name"]} [id={project["id"]}]')
 
     while True:
         try:
@@ -282,11 +312,12 @@ def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
         click.echo("Invalid choice")
 
 
-def get_job_id(
+def get_job(
     client: DBTClient,
     account_id: Optional[int] = None,
     project_id: Optional[int] = None,
-) -> int:
+    job_id: Optional[int] = None,
+) -> JobSchema:
     """
     Prompt users for a job ID.
     """
@@ -297,27 +328,124 @@ def get_job_id(
 
     jobs = client.get_jobs(account_id, project_id)
     if not jobs:
-        click.echo(click.style("No jobs available", fg="bright_red"))
-        sys.exit(1)
-    if len(jobs) == 1:
-        return jobs[0]["id"]
+        raise CLIError("No jobs available", 1)
 
-    click.echo("Choose a job:")
-    for i, job in enumerate(jobs):
-        click.echo(f'({i+1}) {job["name"]}')
+    if job_id is None:
+        if len(jobs) == 1:
+            return jobs[0]
 
-    while True:
-        try:
-            choice = int(input("> "))
-        except Exception:  # pylint: disable=broad-except
-            choice = -1
-        if 0 < choice <= len(jobs):
-            return jobs[choice - 1]["id"]
-        click.echo("Invalid choice")
+        click.echo("Choose a job:")
+        for i, job in enumerate(jobs):
+            click.echo(f'({i+1}) {job["name"]} [id={job["id"]}]')
+
+        while True:
+            try:
+                choice = int(input("> "))
+            except Exception:  # pylint: disable=broad-except
+                choice = -1
+            if 0 < choice <= len(jobs):
+                return jobs[choice - 1]
+            click.echo("Invalid choice")
+
+    for job in jobs:
+        if job["id"] == job_id:
+            return job
+
+    raise ValueError(f"Job {job_id} not available")
+
+
+def get_sl_metric(
+    metric: Dict[str, Any],
+    model_map: Dict[ModelKey, ModelSchema],
+    dialect: MFSQLEngine,
+) -> Optional[MFMetricWithSQLSchema]:
+    """
+    Compute a SL metric using the ``mf`` CLI.
+    """
+    mf_metric_schema = MFMetricWithSQLSchema()
+
+    command = ["mf", "query", "--explain", "--metrics", metric["name"]]
+    try:
+        _logger.info(
+            "Using `mf` command to retrieve SQL syntax for metric %s",
+            metric["name"],
+        )
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+    except FileNotFoundError:
+        _logger.warning(
+            "`mf` command not found, if you're using Metricflow make sure you have it "
+            "installed in order to sync metrics",
+        )
+        return None
+    except subprocess.CalledProcessError:
+        _logger.warning(
+            "Could not generate SQL for metric %s (this happens for some metrics)",
+            metric["name"],
+        )
+        return None
+
+    output = result.stdout.strip()
+    start = output.find("SELECT")
+    sql = output[start:]
+
+    models = get_models_from_sql(sql, dialect, model_map)
+    if len(models) > 1:
+        return None
+    model = models[0]
+
+    return mf_metric_schema.load(
+        {
+            "name": metric["name"],
+            "type": metric["type"],
+            "description": metric["description"],
+            "sql": sql,
+            "dialect": dialect.value,
+            "model": model["unique_id"],
+        },
+    )
+
+
+def fetch_sl_metrics(
+    dbt_client: DBTClient,
+    environment_id: int,
+    model_map: Dict[ModelKey, ModelSchema],
+) -> Optional[List[MFMetricWithSQLSchema]]:
+    """
+    Fetch metrics from the semantic layer and return the ones we can map to models.
+    """
+    dialect = dbt_client.get_sl_dialect(environment_id)
+    mf_metric_schema = MFMetricWithSQLSchema()
+    sl_metrics: List[MFMetricWithSQLSchema] = []
+    for metric in dbt_client.get_sl_metrics(environment_id):
+        sql = dbt_client.get_sl_metric_sql(metric["name"], environment_id)
+        if sql is None:
+            continue
+
+        models = get_models_from_sql(sql, dialect, model_map)
+        if len(models) > 1:
+            continue
+        model = models[0]
+
+        sl_metrics.append(
+            mf_metric_schema.load(
+                {
+                    "name": metric["name"],
+                    "type": metric["type"],
+                    "description": metric["description"],
+                    "sql": sql,
+                    "dialect": dialect.value,
+                    "model": model["unique_id"],
+                },
+            ),
+        )
+
+    return sl_metrics
 
 
 @click.command()
 @click.argument("token")
+@click.argument("account_id", type=click.INT, required=False, default=None)
+@click.argument("project_id", type=click.INT, required=False, default=None)
 @click.argument("job_id", type=click.INT, required=False, default=None)
 @click.option(
     "--disallow-edits",
@@ -367,13 +495,26 @@ def get_job_id(
     default=False,
     help="Update Preset configurations based on dbt metadata. Preset-only metrics are preserved",
 )
+@click.option(
+    "--access-url",
+    help="Custom API URL for dbt Cloud (eg, https://ab123.us1.dbt.com)",
+)
+@click.option(
+    "--raise-failures",
+    is_flag=True,
+    default=False,
+    help="End the execution with an error if a model fails to sync or a deprecated feature is used",
+)
 @click.pass_context
+@raise_cli_errors
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
     token: str,
     select: Tuple[str, ...],
     exclude: Tuple[str, ...],
     exposures: Optional[str] = None,
+    account_id: Optional[int] = None,
+    project_id: Optional[int] = None,
     job_id: Optional[int] = None,
     disallow_edits: bool = False,
     external_url_prefix: str = "",
@@ -381,6 +522,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
+    raise_failures: bool = False,
+    access_url: Optional[str] = None,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
@@ -390,28 +533,26 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     superset_client = SupersetClient(url, superset_auth)
 
     dbt_auth = TokenAuth(token)
-    dbt_client = DBTClient(dbt_auth)
+    dbt_client = DBTClient(dbt_auth, access_url)
 
     if (preserve_columns or preserve_metadata) and merge_metadata:
-        click.echo(
-            click.style(
-                """
-                ``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``
-                can't be combined. Please include only one to the command.
-                """,
-                fg="bright_red",
-            ),
+        error_message = (
+            "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``\n"
+            "can't be combined. Please include only one to the command."
         )
-        sys.exit(1)
+        raise CLIError(error_message, 1)
 
     reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
     preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
 
-    if job_id is None:
-        job_id = get_job_id(dbt_client)
+    try:
+        job = get_job(dbt_client, account_id, project_id, job_id)
+    except ValueError as excinfo:
+        error_message = f"Job {job_id} not available"
+        raise CLIError(error_message, 2) from excinfo
 
     # with dbt cloud the database must already exist
-    database_name = dbt_client.get_database_name(job_id)
+    database_name = dbt_client.get_database_name(job["id"])
     databases = superset_client.get_databases(database_name=database_name)
     if not databases:
         click.echo(f'No database named "{database_name}" was found')
@@ -422,13 +563,15 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     # need to get the database by itself so the response has the SQLAlchemy URI
     database = superset_client.get_database(databases[0]["id"])
 
-    models = dbt_client.get_models(job_id)
+    models = dbt_client.get_models(job["id"])
     models = apply_select(models, select, exclude)
-    model_map = {
-        ModelKey(model["schema"], model["name"]): f"ref('{model['name']}')"
-        for model in models
-    }
-    metrics = dbt_client.get_metrics(job_id)
+    model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
+
+    og_metrics = dbt_client.get_og_metrics(job["id"])
+    sl_metrics = fetch_sl_metrics(dbt_client, job["environment_id"], model_map)
+    superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
+
+    failures: List[str] = []
 
     if exposures_only:
         datasets = [
@@ -437,10 +580,10 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
             if ModelKey(dataset["schema"], dataset["table_name"]) in model_map
         ]
     else:
-        datasets = sync_datasets(
+        datasets, failures = sync_datasets(
             superset_client,
             models,
-            metrics,
+            superset_metrics,
             database,
             disallow_edits,
             external_url_prefix,
@@ -451,3 +594,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     if exposures:
         exposures = os.path.expanduser(exposures)
         sync_exposures(superset_client, Path(exposures), datasets, model_map)
+
+    if failures and raise_failures:
+        failed_models = list_failed_models(failures)
+        raise CLIError(failed_models, 1)

@@ -16,7 +16,7 @@ def sync() -> None:
 
 
 sync.add_command(native)
-sync.add_command(dbt_cloud)
-sync.add_command(dbt_core)
+sync.add_command(dbt_cloud, name="dbt-cloud")
+sync.add_command(dbt_core, name="dbt-core")
 # for backwards compatibility
 sync.add_command(dbt_core, name="dbt")

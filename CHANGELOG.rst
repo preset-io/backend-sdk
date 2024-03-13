@@ -5,6 +5,21 @@ Changelog
 Next
 ====
 
+Version 0.2.11 - 2024-02-14
+===========================
+
+- Support for custom access URLs when connecting to dbt Cloud APIs (`#262 <https://github.com/preset-io/backend-sdk/pull/262>_`.
+
+Version 0.2.10 - 2024-01-10
+===========================
+
+- Small improvements to the dbt sync logic (`#258 <https://github.com/preset-io/backend-sdk/pull/258>_` and `#259 <https://github.com/preset-io/backend-sdk/pull/259>_`).
+
+Version 0.2.9 - 2024-01-10
+==========================
+
+- Initial support for syncing metrics from dbt/MetricFlow (`#256 <https://github.com/preset-io/backend-sdk/pull/256>_`).
+
 Version 0.2.8 - 2023-09-12
 ==========================
 

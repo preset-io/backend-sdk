@@ -5,7 +5,7 @@ Tests for ``preset_cli.cli.superset.sync.dbt.datasets``.
 
 import copy
 import json
-from typing import List, cast
+from typing import Dict, List, cast
 from unittest import mock
 
 import pytest
@@ -13,28 +13,28 @@ from pytest_mock import MockerFixture
 from sqlalchemy.engine.url import make_url
 
 from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
+from preset_cli.api.clients.superset import SupersetMetricDefinition
 from preset_cli.cli.superset.sync.dbt.datasets import (
     create_dataset,
     model_in_database,
     sync_datasets,
 )
+from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
 
 metric_schema = MetricSchema()
-metrics: List[MetricSchema] = [
-    metric_schema.load(
+
+metrics: Dict[str, List[SupersetMetricDefinition]] = {
+    "model.superset_examples.messages_channels": [
         {
-            "depends_on": ["model.superset_examples.messages_channels"],
             "description": "",
-            "filters": [],
-            "meta": {},
-            "name": "cnt",
-            "label": "",
-            "sql": "*",
-            "type": "count",
-            "unique_id": "metric.superset_examples.cnt",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt",
+            "metric_type": "count",
+            "verbose_name": "",
         },
-    ),
-]
+    ],
+}
 
 model_schema = ModelSchema()
 models: List[ModelSchema] = [
@@ -50,6 +50,8 @@ models: List[ModelSchema] = [
         },
     ),
 ]
+
+error = ErrorPayload(message="error", level=ErrorLevel.ERROR, extra={})
 
 
 def test_sync_datasets_new(mocker: MockerFixture) -> None:
@@ -78,6 +80,194 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
         [
             mock.call(database=1, schema="public", table_name="messages_channels"),
         ],
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+            mock.call(
+                1,
+                override_columns=True,
+                columns=[
+                    {
+                        "column_name": "id",
+                        "description": "Primary key",
+                        "is_dttm": False,
+                        "verbose_name": "id",
+                    },
+                    {
+                        "column_name": "ts",
+                        "is_dttm": True,
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_first_update_fails(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with ``update_dataset`` failing in the first execution.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}]
+    client.update_dataset.side_effect = [SupersetError([error])]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=metrics,
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_called_with(
+        database=1,
+        schema="public",
+        table_name="messages_channels",
+    )
+    client.update_dataset.assert_called_with(
+        1,
+        override_columns=True,
+        description="",
+        extra=json.dumps(
+            {
+                "unique_id": "model.superset_examples.messages_channels",
+                "depends_on": "ref('messages_channels')",
+                "certification": {"details": "This table is produced by dbt"},
+            },
+        ),
+        is_managed_externally=False,
+        metrics=[],
+    )
+
+
+def test_sync_datasets_second_update_fails(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with ``update_dataset`` failing in the second execution.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}]
+    client.update_dataset.side_effect = [mocker.MagicMock(), SupersetError([error])]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=metrics,
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_called_with(
+        database=1,
+        schema="public",
+        table_name="messages_channels",
+    )
+    client.update_dataset.assert_has_calls(
+        [
+            mock.call(
+                1,
+                override_columns=True,
+                description="",
+                extra=json.dumps(
+                    {
+                        "unique_id": "model.superset_examples.messages_channels",
+                        "depends_on": "ref('messages_channels')",
+                        "certification": {"details": "This table is produced by dbt"},
+                    },
+                ),
+                is_managed_externally=False,
+                metrics=[],
+            ),
+            mock.call(
+                1,
+                override_columns=False,
+                metrics=[
+                    {
+                        "expression": "COUNT(*)",
+                        "metric_name": "cnt",
+                        "metric_type": "count",
+                        "verbose_name": "",
+                        "description": "",
+                        "extra": "{}",
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def test_sync_datasets_third_update_fails(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` with ``update_dataset`` failing in the third execution.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.side_effect = [{"id": 1}]
+    client.update_dataset.side_effect = [
+        mocker.MagicMock(),
+        mocker.MagicMock(),
+        SupersetError([error]),
+    ]
+    client.get_dataset.return_value = {
+        "columns": [
+            {"column_name": "id", "is_dttm": False, "type_generic": "INTEGER"},
+            {"column_name": "ts", "is_dttm": True, "type_generic": "TIMESTAMP"},
+        ],
+    }
+
+    sync_datasets(
+        client=client,
+        models=models,
+        metrics=metrics,
+        database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+    client.create_dataset.assert_called_with(
+        database=1,
+        schema="public",
+        table_name="messages_channels",
     )
     client.update_dataset.assert_has_calls(
         [
@@ -234,7 +424,7 @@ def test_sync_datasets_no_metrics(mocker: MockerFixture) -> None:
     sync_datasets(
         client=client,
         models=models,
-        metrics=[],
+        metrics={},
         database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
         disallow_edits=False,
         external_url_prefix="",
@@ -290,7 +480,7 @@ def test_sync_datasets_custom_certification(mocker: MockerFixture) -> None:
     sync_datasets(
         client=client,
         models=models,
-        metrics=[],
+        metrics={},
         database={"id": 1, "sqlalchemy_uri": "postgresql://user@host/examples_dev"},
         disallow_edits=False,
         external_url_prefix="",
@@ -523,18 +713,15 @@ def test_sync_datasets_preserve_metadata(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     metrics_ = copy.deepcopy(metrics)
-    metrics_.append(
+    metrics_["model.superset_examples.messages_channels"].append(
         metric_schema.load(
             {
-                "depends_on": ["model.superset_examples.messages_channels"],
                 "description": "",
-                "filters": [],
-                "meta": {},
-                "name": "max_id",
-                "label": "",
-                "sql": "id",
-                "type": "max",
-                "unique_id": "metric.superset_examples.cnt",
+                "expression": "MAX(id)",
+                "extra": "{}",
+                "metric_name": "max_id",
+                "metric_type": "max",
+                "verbose_name": "",
             },
         ),
     )
@@ -641,18 +828,15 @@ def test_sync_datasets_merge_metadata(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     metrics_ = copy.deepcopy(metrics)
-    metrics_.append(
+    metrics_["model.superset_examples.messages_channels"].append(
         metric_schema.load(
             {
-                "depends_on": ["model.superset_examples.messages_channels"],
                 "description": "",
-                "filters": [],
-                "meta": {},
-                "name": "max_id",
-                "label": "",
-                "sql": "id",
-                "type": "max",
-                "unique_id": "metric.superset_examples.cnt",
+                "expression": "MAX(id)",
+                "extra": "{}",
+                "metric_name": "max_id",
+                "metric_type": "max",
+                "verbose_name": "",
             },
         ),
     )

@@ -11,9 +11,10 @@ import pytest
 from marshmallow import fields
 from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
+from yarl import URL
 
 from preset_cli import __version__
-from preset_cli.api.clients.dbt import DBTClient, PostelEnumField
+from preset_cli.api.clients.dbt import DBTClient, PostelEnumField, get_custom_urls
 from preset_cli.auth.main import Auth
 
 
@@ -35,33 +36,6 @@ def test_postel_enum_field() -> None:
     assert isinstance(PostelEnumField(StrEnum, allow_none=True), fields.String)
     assert isinstance(PostelEnumField(IntEnum, allow_none=False), fields.Integer)
     assert isinstance(PostelEnumField(RawEnum), fields.Raw)
-
-
-def test_dbt_client_execute(mocker: MockerFixture) -> None:
-    """
-    Test the ``execute`` method.
-    """
-    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
-    auth = Auth()
-    client = DBTClient(auth)
-    query = """
-        query ($jobId: Int!) {
-            models(jobId: $jobId) {
-                uniqueId
-                name
-                database
-                schema
-                description
-                meta
-            }
-        }
-    """
-    client.execute(query, jobId=1)
-    GraphqlClient().execute.assert_called_with(
-        query=query,
-        variables={"jobId": 1},
-        headers=client.session.headers,
-    )
 
 
 def test_dbt_client_get_accounts(requests_mock: Mocker) -> None:
@@ -1078,40 +1052,42 @@ def test_dbt_client_get_models(mocker: MockerFixture) -> None:
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
         "data": {
-            "models": [
-                {
-                    "uniqueId": "model.jaffle_shop.customers",
-                    "name": "customers",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "One record per customer",
-                    "meta": {"superset": {"cache_timeout": 600}},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_customers",
-                    "name": "stg_customers",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up customer data",
-                    "meta": {},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_orders",
-                    "name": "stg_orders",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up order data",
-                    "meta": {},
-                },
-                {
-                    "uniqueId": "model.metrics.dbt_metrics_default_calendar",
-                    "name": "dbt_metrics_default_calendar",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "",
-                    "meta": {},
-                },
-            ],
+            "job": {
+                "models": [
+                    {
+                        "uniqueId": "model.jaffle_shop.customers",
+                        "name": "customers",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "One record per customer",
+                        "meta": {"superset": {"cache_timeout": 600}},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_customers",
+                        "name": "stg_customers",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up customer data",
+                        "meta": {},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_orders",
+                        "name": "stg_orders",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up order data",
+                        "meta": {},
+                    },
+                    {
+                        "uniqueId": "model.metrics.dbt_metrics_default_calendar",
+                        "name": "dbt_metrics_default_calendar",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "",
+                        "meta": {},
+                    },
+                ],
+            },
         },
     }
     auth = Auth()
@@ -1152,9 +1128,9 @@ def test_dbt_client_get_models(mocker: MockerFixture) -> None:
     ]
 
 
-def test_dbt_client_get_metrics(mocker: MockerFixture) -> None:
+def test_dbt_client_get_og_metrics(mocker: MockerFixture) -> None:
     """
-    Test the ``get_metrics`` method.
+    Test the ``get_og_metrics`` method.
     """
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
@@ -1178,7 +1154,7 @@ def test_dbt_client_get_metrics(mocker: MockerFixture) -> None:
     }
     auth = Auth()
     client = DBTClient(auth)
-    assert client.get_metrics(108380) == [
+    assert client.get_og_metrics(108380) == [
         {
             "meta": {},
             "name": "new_customers",
@@ -1200,40 +1176,42 @@ def test_dbt_client_get_database_name(mocker: MockerFixture) -> None:
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
         "data": {
-            "models": [
-                {
-                    "uniqueId": "model.jaffle_shop.customers",
-                    "name": "customers",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "One record per customer",
-                    "meta": {"superset": {"cache_timeout": 600}},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_customers",
-                    "name": "stg_customers",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up customer data",
-                    "meta": {},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_orders",
-                    "name": "stg_orders",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up order data",
-                    "meta": {},
-                },
-                {
-                    "uniqueId": "model.metrics.dbt_metrics_default_calendar",
-                    "name": "dbt_metrics_default_calendar",
-                    "database": "dbt-tutorial-347100",
-                    "schema": "dbt_beto",
-                    "description": "",
-                    "meta": {},
-                },
-            ],
+            "job": {
+                "models": [
+                    {
+                        "uniqueId": "model.jaffle_shop.customers",
+                        "name": "customers",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "One record per customer",
+                        "meta": {"superset": {"cache_timeout": 600}},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_customers",
+                        "name": "stg_customers",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up customer data",
+                        "meta": {},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_orders",
+                        "name": "stg_orders",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up order data",
+                        "meta": {},
+                    },
+                    {
+                        "uniqueId": "model.metrics.dbt_metrics_default_calendar",
+                        "name": "dbt_metrics_default_calendar",
+                        "database": "dbt-tutorial-347100",
+                        "schema": "dbt_beto",
+                        "description": "",
+                        "meta": {},
+                    },
+                ],
+            },
         },
     }
     auth = Auth()
@@ -1246,7 +1224,7 @@ def test_dbt_client_get_database_name_no_models(mocker: MockerFixture) -> None:
     Test the ``get_database_name`` method when there are no models.
     """
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
-    GraphqlClient().execute.return_value = {"data": {"models": []}}
+    GraphqlClient().execute.return_value = {"data": {"job": {"models": []}}}
     auth = Auth()
     client = DBTClient(auth)
 
@@ -1264,24 +1242,26 @@ def test_dbt_client_get_database_name_multiple(mocker: MockerFixture) -> None:
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
         "data": {
-            "models": [
-                {
-                    "uniqueId": "model.jaffle_shop.customers",
-                    "name": "customers",
-                    "database": "database_two",
-                    "schema": "dbt_beto",
-                    "description": "One record per customer",
-                    "meta": {"superset": {"cache_timeout": 600}},
-                },
-                {
-                    "uniqueId": "model.jaffle_shop.stg_customers",
-                    "name": "stg_customers",
-                    "database": "database_one",
-                    "schema": "dbt_beto",
-                    "description": "This model cleans up customer data",
-                    "meta": {},
-                },
-            ],
+            "job": {
+                "models": [
+                    {
+                        "uniqueId": "model.jaffle_shop.customers",
+                        "name": "customers",
+                        "database": "database_two",
+                        "schema": "dbt_beto",
+                        "description": "One record per customer",
+                        "meta": {"superset": {"cache_timeout": 600}},
+                    },
+                    {
+                        "uniqueId": "model.jaffle_shop.stg_customers",
+                        "name": "stg_customers",
+                        "database": "database_one",
+                        "schema": "dbt_beto",
+                        "description": "This model cleans up customer data",
+                        "meta": {},
+                    },
+                ],
+            },
         },
     }
     auth = Auth()
@@ -1290,3 +1270,95 @@ def test_dbt_client_get_database_name_multiple(mocker: MockerFixture) -> None:
     with pytest.raises(Exception) as excinfo:
         client.get_database_name(108380)
     assert str(excinfo.value) == "Multiple databases found"
+
+
+def test_dbt_client_get_sl_metrics(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_metrics`` method.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": {
+            "metrics": [
+                {"name": "a", "description": "A", "type": "SIMPLE"},
+            ],
+        },
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_metrics(108380) == [
+        {"name": "a", "description": "A", "type": "SIMPLE"},
+    ]
+
+
+def test_dbt_client_get_sl_metric_sql(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_metric_sql`` method.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": {"compileSql": {"sql": "SELECT 1 FROM a"}},
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_metric_sql("metric", 108380) == "SELECT 1 FROM a"
+
+
+def test_dbt_client_get_sl_metric_sql_error(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_metric_sql`` method when there's an error.
+    """
+    _logger = mocker.patch("preset_cli.api.clients.dbt._logger")
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": None,
+        "errors": [
+            {"message": "Something went wrong"},
+        ],
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_metric_sql("metric", 108380) is None
+    _logger.warning.assert_called_with(
+        "Unable to convert metric %s: %s",
+        "metric",
+        "Something went wrong",
+    )
+
+
+def test_dbt_client_get_sl_dialect(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_dialect`` method.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": {"environmentInfo": {"dialect": "BIGQUERY"}},
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_dialect(108380) == "BIGQUERY"
+
+
+def test_get_custom_urls() -> None:
+    """
+    Test the ``get_custom_urls`` function.
+    """
+    assert get_custom_urls() == {
+        "admin": URL("https://cloud.getdbt.com/"),
+        "discovery": URL("https://metadata.cloud.getdbt.com/graphql"),
+        "semantic-layer": URL("https://semantic-layer.cloud.getdbt.com/api/graphql"),
+    }
+
+    assert get_custom_urls("https://ab123.us1.dbt.com") == {
+        "admin": URL("https://ab123.us1.dbt.com"),
+        "discovery": URL("https://ab123.metadata.us1.dbt.com"),
+        "semantic-layer": URL("https://ab123.semantic-layer.us1.dbt.com"),
+    }
+
+    with pytest.raises(Exception) as excinfo:
+        get_custom_urls("https://preset.io")
+    assert str(excinfo.value) == "Invalid host in custom URL"

@@ -183,10 +183,10 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     # env for Jinja2 templating
     env = dict(pair.split("=", 1) for pair in option if "=" in pair)  # type: ignore
     env["instance"] = url
-    env["functions"] = load_user_modules(root / "functions")
-    env["raise"] = raise_helper
+    env["functions"] = load_user_modules(root / "functions")  # type: ignore
+    env["raise"] = raise_helper  # type: ignore
     if load_env:
-        env["env"] = os.environ
+        env["env"] = os.environ  # type: ignore
 
     # read all the YAML files
     configs: Dict[Path, AssetConfig] = {}
