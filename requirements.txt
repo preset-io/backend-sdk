@@ -46,4 +46,4 @@ typing-extensions==4.2.0
 urllib3==1.26.9
 wcwidth==0.2.5
 websockets==10.3
-yarl==1.7.2
+yarl==1.9.4
