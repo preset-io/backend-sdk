@@ -106,6 +106,12 @@ _logger = logging.getLogger(__name__)
     default=False,
     help="End the execution with an error if a model fails to sync or a deprecated feature is used",
 )
+@click.option(
+    "--sync-columns",
+    is_flag=True,
+    default=False,
+    help="Sync columns from source.",
+)
 @raise_cli_errors
 @click.pass_context
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements
@@ -125,6 +131,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
     raise_failures: bool = False,
+    sync_columns: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Core to Superset and charts/dashboards to dbt exposures.
@@ -245,6 +252,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             external_url_prefix,
             reload_columns=reload_columns,
             merge_metadata=merge_metadata,
+            sync_columns=sync_columns,
         )
 
     if exposures:
@@ -505,6 +513,12 @@ def fetch_sl_metrics(
     default=False,
     help="End the execution with an error if a model fails to sync or a deprecated feature is used",
 )
+@click.option(
+    "--sync-columns",
+    is_flag=True,
+    default=False,
+    help="Sync columns from source.",
+)
 @click.pass_context
 @raise_cli_errors
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
@@ -522,8 +536,9 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
-    raise_failures: bool = False,
     access_url: Optional[str] = None,
+    raise_failures: bool = False,
+    sync_columns: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
@@ -589,6 +604,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
             external_url_prefix,
             reload_columns=reload_columns,
             merge_metadata=merge_metadata,
+            sync_columns=sync_columns,
         )
 
     if exposures:

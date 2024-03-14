@@ -16,7 +16,7 @@ from yarl import URL
 from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient, SupersetMetricDefinition
 from preset_cli.api.operators import OneToMany
-from preset_cli.exceptions import SupersetError
+from preset_cli.exceptions import CLIError, SupersetError
 
 DEFAULT_CERTIFICATION = {"details": "This table is produced by dbt"}
 
@@ -36,9 +36,18 @@ def model_in_database(model: ModelSchema, url: SQLAlchemyURL) -> bool:
 def clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     """
     Remove incompatbile columns from metatada.
-    When updating an existing column/metric we need to remove some fields from the payload.
+    When creating/updating an column/metric we need to remove some fields from the payload.
     """
-    for key in ("changed_on", "created_on", "type_generic"):
+    for key in (
+        "autoincrement",
+        "changed_on",
+        "comment",
+        "created_on",
+        "default",
+        "name",
+        "nullable",
+        "type_generic",
+    ):
         if key in metadata:
             del metadata[key]
 
@@ -77,7 +86,199 @@ def create_dataset(
     return client.create_dataset(**kwargs)
 
 
-def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-many-arguments, too-many-statements # noqa:C901
+def get_or_create_dataset(
+    client: SupersetClient,
+    model: ModelSchema,
+    database: Any,
+) -> Dict[str, Any]:
+    """
+    Returns the existing dataset or creates a new one.
+    """
+    filters = {
+        "database": OneToMany(database["id"]),
+        "schema": model["schema"],
+        "table_name": model.get("alias") or model["name"],
+    }
+    existing = client.get_datasets(**filters)
+
+    if len(existing) > 1:
+        raise CLIError("More than one dataset found", 1)
+
+    if existing:
+        dataset = existing[0]
+        _logger.info("Updating dataset %s", model["unique_id"])
+        return client.get_dataset(dataset["id"])
+
+    _logger.info("Creating dataset %s", model["unique_id"])
+    try:
+        dataset = create_dataset(client, database, model)
+        return dataset
+    except Exception as excinfo:
+        _logger.exception("Unable to create dataset")
+        raise CLIError("Unable to create dataset", 1) from excinfo
+
+
+def get_certification_info(
+    model_kwargs: Dict[str, Any],
+    certification: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Returns the certification information for a dataset.
+    """
+    try:
+        certification_details = model_kwargs["extra"].pop("certification")
+    except KeyError:
+        certification_details = certification or DEFAULT_CERTIFICATION
+    return certification_details
+
+
+def compute_metrics(
+    dataset_metrics: List[Any],
+    dbt_metrics: List[Any],
+    reload_columns: bool,
+    merge_metadata: bool,
+) -> List[Any]:
+    """
+    Compute the final list of metrics that should be used to update the dataset
+
+    reload_columns (default): dbt data synced & Preset-only metadata deleted
+    merge_metadata: dbt data synced & Preset-only metadata preserved
+    if both are false: Preset metadata preserved & dbt-only metadata synced
+    """
+    current_dataset_metrics = {
+        metric["metric_name"]: metric for metric in dataset_metrics
+    }
+    model_metrics = {metric["metric_name"]: metric for metric in dbt_metrics}
+    final_dataset_metrics = []
+
+    for name, metric_definition in model_metrics.items():
+        if reload_columns or merge_metadata or name not in current_dataset_metrics:
+            if name in current_dataset_metrics:
+                metric_definition["id"] = current_dataset_metrics[name]["id"]
+            final_dataset_metrics.append(metric_definition)
+
+    # Preserving Superset metadata
+    if not reload_columns:
+        for name, metric in current_dataset_metrics.items():
+            if not merge_metadata or name not in model_metrics:
+                # remove data that is not part of the update payload
+                metric = clean_metadata(metric)
+                final_dataset_metrics.append(metric)
+
+    return final_dataset_metrics
+
+
+def compute_columns(
+    dataset_columns: List[Any],
+    refreshed_columns_list: List[Any],
+) -> List[Any]:
+    """
+    Refresh the list of columns preserving Preset configurations
+    """
+    final_dataset_columns = []
+
+    current_dataset_columns = {
+        column["column_name"]: column for column in dataset_columns
+    }
+    refreshed_columns = {
+        column["column_name"]: column for column in refreshed_columns_list
+    }
+    for name, column in refreshed_columns.items():
+        if name in current_dataset_columns:
+            cleaned_column = clean_metadata(current_dataset_columns[name])
+            final_dataset_columns.append(cleaned_column)
+        else:
+            cleaned_column = clean_metadata(column)
+            final_dataset_columns.append(cleaned_column)
+
+    return final_dataset_columns
+
+
+def compute_columns_metadata(
+    dbt_columns: List[Any],
+    dataset_columns: List[Any],
+    reload_columns: bool,
+    merge_metadata: bool,
+) -> List[Any]:
+    """
+    Adds dbt metadata to dataset columns.
+
+    reload_columns (default): dbt data synced & Preset-only metadata deleted
+    merge_metadata: dbt data synced & Preset-only metadata preserved
+    if both are false: Preset metadata preserved & dbt-only metadata synced
+    """
+    dbt_metadata = {
+        column["name"]: {
+            key: column[key] for key in ("description", "meta") if key in column
+        }
+        for column in dbt_columns
+    }
+    for column, definition in dbt_metadata.items():
+        dbt_metadata[column]["verbose_name"] = column
+        for key, value in definition.pop("meta", {}).get("superset", {}).items():
+            dbt_metadata[column][key] = value
+
+    for column in dataset_columns:
+        name = column["column_name"]
+        if name in dbt_metadata:
+            for key, value in dbt_metadata[name].items():
+                if reload_columns or merge_metadata or not column.get(key):
+                    column[key] = value
+
+        # remove data that is not part of the update payload
+        column = clean_metadata(column)
+
+        # for some reason this is being sent as null sometimes
+        # https://github.com/preset-io/backend-sdk/issues/163
+        if "is_active" in column and column["is_active"] is None:
+            del column["is_active"]
+
+    return dataset_columns
+
+
+def compute_dataset_metadata(  # pylint: disable=too-many-arguments
+    model: Dict[str, Any],
+    certification: Optional[Dict[str, Any]],
+    disallow_edits: bool,
+    final_dataset_metrics: List[Any],
+    base_url: Optional[URL],
+    final_dataset_columns: List[Any],
+) -> Dict[str, Any]:
+    """
+    Returns the dataset metadata based on the model information
+    """
+    # load Superset-specific metadata from dbt model definition (model.meta.superset)
+    model_kwargs = model.get("meta", {}).pop("superset", {})
+    certification_details = get_certification_info(model_kwargs, certification)
+    extra = {
+        "unique_id": model["unique_id"],
+        "depends_on": "ref('{name}')".format(**model),
+        **model_kwargs.pop(
+            "extra",
+            {},
+        ),
+    }
+    if certification_details:
+        extra["certification"] = certification_details
+
+    # update dataset metadata
+    update = {
+        "description": model.get("description", ""),
+        "extra": json.dumps(extra),
+        "is_managed_externally": disallow_edits,
+        "metrics": final_dataset_metrics,
+        **model_kwargs,  # include additional model metadata defined in model.meta.superset
+    }
+    if base_url:
+        fragment = "!/model/{unique_id}".format(**model)
+        update["external_url"] = str(base_url.with_fragment(fragment))
+    if final_dataset_columns:
+        update["columns"] = final_dataset_columns
+
+    return update
+
+
+def sync_datasets(  # pylint: disable=too-many-arguments, too-many-locals # noqa:C901
     client: SupersetClient,
     models: List[ModelSchema],
     metrics: Dict[str, List[SupersetMetricDefinition]],
@@ -87,96 +288,50 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
     certification: Optional[Dict[str, Any]] = None,
     reload_columns: bool = True,
     merge_metadata: bool = False,
+    sync_columns: bool = False,
 ) -> Tuple[List[Any], List[str]]:
     """
     Read the dbt manifest and import models as datasets with metrics.
     """
     base_url = URL(external_url_prefix) if external_url_prefix else None
-
-    # add datasets
     datasets = []
     failed_datasets = []
+
     for model in models:
-        # load additional metadata from dbt model definition
-        model_kwargs = model.get("meta", {}).pop("superset", {})
-
+        # get corresponding dataset
         try:
-            certification_details = model_kwargs["extra"].pop("certification")
-        except KeyError:
-            certification_details = certification or DEFAULT_CERTIFICATION
+            dataset = get_or_create_dataset(client, model, database)
+        except CLIError:
+            failed_datasets.append(model["unique_id"])
+            continue
 
-        certification_info = {"certification": certification_details}
+        # compute metrics
+        final_dataset_metrics = compute_metrics(
+            dataset["metrics"],
+            metrics.get(model["unique_id"], []),
+            reload_columns,
+            merge_metadata,
+        )
 
-        filters = {
-            "database": OneToMany(database["id"]),
-            "schema": model["schema"],
-            "table_name": model.get("alias") or model["name"],
-        }
-        existing = client.get_datasets(**filters)
-        if len(existing) > 1:
-            raise Exception("More than one dataset found")
+        # compute columns
+        final_dataset_columns = []
+        if not reload_columns and sync_columns:
+            refreshed_columns_list = client.get_refreshed_dataset_columns(dataset["id"])
+            final_dataset_columns = compute_columns(
+                dataset["columns"],
+                refreshed_columns_list,
+            )
 
-        if existing:
-            dataset = existing[0]
-            _logger.info("Updating dataset %s", model["unique_id"])
-        else:
-            _logger.info("Creating dataset %s", model["unique_id"])
-            try:
-                dataset = create_dataset(client, database, model)
-            except Exception:  # pylint: disable=broad-except
-                _logger.exception("Unable to create dataset")
-                failed_datasets.append(model["unique_id"])
-                continue
+        # compute update payload
+        update = compute_dataset_metadata(
+            model,
+            certification,
+            disallow_edits,
+            final_dataset_metrics,
+            base_url,
+            final_dataset_columns,
+        )
 
-        extra = {
-            "unique_id": model["unique_id"],
-            "depends_on": "ref('{name}')".format(**model),
-            **(
-                certification_info
-                if certification_info["certification"] is not None
-                else {}
-            ),
-            **model_kwargs.pop(
-                "extra",
-                {},
-            ),  # include any additional or custom field specified in model.meta.superset.extra
-        }
-
-        dataset_metrics = []
-        current_metrics = {}
-        model_metrics = {
-            metric["metric_name"]: metric
-            for metric in metrics.get(model["unique_id"], [])
-        }
-
-        if not reload_columns:
-            current_metrics = {
-                metric["metric_name"]: metric
-                for metric in client.get_dataset(dataset["id"])["metrics"]
-            }
-            for name, metric in current_metrics.items():
-                # remove data that is not part of the update payload
-                metric = clean_metadata(metric)
-                if not merge_metadata or name not in model_metrics:
-                    dataset_metrics.append(metric)
-
-        for name, metric_definition in model_metrics.items():
-            if reload_columns or name not in current_metrics or merge_metadata:
-                if merge_metadata and name in current_metrics:
-                    metric_definition["id"] = current_metrics[name]["id"]
-                dataset_metrics.append(metric_definition)
-
-        # update dataset metadata from dbt and clearing metrics
-        update = {
-            "description": model.get("description", ""),
-            "extra": json.dumps(extra),
-            "is_managed_externally": disallow_edits,
-            "metrics": [] if reload_columns else dataset_metrics,
-            **model_kwargs,  # include additional model metadata defined in model.meta.superset
-        }
-        if base_url:
-            fragment = "!/model/{unique_id}".format(**model)
-            update["external_url"] = str(base_url.with_fragment(fragment))
         try:
             client.update_dataset(
                 dataset["id"], override_columns=reload_columns, **update
@@ -185,41 +340,24 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-branches, too-ma
             failed_datasets.append(model["unique_id"])
             continue
 
-        if reload_columns and dataset_metrics:
-            update = {
-                "metrics": dataset_metrics,
-            }
-            try:
-                client.update_dataset(dataset["id"], override_columns=False, **update)
-            except SupersetError:
-                failed_datasets.append(model["unique_id"])
-                continue
-
-        # update column descriptions
-        if columns := model.get("columns"):
-            column_metadata = {column["name"]: column for column in columns}
-            current_columns = client.get_dataset(dataset["id"])["columns"]
-            for column in current_columns:
-                name = column["column_name"]
-                if name in column_metadata:
-                    column["description"] = column_metadata[name].get("description", "")
-                    column["verbose_name"] = column_metadata[name].get("name", "")
-
-                # remove data that is not part of the update payload
-                column = clean_metadata(column)
-
-                # for some reason this is being sent as null sometimes
-                # https://github.com/preset-io/backend-sdk/issues/163
-                if "is_active" in column and column["is_active"] is None:
-                    del column["is_active"]
+        # update column metadata
+        if dbt_columns := model.get("columns"):
+            current_dataset_columns = client.get_dataset(dataset["id"])["columns"]
+            dataset_columns = compute_columns_metadata(
+                dbt_columns,
+                current_dataset_columns,
+                reload_columns,
+                merge_metadata,
+            )
             try:
                 client.update_dataset(
                     dataset["id"],
                     override_columns=reload_columns,
-                    columns=current_columns,
+                    columns=dataset_columns,
                 )
             except SupersetError:
                 failed_datasets.append(model["unique_id"])
+                continue
 
         datasets.append(dataset)
 
