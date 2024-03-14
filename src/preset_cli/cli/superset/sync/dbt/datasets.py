@@ -35,8 +35,7 @@ def model_in_database(model: ModelSchema, url: SQLAlchemyURL) -> bool:
 
 def clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Remove incompatbile columns from metatada.
-    When creating/updating an column/metric we need to remove some fields from the payload.
+    Remove incompatbile columns from metatada to create/update a column/metric.
     """
     for key in (
         "autoincrement",
@@ -141,9 +140,9 @@ def compute_metrics(
     """
     Compute the final list of metrics that should be used to update the dataset
 
-    reload_columns (default): dbt data synced & Preset-only metadata deleted
-    merge_metadata: dbt data synced & Preset-only metadata preserved
-    if both are false: Preset metadata preserved & dbt-only metadata synced
+    reload_columns (default): dbt data synced & Superset-only metadata deleted
+    merge_metadata: dbt data synced & Superset-only metadata preserved
+    if both are false: Superset metadata preserved & dbt-only metadata synced
     """
     current_dataset_metrics = {
         metric["metric_name"]: metric for metric in dataset_metrics
@@ -173,7 +172,7 @@ def compute_columns(
     refreshed_columns_list: List[Any],
 ) -> List[Any]:
     """
-    Refresh the list of columns preserving Preset configurations
+    Refresh the list of columns preserving existing configurations
     """
     final_dataset_columns = []
 
@@ -203,9 +202,9 @@ def compute_columns_metadata(
     """
     Adds dbt metadata to dataset columns.
 
-    reload_columns (default): dbt data synced & Preset-only metadata deleted
-    merge_metadata: dbt data synced & Preset-only metadata preserved
-    if both are false: Preset metadata preserved & dbt-only metadata synced
+    reload_columns (default): dbt data synced & Superset-only metadata deleted
+    merge_metadata: dbt data synced & Superset-only metadata preserved
+    if both are false: Superset metadata preserved & dbt-only metadata synced
     """
     dbt_metadata = {
         column["name"]: {
@@ -278,7 +277,7 @@ def compute_dataset_metadata(  # pylint: disable=too-many-arguments
     return update
 
 
-def sync_datasets(  # pylint: disable=too-many-arguments, too-many-locals # noqa:C901
+def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
     client: SupersetClient,
     models: List[ModelSchema],
     metrics: Dict[str, List[SupersetMetricDefinition]],
@@ -288,7 +287,6 @@ def sync_datasets(  # pylint: disable=too-many-arguments, too-many-locals # noqa
     certification: Optional[Dict[str, Any]] = None,
     reload_columns: bool = True,
     merge_metadata: bool = False,
-    sync_columns: bool = False,
 ) -> Tuple[List[Any], List[str]]:
     """
     Read the dbt manifest and import models as datasets with metrics.
@@ -315,7 +313,7 @@ def sync_datasets(  # pylint: disable=too-many-arguments, too-many-locals # noqa
 
         # compute columns
         final_dataset_columns = []
-        if not reload_columns and sync_columns:
+        if not reload_columns:
             refreshed_columns_list = client.get_refreshed_dataset_columns(dataset["id"])
             final_dataset_columns = compute_columns(
                 dataset["columns"],
