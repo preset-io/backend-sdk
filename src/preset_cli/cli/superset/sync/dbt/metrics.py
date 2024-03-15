@@ -39,14 +39,14 @@ DIALECT_MAP = {
 }
 
 
-def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> str:
+def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) -> str:
     """
     Return a SQL expression for a given dbt metric using sqlglot.
     """
-    if unique_id not in metrics:
-        raise Exception(f"Invalid metric {unique_id}")
+    if metric_name not in metrics:
+        raise Exception(f"Invalid metric {metric_name}")
 
-    metric = metrics[unique_id]
+    metric = metrics[metric_name]
     if "calculation_method" in metric:
         # dbt >= 1.3
         type_ = metric["calculation_method"]
@@ -77,13 +77,16 @@ def get_metric_expression(unique_id: str, metrics: Dict[str, MetricSchema]) -> s
         return f"COUNT(DISTINCT {sql})"
 
     if type_ in {"expression", "derived"}:
-        expression = sqlglot.parse_one(sql)
+        expression = sqlglot.parse_one(sql, dialect=metric["dialect"])
         tokens = expression.find_all(exp.Column)
 
         for token in tokens:
             if token.sql() in metrics:
                 parent_sql = get_metric_expression(token.sql(), metrics)
-                parent_expression = sqlglot.parse_one(parent_sql)
+                parent_expression = sqlglot.parse_one(
+                    parent_sql,
+                    dialect=metric["dialect"],
+                )
                 token.replace(parent_expression)
 
         return expression.sql()
@@ -167,23 +170,22 @@ def get_metric_models(unique_id: str, metrics: List[MetricSchema]) -> Set[str]:
 
 
 def get_metric_definition(
-    unique_id: str,
+    metric_name: str,
     metrics: List[MetricSchema],
 ) -> SupersetMetricDefinition:
     """
     Build a Superset metric definition from an OG (< 1.6) dbt metric.
     """
-    metric_map = {metric["unique_id"]: metric for metric in metrics}
-    metric = metric_map[unique_id]
-    name = metric["name"]
+    metric_map = {metric["name"]: metric for metric in metrics}
+    metric = metric_map[metric_name]
     meta = metric.get("meta", {})
     kwargs = meta.pop("superset", {})
 
     return {
-        "expression": get_metric_expression(unique_id, metric_map),
-        "metric_name": name,
+        "expression": get_metric_expression(metric_name, metric_map),
+        "metric_name": metric_name,
         "metric_type": (metric.get("type") or metric.get("calculation_method")),
-        "verbose_name": metric.get("label", name),
+        "verbose_name": metric.get("label", metric_name),
         "description": metric.get("description", ""),
         "extra": json.dumps(meta),
         **kwargs,  # type: ignore
@@ -209,7 +211,7 @@ def get_superset_metrics_per_model(
             continue
 
         metric_definition = get_metric_definition(
-            metric["unique_id"],
+            metric["name"],
             og_metrics,
         )
         model = metric_models.pop()
