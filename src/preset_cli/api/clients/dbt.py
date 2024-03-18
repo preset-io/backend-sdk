@@ -589,6 +589,7 @@ class MetricSchema(PostelSchema):
     # dbt >= 1.3
     calculation_method = fields.String()
     expression = fields.String()
+    dialect = fields.String()
 
 
 class MFMetricType(str, Enum):

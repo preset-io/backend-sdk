@@ -38,24 +38,28 @@ def test_get_metric_expression() -> None:
                     {"field": "company_name", "operator": "!=", "value": "'Acme, Inc'"},
                     {"field": "signup_date", "operator": ">=", "value": "'2020-01-01'"},
                 ],
+                "dialect": "postgres",
             },
         ),
         "two": metric_schema.load(
             {
                 "type": "count_distinct",
                 "sql": "user_id",
+                "dialect": "postgres",
             },
         ),
         "three": metric_schema.load(
             {
                 "type": "expression",
                 "sql": "one - two",
+                "dialect": "postgres",
             },
         ),
         "four": metric_schema.load(
             {
                 "type": "hllsketch",
                 "sql": "user_id",
+                "dialect": "postgres",
             },
         ),
         "load_fill_by_weight": metric_schema.load(
@@ -72,6 +76,7 @@ def test_get_metric_expression() -> None:
                 "sql": "load_weight_lbs / load_weight_capacity_lbs",
                 "type": "derived",
                 "unique_id": "metric.breakthrough_dw.load_fill_by_weight",
+                "dialect": "postgres",
             },
         ),
     }
@@ -97,7 +102,7 @@ def test_get_metric_expression() -> None:
         get_metric_expression("four", metrics)
     assert str(excinfo.value) == (
         "Unable to generate metric expression from: "
-        "{'sql': 'user_id', 'type': 'hllsketch'}"
+        "{'dialect': 'postgres', 'sql': 'user_id', 'type': 'hllsketch'}"
     )
 
     with pytest.raises(Exception) as excinfo:
@@ -133,6 +138,107 @@ def test_get_metric_expression_new_schema() -> None:
     assert get_metric_expression("one", metrics) == (
         "COUNT(CASE WHEN is_paying is true AND lifetime_value >= 100 AND "
         "company_name != 'Acme, Inc' AND signup_date >= '2020-01-01' THEN user_id END)"
+    )
+
+
+def test_get_metric_expression_derived_legacy() -> None:
+    """
+    Test ``get_metric_expression`` with derived metrics created using a legacy dbt version.
+    """
+    metric_schema = MetricSchema()
+    metrics: Dict[str, MetricSchema] = {
+        "revenue_verbose_name_from_dbt": metric_schema.load(
+            {
+                "name": "revenue_verbose_name_from_dbt",
+                "expression": "price_each",
+                "description": "revenue.",
+                "calculation_method": "sum",
+                "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
+                "label": "Sales Revenue Metric and this is the dbt label",
+                "depends_on": ["model.postgres.vehicle_sales"],
+                "metrics": [],
+                "created_at": 1701101973.269536,
+                "resource_type": "metric",
+                "fqn": ["postgres", "revenue_verbose_name_from_dbt"],
+                "model": "ref('vehicle_sales')",
+                "path": "schema.yml",
+                "package_name": "postgres",
+                "original_file_path": "models/schema.yml",
+                "refs": [{"name": "vehicle_sales", "package": None, "version": None}],
+                "time_grains": [],
+                "model_unique_id": None,
+                "dialect": "postgres",
+            },
+        ),
+        "derived_metric": metric_schema.load(
+            {
+                "name": "derived_metric",
+                "expression": "revenue_verbose_name_from_dbt * 1.1",
+                "description": "",
+                "calculation_method": "derived",
+                "unique_id": "metric.postgres.derived_metric",
+                "label": "Dervied Metric",
+                "depends_on": ["metric.postgres.revenue_verbose_name_from_dbt"],
+                "metrics": [["revenue_verbose_name_from_dbt"]],
+                "created_at": 1704299520.144628,
+                "resource_type": "metric",
+                "fqn": ["postgres", "derived_metric"],
+                "model": None,
+                "path": "schema.yml",
+                "package_name": "bigquery",
+                "original_file_path": "models/schema.yml",
+                "refs": [],
+                "time_grains": [],
+                "model_unique_id": None,
+                "config": {"enabled": True, "group": None},
+                "dialect": "bigquery",
+            },
+        ),
+        "another_derived_metric": metric_schema.load(
+            {
+                "name": "another_derived_metric",
+                "expression": """
+SAFE_DIVIDE(
+        SUM(
+          IF(
+            `product_line` = "Classic Cars",
+            price_each * 0.80,
+            price_each * 0.70
+          )
+        ),
+        revenue_verbose_name_from_dbt
+      )
+""",
+                "description": "",
+                "dialect": "bigquery",
+                "calculation_method": "derived",
+                "unique_id": "metric.postgres.another_derived_metric",
+                "label": "Another Dervied Metric",
+                "depends_on": ["metric.postgres.revenue_verbose_name_from_dbt"],
+                "metrics": [["revenue_verbose_name_from_dbt"]],
+                "created_at": 1704299520.144628,
+                "resource_type": "metric",
+                "fqn": ["postgres", "derived_metric"],
+                "model": None,
+                "path": "schema.yml",
+                "package_name": "postgres",
+                "original_file_path": "models/schema.yml",
+                "refs": [],
+                "time_grains": [],
+                "model_unique_id": None,
+                "config": {"enabled": True, "group": None},
+            },
+        ),
+    }
+    unique_id = "derived_metric"
+    result = get_metric_expression(unique_id, metrics)
+    assert result == "SUM(price_each) * 1.1"
+
+    unique_id = "another_derived_metric"
+    result = get_metric_expression(unique_id, metrics)
+    assert (
+        result
+        == "SAFE_DIVIDE(SUM(CASE WHEN \"product_line\" = 'Classic Cars' THEN price_each * 0.80 ELSE price_each * 0.70 END), SUM(price_each))"
     )
 
 

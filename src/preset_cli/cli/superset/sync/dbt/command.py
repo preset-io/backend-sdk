@@ -184,7 +184,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
 
     with open(profiles, encoding="utf-8") as input_:
         config = yaml.safe_load(input_)
-    dialect = MFSQLEngine(config[project]["outputs"][target]["type"].upper())
+    dialect = config[project]["outputs"][target]["type"]
+    mf_dialect = MFSQLEngine(dialect.upper())
 
     model_schema = ModelSchema()
     models = []
@@ -215,8 +216,9 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
                 # conform to the same schema that dbt Cloud uses for metrics
                 config["dependsOn"] = config.pop("depends_on")["nodes"]
                 config["uniqueId"] = config.pop("unique_id")
+                config["dialect"] = dialect
                 og_metrics.append(metric_schema.load(config))
-            elif sl_metric := get_sl_metric(config, model_map, dialect):
+            elif sl_metric := get_sl_metric(config, model_map, mf_dialect):
                 sl_metrics.append(sl_metric)
 
         superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
