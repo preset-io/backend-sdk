@@ -1375,7 +1375,6 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-    log_warning = mocker.patch("preset_cli.cli.superset.sync.dbt.command.log_warning")
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
@@ -1407,13 +1406,6 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    log_warning.assert_called_with(
-        (
-            "Passing the manifest.json file is deprecated. "
-            "Please pass the dbt_project.yml file instead."
-        ),
-        DeprecationWarning,
-    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -1699,7 +1691,6 @@ def test_dbt_core_preserve_metadata(
         "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
     )
     client = SupersetClient()
-    log_warning = mocker.patch("preset_cli.cli.superset.sync.dbt.command.log_warning")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
@@ -1733,13 +1724,6 @@ def test_dbt_core_preserve_metadata(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    log_warning.assert_called_with(
-        (
-            "Passing the manifest.json file is deprecated. "
-            "Please pass the dbt_project.yml file instead."
-        ),
-        DeprecationWarning,
-    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -1787,7 +1771,6 @@ def test_dbt_core_preserve_columns(
         "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
     )
     client = SupersetClient()
-    log_warning = mocker.patch("preset_cli.cli.superset.sync.dbt.command.log_warning")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
@@ -1816,13 +1799,6 @@ def test_dbt_core_preserve_columns(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    log_warning.assert_called_with(
-        (
-            "Passing the manifest.json file is deprecated. "
-            "Please pass the dbt_project.yml file instead."
-        ),
-        DeprecationWarning,
-    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -1867,7 +1843,6 @@ def test_dbt_core_merge_metadata(
     )
     client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-    log_warning = mocker.patch("preset_cli.cli.superset.sync.dbt.command.log_warning")
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
@@ -1900,13 +1875,6 @@ def test_dbt_core_merge_metadata(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    log_warning.assert_called_with(
-        (
-            "Passing the manifest.json file is deprecated. "
-            "Please pass the dbt_project.yml file instead."
-        ),
-        DeprecationWarning,
-    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -2417,9 +2385,6 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-    log_warning = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.log_warning",
-    )
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
@@ -2451,13 +2416,6 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    log_warning.assert_called_with(
-        (
-            "Passing the manifest.json file is deprecated. "
-            "Please pass the dbt_project.yml file instead."
-        ),
-        DeprecationWarning,
-    )
     sync_database.assert_called_with(
         client,
         profiles,
@@ -2734,9 +2692,6 @@ def test_dbt_core_disallow_edits_superset(
     )
     client = SupersetClient()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-    log_warning = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.log_warning",
-    )
     sync_database = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.command.sync_database",
     )
@@ -2759,14 +2714,6 @@ def test_dbt_core_disallow_edits_superset(
     )
 
     assert result.exit_code == 0
-    log_warning.assert_called_with(
-        (
-            "The managed externally feature was only introduced in Superset v1.5."
-            "Make sure you are running a compatible version."
-        ),
-        UserWarning,
-    )
-
     sync_database.assert_called_with(
         client,
         profiles,

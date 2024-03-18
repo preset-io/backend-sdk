@@ -1422,6 +1422,57 @@ def test_get_dataset(mocker: MockerFixture) -> None:
     get_resource.assert_called_with("dataset", 1)
 
 
+def test_get_refreshed_dataset_columns(requests_mock: Mocker) -> None:
+    """
+    Test the ``get_refreshed_dataset_columns`` method.
+    """
+    expected_response = [
+        {
+            "column_name": "order_number",
+            "name": "order_number",
+            "type": "BIGINT",
+            "nullable": True,
+            "default": None,
+            "autoincrement": False,
+            "comment": None,
+            "type_generic": 0,
+            "is_dttm": False,
+        },
+        {
+            "column_name": "quantity_ordered",
+            "name": "quantity_ordered",
+            "type": "BIGINT",
+            "nullable": True,
+            "default": None,
+            "autoincrement": False,
+            "comment": None,
+            "type_generic": 0,
+            "is_dttm": False,
+        },
+        {
+            "column_name": "price_each",
+            "name": "price_each",
+            "type": "DOUBLE PRECISION",
+            "nullable": True,
+            "default": None,
+            "autoincrement": False,
+            "comment": None,
+            "type_generic": 0,
+            "is_dttm": False,
+        },
+    ]
+    requests_mock.get(
+        "https://superset.example.org/datasource/external_metadata/table/1",
+        json=expected_response,
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    response = client.get_refreshed_dataset_columns(1)
+    assert response == expected_response
+
+
 def test_get_datasets(mocker: MockerFixture) -> None:
     """
     Test the ``get_datasets`` method.

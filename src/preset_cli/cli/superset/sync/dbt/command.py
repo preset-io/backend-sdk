@@ -522,8 +522,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
-    raise_failures: bool = False,
     access_url: Optional[str] = None,
+    raise_failures: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
