@@ -5,6 +5,15 @@ Changelog
 Next
 ====
 
+Version 0.2.12 - 2024-03-19
+===========================
+
+- Support for including the account and project IDs with the dbt Cloud command (`#264 <https://github.com/preset-io/backend-sdk/pull/264>_`.
+- Support MetricFlow/new dbt Semantic Layer for the dbt Core sync (`#265 <https://github.com/preset-io/backend-sdk/pull/265>_`.
+- New ``--raise-failures`` flag added to the dbt sync commands to end the execution with an error in case any model failed to sync (`#266 <https://github.com/preset-io/backend-sdk/pull/266>_`.
+- Syncing from dbt with the ``--preserve-metadata`` / ``--merge-metadata`` flags now sync the dataset columns (`#268 <https://github.com/preset-io/backend-sdk/pull/268>_`.
+- Derived metrics for older dbt versions are now syncing properly (`#270 <https://github.com/preset-io/backend-sdk/pull/270>_`.
+
 Version 0.2.11 - 2024-02-14
 ===========================
 
