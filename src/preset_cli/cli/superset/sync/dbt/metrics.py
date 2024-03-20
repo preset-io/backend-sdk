@@ -89,7 +89,7 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
                 )
                 token.replace(parent_expression)
 
-        return expression.sql()
+        return expression.sql(dialect=metric["dialect"])
 
     sorted_metric = dict(sorted(metric.items()))
     raise Exception(f"Unable to generate metric expression from: {sorted_metric}")
@@ -285,7 +285,7 @@ def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
         )
         metric_expression.set("this", case_expression)
 
-    return metric_expression.sql()
+    return metric_expression.sql(dialect=DIALECT_MAP.get(dialect))
 
 
 def convert_metric_flow_to_superset(
