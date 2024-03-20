@@ -238,7 +238,7 @@ SAFE_DIVIDE(
     result = get_metric_expression(unique_id, metrics)
     assert (
         result
-        == "SAFE_DIVIDE(SUM(CASE WHEN \"product_line\" = 'Classic Cars' THEN price_each * 0.80 ELSE price_each * 0.70 END), SUM(price_each))"
+        == "SAFE_DIVIDE(SUM(IF(`product_line` = 'Classic Cars', price_each * 0.80, price_each * 0.70)), SUM(price_each))"
     )
 
 
@@ -683,7 +683,19 @@ WHERE order_id__order_total_dim >= 20
             """,
             MFSQLEngine.BIGQUERY,
         )
-        == "CAST(SUM(CASE WHEN is_food_item = 1 THEN product_price ELSE 0 END) AS DOUBLE) / CAST(NULLIF(SUM(product_price), 0) AS DOUBLE)"
+        == "CAST(SUM(CASE WHEN is_food_item = 1 THEN product_price ELSE 0 END) AS FLOAT64) / CAST(NULLIF(SUM(product_price), 0) AS FLOAT64)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    AVG(DATE_DIFF(start_date, end_date, DAY)) AS avg_time_diff
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_98
+            """,
+            MFSQLEngine.BIGQUERY,
+        )
+        == "AVG(DATE_DIFF(start_date, end_date, DAY))"
     )
 
     with pytest.raises(ValueError) as excinfo:
