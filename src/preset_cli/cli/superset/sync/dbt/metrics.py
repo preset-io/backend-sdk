@@ -13,7 +13,17 @@ from typing import Dict, List, Optional, Set
 
 import sqlglot
 from sqlglot import Expression, exp, parse_one
-from sqlglot.expressions import Alias, Case, Identifier, If, Join, Select, Table, Where
+from sqlglot.expressions import (
+    Alias,
+    Case,
+    Distinct,
+    Identifier,
+    If,
+    Join,
+    Select,
+    Table,
+    Where,
+)
 from sqlglot.optimizer import traverse_scope
 
 from preset_cli.api.clients.dbt import (
@@ -276,6 +286,14 @@ def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
     # convert WHERE predicate to a CASE statement
     where_expression = parsed_query.find(Where)
     if where_expression:
+
+        # Remove DISTINCT from metric to avoid conficting with CASE
+        distinct = False
+        for node, _, _ in metric_expression.this.walk():
+            if isinstance(node, Distinct):
+                distinct = True
+                node.replace(node.expressions[0])
+
         for node, _, _ in where_expression.walk():
             if isinstance(node, Identifier) and node.sql() in aliases:
                 node.replace(parse_one(aliases[node.sql()]))
@@ -283,6 +301,10 @@ def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
         case_expression = Case(
             ifs=[If(this=where_expression.this, true=metric_expression.this)],
         )
+
+        if distinct:
+            case_expression = Distinct(expressions=[case_expression])
+
         metric_expression.set("this", case_expression)
 
     return metric_expression.sql(dialect=DIALECT_MAP.get(dialect))

@@ -698,6 +698,24 @@ WHERE order_id__order_total_dim >= 20
         == "AVG(DATE_DIFF(start_date, end_date, DAY))"
     )
 
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    COUNT(DISTINCT distinct_count_test) AS test_distinct_metric
+                FROM (
+                    SELECT
+                        quantity AS id__quantity
+                        , id AS distinct_count_test
+                    FROM `dbt-tutorial-347100`.`dbt_beto`.`distinct_test` distinct_test_src_10000
+                ) subq_2
+                WHERE id__quantity > 10
+            """,
+            MFSQLEngine.BIGQUERY,
+        )
+        == "COUNT(DISTINCT CASE WHEN quantity > 10 THEN id END)"
+    )
+
     with pytest.raises(ValueError) as excinfo:
         convert_query_to_projection(
             """
