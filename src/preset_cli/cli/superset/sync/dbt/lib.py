@@ -33,7 +33,8 @@ def build_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         return build_bigquery_sqlalchemy_params(target)
     if type_ == "snowflake":
         return build_snowflake_sqlalchemy_params(target)
-
+    if type_ == "sqlserver":
+        return build_sqlserver_sqlalchemy_params(target)
     raise NotImplementedError(
         f"Unable to build a SQLAlchemy URI for a target of type {type_}. Please file an "
         "issue at https://github.com/preset-io/backend-sdk/issues/new?labels=enhancement&"
@@ -196,6 +197,37 @@ def build_snowflake_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return parameters
+
+
+def build_sqlserver_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
+    windows_login = target.get("windows_login", None)
+    username = target.get("user", None)
+    password = target.get("password", "") or None
+    database = target["database"]
+    server = target["server"]
+    port = target["port"]
+    driver = target.get("driver")
+    encrypt = target.get("encrypt", False)
+    trust_cert = target.get("trust_cert", False)
+    assert windows_login or (username and password), "Either windows login or user+password has to be defined for mssql"
+
+    connection_string = f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};PORT={port};"
+    if windows_login:
+        connection_string += "Integrated Security=SSPI;Trusted_Connection=yes;"
+    else:
+        connection_string += f"UID={username};PWD={password};"
+    if encrypt:
+        connection_string += "Encrypt=yes;"
+    if trust_cert:
+        connection_string += "TrustServerCertificate=yes;"
+
+    return {
+        "sqlalchemy_uri": str(
+            URL.create(
+                'mssql+pyodbc',
+                query={"odbc_connect": connection_string})
+        ),
+    }
 
 
 def env_var(var: str, default: Optional[str] = None) -> str:
