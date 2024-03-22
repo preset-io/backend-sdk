@@ -126,7 +126,11 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     client.get_datasets.return_value = []
-    client.create_dataset.return_value = {"id": 1, "metrics": [], "columns": []}
+    client.create_dataset.return_value = {
+        "id": 1,
+        "data": {"metrics": [], "columns": []},
+    }
+    client.get_dataset.return_value = {"id": 1, "metrics": [], "columns": []}
     compute_dataset_metadata_mock = mocker.patch(
         "preset_cli.cli.superset.sync.dbt.datasets.compute_dataset_metadata",
     )
@@ -146,6 +150,7 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
         schema="public",
         table_name="messages_channels",
     )
+    client.get_dataset.assert_called_with(client.create_dataset()["id"])
     client.update_dataset.assert_has_calls(
         [
             mock.call(
@@ -797,7 +802,7 @@ def test_get_or_create_dataset_existing_dataset(mocker: MockerFixture) -> None:
     client.get_dataset.return_value = {"id": 1}
     database = {"id": 1}
     result = get_or_create_dataset(client, models[0], database)
-    assert result == client.get_dataset.return_value
+    assert result == client.get_dataset()
     client.create_dataset.assert_not_called()
 
 
@@ -829,7 +834,7 @@ def test_get_or_create_dataset_no_datasets(mocker: MockerFixture) -> None:
     )
     database = {"id": 1}
     result = get_or_create_dataset(client, models[0], database)
-    assert result == create_dataset_mock.return_value
+    assert result == client.get_dataset()
     create_dataset_mock.assert_called_with(client, database, models[0])
 
 
