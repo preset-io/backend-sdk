@@ -5,63 +5,69 @@ Changelog
 Next
 ====
 
+Version 0.2.13 - 2024-03-25
+===========================
+
+- Improved metric parsing with sqlglot (`#273 <https://github.com/preset-io/backend-sdk/pull/273>`_ and `#274 <https://github.com/preset-io/backend-sdk/pull/274>`_).
+- Fixed the dataset creation flow for the dbt sync (`#275 <https://github.com/preset-io/backend-sdk/pull/275>`_).
+
 Version 0.2.12 - 2024-03-19
 ===========================
 
-- Support for including the account and project IDs with the dbt Cloud command (`#264 <https://github.com/preset-io/backend-sdk/pull/264>_`.
-- Support MetricFlow/new dbt Semantic Layer for the dbt Core sync (`#265 <https://github.com/preset-io/backend-sdk/pull/265>_`.
-- New ``--raise-failures`` flag added to the dbt sync commands to end the execution with an error in case any model failed to sync (`#266 <https://github.com/preset-io/backend-sdk/pull/266>_`.
-- Syncing from dbt with the ``--preserve-metadata`` / ``--merge-metadata`` flags now sync the dataset columns (`#268 <https://github.com/preset-io/backend-sdk/pull/268>_`.
-- Derived metrics for older dbt versions are now syncing properly (`#270 <https://github.com/preset-io/backend-sdk/pull/270>_`.
+- Support for including the account and project IDs with the dbt Cloud command (`#264 <https://github.com/preset-io/backend-sdk/pull/264>`_).
+- Support MetricFlow/new dbt Semantic Layer for the dbt Core sync (`#265 <https://github.com/preset-io/backend-sdk/pull/265>`_).
+- New ``--raise-failures`` flag added to the dbt sync commands to end the execution with an error in case any model failed to sync (`#266 <https://github.com/preset-io/backend-sdk/pull/266>`_).
+- Syncing from dbt with the ``--preserve-metadata`` / ``--merge-metadata`` flags now sync the dataset columns (`#268 <https://github.com/preset-io/backend-sdk/pull/268>`_).
+- Derived metrics for older dbt versions are now syncing properly (`#270 <https://github.com/preset-io/backend-sdk/pull/270>`_).
 
 Version 0.2.11 - 2024-02-14
 ===========================
 
-- Support for custom access URLs when connecting to dbt Cloud APIs (`#262 <https://github.com/preset-io/backend-sdk/pull/262>_`.
+- Support for custom access URLs when connecting to dbt Cloud APIs (`#262 <https://github.com/preset-io/backend-sdk/pull/262>`_).
 
 Version 0.2.10 - 2024-01-10
 ===========================
 
-- Small improvements to the dbt sync logic (`#258 <https://github.com/preset-io/backend-sdk/pull/258>_` and `#259 <https://github.com/preset-io/backend-sdk/pull/259>_`).
+- Small improvements to the dbt sync logic (`#258 <https://github.com/preset-io/backend-sdk/pull/258>`_ and `#259 <https://github.com/preset-io/backend-sdk/pull/259>`_).
 
 Version 0.2.9 - 2024-01-10
 ==========================
 
-- Initial support for syncing metrics from dbt/MetricFlow (`#256 <https://github.com/preset-io/backend-sdk/pull/256>_`).
+- Initial support for syncing metrics from dbt/MetricFlow (`#256 <https://github.com/preset-io/backend-sdk/pull/256>`_).
 
 Version 0.2.8 - 2023-09-12
 ==========================
 
-- The Jinja rendering/escaping logic for content migration was improved (`#237 <https://github.com/preset-io/backend-sdk/pull/237>_`).
-- It's now possible to specify dbt models to be synced using the file name/path  (`#242 <https://github.com/preset-io/backend-sdk/pull/242>_`).
+- The Jinja rendering/escaping logic for content migration was improved (`#237 <https://github.com/preset-io/backend-sdk/pull/237>`_).
+- It's now possible to specify dbt models to be synced using the file name/path  (`#242 <https://github.com/preset-io/backend-sdk/pull/242>`_).
 
 Version 0.2.7 - 2023-09-08
 ==========================
 
-- The CLI now has a re-try mechanism to address Session-related errors (`#235 <https://github.com/preset-io/backend-sdk/pull/235>_`).
-- It's now possible to trigger a dbt sync and merge dbt metadata with Preset metadata (`#238 <https://github.com/preset-io/backend-sdk/pull/238>_`).
+- The CLI now has a re-try mechanism to address Session-related errors (`#235 <https://github.com/preset-io/backend-sdk/pull/235>`_).
+- It's now possible to trigger a dbt sync and merge dbt metadata with Preset metadata (`#238 <https://github.com/preset-io/backend-sdk/pull/238>`_).
 
 Version 0.2.6 - 2023-08-17
 ==========================
 
-- The dbt sync now uses Superset updated endpoints to properly create a virtual dataset (`#232 <https://github.com/preset-io/backend-sdk/pull/232>_`).
-- It's now possible to authenticate to Superset instances that require a CSRF token (`#233 <https://github.com/preset-io/backend-sdk/pull/233>_`).
+- The dbt sync now uses Superset updated endpoints to properly create a virtual dataset (`#232 <https://github.com/preset-io/backend-sdk/pull/232>`_).
+- It's now possible to authenticate to Superset instances that require a CSRF token (`#233 <https://github.com/preset-io/backend-sdk/pull/233>`_).
 
 Version 0.2.5 - 2023-07-26
 ==========================
 
-- Further adjustments to dbt marshmallow schemas to avoid integration errors (`#229 <https://github.com/preset-io/backend-sdk/pull/229>_`).
+- Further adjustments to dbt marshmallow schemas to avoid integration errors (`#229 <https://github.com/preset-io/backend-sdk/pull/229>`_).
 
 Version 0.2.4 - 2023-07-20
 ==========================
 
-- Further adjustments to dbt marshmallow schemas to avoid integration errors (`#228 <https://github.com/preset-io/backend-sdk/pull/228>_`).
-- Export RLS rules is now compatible with Preset Cloud and older Superset installations (`#227 <https://github.com/preset-io/backend-sdk/pull/227>_`)
+- Further adjustments to dbt marshmallow schemas to avoid integration errors (`#228 <https://github.com/preset-io/backend-sdk/pull/228>`_).
+- Export RLS rules is now compatible with Preset Cloud and older Superset installations (`#227 <https://github.com/preset-io/backend-sdk/pull/227>`_)
 
 Version 0.2.3 - 2023-07-14
 ==========================
 
-- Adjustments to dbt marshmallow schemas to avoid integration errors (`#225 <https://github.com/preset-io/backend-sdk/pull/225>_`).
+- Adjustments to dbt marshmallow schemas to avoid integration errors (`#225 <https://github.com/preset-io/backend-sdk/pull/225>`_).
 
 Version 0.2.2 - 2023-07-05
 ==========================
