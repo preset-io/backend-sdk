@@ -111,7 +111,7 @@ def get_or_create_dataset(
     _logger.info("Creating dataset %s", model["unique_id"])
     try:
         dataset = create_dataset(client, database, model)
-        return dataset
+        return client.get_dataset(dataset["id"])
     except Exception as excinfo:
         _logger.exception("Unable to create dataset")
         raise CLIError("Unable to create dataset", 1) from excinfo
