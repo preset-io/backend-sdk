@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, Tuple
+from typing import Any, Dict, Iterator, Set, Tuple
 from zipfile import ZipFile
 
 import backoff
@@ -263,7 +263,7 @@ def import_resources_individually(
             ("databases", lambda config: []),
             ("datasets", lambda config: [config["database_uuid"]]),
             ("charts", lambda config: [config["dataset_uuid"]]),
-            ("dashboards", get_charts_uuids),
+            ("dashboards", get_charts_and_filters_uuids),
         ]
         related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
         for resource_name, get_related_uuids in imports:
@@ -288,6 +288,13 @@ def import_resources_individually(
     os.unlink(checkpoint_path)
 
 
+def get_charts_and_filters_uuids(config: AssetConfig) -> Iterator[str]:
+    for uuid in get_charts_uuids(config):
+        yield uuid
+    for uuid in get_filters_dataset_uuids(config):
+        yield uuid
+
+
 def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
     """
     Extract chart UUID from a dashboard config.
@@ -299,6 +306,19 @@ def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
             and "uuid" in child["meta"]
         ):
             yield child["meta"]["uuid"]
+
+
+def get_filters_dataset_uuids(config: AssetConfig) -> Set[str]:
+    """
+    Extract native filters dataset UUID from a dashboard config.
+    """
+    uuids = set()
+    for child in config["metadata"]["native_filter_configuration"]:
+        for target in child.get("targets", []):
+            uuid = target.get("datasetUuid")
+            if uuid:
+                uuids.add(uuid)
+    return uuids
 
 
 def verify_db_connectivity(config: Dict[str, Any]) -> None:
