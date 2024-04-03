@@ -12,9 +12,12 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
 
 import yaml
 from jinja2 import Environment
+from sqlalchemy.engine import create_engine
 from sqlalchemy.engine.url import URL
+from sqlalchemy.exc import NoSuchModuleError
 
 from preset_cli.api.clients.dbt import ModelSchema
+from preset_cli.exceptions import CLIError
 
 _logger = logging.getLogger(__name__)
 
@@ -196,6 +199,31 @@ def build_snowflake_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return parameters
+
+
+def create_sqlalchemy_engine(url: URL):
+    """
+    Returns a SQLAlchemy engine or raises an error if missing required dependency.
+    """
+    try:
+        return create_engine(url)
+    except NoSuchModuleError as exc:
+        string_url = str(url)
+        dialect = string_url.split("://", maxsplit=1)[0]
+        if dialect == "snowflake":
+            # TODO: Check if we can progamatically read all options listed under options.extra_require
+            raise CLIError(
+                (
+                    "Missing required package. "
+                    'Please run ``pip install "preset-cli[snowflake]"`` to install it.'
+                ),
+                1,
+            ) from exc
+        raise NotImplementedError(
+            f"Unable to build a SQLAlchemy Engine for the {dialect} connection. Please file an "
+            "issue at https://github.com/preset-io/backend-sdk/issues/new?labels=enhancement&"
+            f"title=Missing+package+for+{dialect}.",
+        ) from exc
 
 
 def env_var(var: str, default: Optional[str] = None) -> str:

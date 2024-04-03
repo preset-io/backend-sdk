@@ -8,7 +8,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy.engine import create_engine
 from sqlalchemy.engine.url import URL as SQLAlchemyURL
 from sqlalchemy.engine.url import make_url
 from yarl import URL
@@ -16,7 +15,9 @@ from yarl import URL
 from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient, SupersetMetricDefinition
 from preset_cli.api.operators import OneToMany
+from preset_cli.cli.superset.sync.dbt.lib import create_sqlalchemy_engine
 from preset_cli.exceptions import CLIError, SupersetError
+from preset_cli.lib import raise_cli_errors
 
 DEFAULT_CERTIFICATION = {"details": "This table is produced by dbt"}
 
@@ -53,6 +54,7 @@ def clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     return metadata
 
 
+@raise_cli_errors
 def create_dataset(
     client: SupersetClient,
     database: Dict[str, Any],
@@ -72,7 +74,7 @@ def create_dataset(
             "table_name": model.get("alias") or model["name"],
         }
     else:
-        engine = create_engine(url)
+        engine = create_sqlalchemy_engine(url)
         quote = engine.dialect.identifier_preparer.quote
         source = ".".join(quote(model[key]) for key in ("database", "schema", "name"))
         kwargs = {
