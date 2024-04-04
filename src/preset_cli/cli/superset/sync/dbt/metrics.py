@@ -8,11 +8,12 @@ This module is used to convert dbt metrics into Superset metrics.
 
 import json
 import logging
+import re
 from collections import defaultdict
 from typing import Dict, List, Optional, Set
 
 import sqlglot
-from sqlglot import Expression, exp, parse_one
+from sqlglot import Expression, ParseError, exp, parse_one
 from sqlglot.expressions import (
     Alias,
     Case,
@@ -87,7 +88,16 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
         return f"COUNT(DISTINCT {sql})"
 
     if type_ in {"expression", "derived"}:
-        expression = sqlglot.parse_one(sql, dialect=metric["dialect"])
+        try:
+            expression = sqlglot.parse_one(sql, dialect=metric["dialect"])
+        except ParseError:
+            for parent_metric in metric["depends_on"]:
+                metric_name = parent_metric.split(".")[-1]
+                pattern = r"\b" + re.escape(metric_name) + r"\b"
+                parent_metric_syntax = get_metric_expression(metric_name, metrics)
+                sql = re.sub(pattern, parent_metric_syntax, sql)
+                return sql
+
         tokens = expression.find_all(exp.Column)
 
         for token in tokens:
@@ -192,7 +202,11 @@ def get_metric_definition(
     kwargs = meta.pop("superset", {})
 
     return {
-        "expression": get_metric_expression(metric_name, metric_map),
+        "expression": (
+            get_metric_expression(metric_name, metric_map)
+            if not metric.get("skip_parsing")
+            else metric.get("expression") or metric.get("sql")
+        ),
         "metric_name": metric_name,
         "metric_type": (metric.get("type") or metric.get("calculation_method")),
         "verbose_name": metric.get("label", metric_name),
@@ -212,6 +226,20 @@ def get_superset_metrics_per_model(
     superset_metrics = defaultdict(list)
     for metric in og_metrics:
         metric_models = get_metric_models(metric["unique_id"], og_metrics)
+
+        # dbt supports creating derived metrics with raw syntax
+        if len(metric_models) == 0:
+            try:
+                metric_models.add(metric["meta"]["superset"].pop("model"))
+                metric["skip_parsing"] = True
+            except KeyError:
+                _logger.warning(
+                    "Metric %s cannot be calculated because it's not associated with any model."
+                    " Please specify the model under metric.meta.superset.model.",
+                    metric["name"],
+                )
+                continue
+
         if len(metric_models) != 1:
             _logger.warning(
                 "Metric %s cannot be calculated because it depends on multiple models: %s",

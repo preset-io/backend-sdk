@@ -590,6 +590,7 @@ class MetricSchema(PostelSchema):
     calculation_method = fields.String()
     expression = fields.String()
     dialect = fields.String()
+    skip_parsing = fields.Boolean(allow_none=True)
 
 
 class MFMetricType(str, Enum):
