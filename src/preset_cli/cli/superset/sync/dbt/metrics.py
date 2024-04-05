@@ -95,7 +95,10 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
             for parent_metric in metric["depends_on"]:
                 parent_metric_name = parent_metric.split(".")[-1]
                 pattern = r"\b" + re.escape(parent_metric_name) + r"\b"
-                parent_metric_syntax = get_metric_expression(parent_metric_name, metrics)
+                parent_metric_syntax = get_metric_expression(
+                    parent_metric_name,
+                    metrics,
+                )
                 sql = re.sub(pattern, parent_metric_syntax, sql)
             return sql
 
