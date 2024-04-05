@@ -2,7 +2,7 @@
 Tests for metrics.
 """
 
-# pylint: disable=line-too-long
+# pylint: disable=line-too-long, too-many-lines
 
 from typing import Dict
 
@@ -905,6 +905,137 @@ def test_get_superset_metrics_per_model() -> None:
                 "metric_type": "SIMPLE",
                 "verbose_name": "new",
                 "description": "New metric",
+            },
+        ],
+    }
+
+
+def test_get_superset_metrics_per_model_og_derived(
+    caplog: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Tests for the ``get_superset_metrics_per_model`` function
+    with derived OG metrics.
+    """
+    og_metric_schema = MetricSchema()
+
+    og_metrics = [
+        og_metric_schema.load(
+            {
+                "name": "sales",
+                "unique_id": "sales",
+                "depends_on": ["orders"],
+                "calculation_method": "sum",
+                "expression": "1",
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_metric_missing_model_info",
+                "unique_id": "derived_metric_missing_model_info",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": "price_each * 1.2",
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_metric_model_from_meta",
+                "unique_id": "derived_metric_model_from_meta",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": "(SUM(price_each)) * 1.2",
+                "meta": {"superset": {"model": "customers"}},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_metric_with_jinja",
+                "unique_id": "derived_metric_with_jinja",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": """
+SUM(
+    {% for x in filter_values('x_values') %}
+        {{ + x_values }}
+    {% endfor %}
+)
+""",
+                "meta": {"superset": {"model": "customers"}},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_metric_with_jinja_and_other_metric",
+                "unique_id": "derived_metric_with_jinja_and_other_metric",
+                "depends_on": ["sales"],
+                "dialect": "postgres",
+                "calculation_method": "derived",
+                "expression": """
+SUM(
+    {% for x in filter_values('x_values') %}
+        {{ my_sales + sales }}
+    {% endfor %}
+)
+""",
+            },
+        ),
+    ]
+
+    result = get_superset_metrics_per_model(og_metrics, [])
+    output_content = caplog.text
+    assert (
+        "Metric derived_metric_missing_model_info cannot be calculated because it's not associated with any model"
+        in output_content
+    )
+
+    assert result == {
+        "customers": [
+            {
+                "expression": "(SUM(price_each)) * 1.2",
+                "metric_name": "derived_metric_model_from_meta",
+                "metric_type": "derived",
+                "verbose_name": "derived_metric_model_from_meta",
+                "description": "",
+                "extra": "{}",
+            },
+            {
+                "expression": """
+SUM(
+    {% for x in filter_values('x_values') %}
+        {{ + x_values }}
+    {% endfor %}
+)
+""",
+                "metric_name": "derived_metric_with_jinja",
+                "metric_type": "derived",
+                "verbose_name": "derived_metric_with_jinja",
+                "description": "",
+                "extra": "{}",
+            },
+        ],
+        "orders": [
+            {
+                "description": "",
+                "expression": "SUM(1)",
+                "extra": "{}",
+                "metric_name": "sales",
+                "metric_type": "sum",
+                "verbose_name": "sales",
+            },
+            {
+                "expression": """
+SUM(
+    {% for x in filter_values('x_values') %}
+        {{ my_sales + SUM(1) }}
+    {% endfor %}
+)
+""",
+                "metric_name": "derived_metric_with_jinja_and_other_metric",
+                "metric_type": "derived",
+                "verbose_name": "derived_metric_with_jinja_and_other_metric",
+                "description": "",
+                "extra": "{}",
             },
         ],
     }
