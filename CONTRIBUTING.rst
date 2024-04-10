@@ -12,4 +12,4 @@ Issue Reports
 =============
 
 If you experience bugs or general issues with ``preset-cli``, please report them in the
-[https://preset.atlassian.net/servicedesk/customer/portal/1/group/1/create/1](Preset Support Portal)
+`Preset Support Portal <https://preset.atlassian.net/servicedesk/customer/portal/1/group/1/create/1>`_.
