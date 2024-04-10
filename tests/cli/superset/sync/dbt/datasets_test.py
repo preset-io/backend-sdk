@@ -1391,6 +1391,9 @@ def test_clean_metadata() -> None:
         "nullable": "Nullable",
         "type_generic": "Type Generic",
         "yeah": "sure",
+        "precision": "very precise",
+        "scale": "to the max",
+        "max_length": 9000,
     }
     result = clean_metadata(test_data)
     assert result == {
