@@ -26,7 +26,11 @@ from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
-from preset_cli.cli.superset.sync.dbt.lib import apply_select, list_failed_models
+from preset_cli.cli.superset.sync.dbt.lib import (
+    apply_select,
+    list_failed_models,
+    load_profiles,
+)
 from preset_cli.cli.superset.sync.dbt.metrics import (
     get_models_from_sql,
     get_superset_metrics_per_model,
@@ -182,8 +186,7 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     with open(manifest, encoding="utf-8") as input_:
         configs = yaml.load(input_, Loader=yaml.SafeLoader)
 
-    with open(profiles, encoding="utf-8") as input_:
-        config = yaml.safe_load(input_)
+    config = load_profiles(Path(profiles), project, profile, target)
     dialect = config[project]["outputs"][target]["type"]
     mf_dialect = MFSQLEngine(dialect.upper())
 
