@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.2.14 - 2024-04-10
+===========================
+
+- Fixed an issue when syncing columns for datasets powered by BigQuery (`#278 <https://github.com/preset-io/backend-sdk/pull/278>`_).
+- Added support for syncing derived metrics that don't rely on other metrics, and also metrics including Superset-Jinja specific syntax (`#277 <https://github.com/preset-io/backend-sdk/pull/277>`_).
+
 Version 0.2.13 - 2024-03-25
 ===========================
 
