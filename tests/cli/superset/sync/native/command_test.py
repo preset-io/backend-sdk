@@ -1,7 +1,7 @@
 """
 Tests for the native import command.
 """
-# pylint: disable=redefined-outer-name, invalid-name
+# pylint: disable=redefined-outer-name, invalid-name, too-many-lines
 
 import json
 from pathlib import Path
@@ -391,9 +391,7 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
 
     prompt_for_passwords.reset_mock()
     client.get_databases.return_value = [
-        {
-            "uuid": "uuid1"
-        },
+        {"uuid": "uuid1"},
     ]
     result = runner.invoke(
         superset_cli,
@@ -554,11 +552,9 @@ def test_native_legacy_instance(mocker: MockerFixture, fs: FakeFilesystem) -> No
     client.get_databases.return_value = [
         {
             "connection_name": "Test",
-        }
+        },
     ]
-    client.get_uuids.return_value = {
-        1: "uuid1"
-    }
+    client.get_uuids.return_value = {1: "uuid1"}
     mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     prompt_for_passwords = mocker.patch(
