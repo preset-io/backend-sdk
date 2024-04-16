@@ -227,7 +227,7 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    client.get_uuids.return_value = {}
+    client.get_databases.return_value = []
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -291,6 +291,7 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     }
 
     import_resources.assert_has_calls([mock.call(contents, client, False)])
+    client.get_uuids.assert_not_called()
 
 
 def test_native_params_as_str(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -323,7 +324,7 @@ def test_native_params_as_str(mocker: MockerFixture, fs: FakeFilesystem) -> None
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    client.get_uuids.return_value = {}
+    client.get_databases.return_value = []
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -347,6 +348,7 @@ def test_native_params_as_str(mocker: MockerFixture, fs: FakeFilesystem) -> None
         ),
     }
     import_resources.assert_has_calls([mock.call(contents, client, False)])
+    client.get_uuids.assert_not_called()
 
 
 def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -370,7 +372,7 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    client.get_uuids.return_value = {}
+    client.get_databases.return_value = []
     mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     prompt_for_passwords = mocker.patch(
@@ -388,7 +390,11 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
     prompt_for_passwords.assert_called()
 
     prompt_for_passwords.reset_mock()
-    client.get_uuids.return_value = {"1": "uuid1"}
+    client.get_databases.return_value = [
+        {
+            "uuid": "uuid1"
+        },
+    ]
     result = runner.invoke(
         superset_cli,
         ["https://superset.example.org/", "sync", "native", str(root)],
@@ -396,6 +402,7 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
     )
     assert result.exit_code == 0
     prompt_for_passwords.assert_not_called()
+    client.get_uuids.assert_not_called()
 
 
 def test_native_load_env(
@@ -425,7 +432,7 @@ def test_native_load_env(
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    client.get_uuids.return_value = {}
+    client.get_databases.return_value = []
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -455,6 +462,7 @@ def test_native_load_env(
         ),
     }
     import_resources.assert_has_calls([mock.call(contents, client, False)])
+    client.get_uuids.assert_not_called()
 
 
 def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -488,7 +496,7 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    client.get_uuids.return_value = {}
+    client.get_databases.return_value = []
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -518,6 +526,54 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
     import_resources.assert_has_calls([mock.call(contents, client, False)])
+    client.get_uuids.assert_not_called()
+
+
+def test_native_legacy_instance(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test ``native`` command for legacy instances that don't expose the
+    DB connection ``uuid`` in the API response.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "Postgres",
+        "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/dbname",
+        "is_managed_externally": False,
+        "uuid": "uuid1",
+    }
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_databases.return_value = [
+        {
+            "connection_name": "Test",
+        }
+    ]
+    client.get_uuids.return_value = {
+        1: "uuid1"
+    }
+    mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    prompt_for_passwords = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.prompt_for_passwords",
+    )
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(root)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    prompt_for_passwords.assert_not_called()
 
 
 def test_load_user_modules(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -586,7 +642,7 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    client.get_uuids.return_value = {}
+    client.get_databases.return_value = []
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -611,6 +667,7 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
         ),
     }
     import_resources.assert_has_calls([mock.call(contents, client, False)])
+    client.get_uuids.assert_not_called()
 
 
 def test_verify_db_connectivity(mocker: MockerFixture) -> None:
@@ -941,7 +998,7 @@ GROUP BY action""",
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
     )
     client = SupersetClient()
-    client.get_uuids.return_value = {}
+    client.get_databases.return_value = []
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
@@ -965,3 +1022,4 @@ GROUP BY action""",
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
     import_resources.assert_has_calls([mock.call(contents, client, False)])
+    client.get_uuids.assert_not_called()

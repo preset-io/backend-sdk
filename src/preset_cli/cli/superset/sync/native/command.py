@@ -178,7 +178,16 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
     # collecting existing database UUIDs so we know if we're creating or updating
-    existing_databases = {str(uuid) for uuid in client.get_uuids("database").values()}
+    # newer versions expose the DB UUID in the API response,
+    # olders only expose it via export
+    try:
+        existing_databases = {
+            db_connection["uuid"] for db_connection in client.get_databases()
+        }
+    except KeyError:
+        existing_databases = {
+            str(uuid) for uuid in client.get_uuids("database").values()
+        }
 
     # env for Jinja2 templating
     env = dict(pair.split("=", 1) for pair in option if "=" in pair)  # type: ignore
