@@ -1907,6 +1907,10 @@ def test_dbt_core_merge_metadata(
 def test_dbt_core_load_profile_jinja_variables(
     mocker: MockerFixture, fs: FakeFilesystem
 ) -> None:
+    """
+    Test the ``dbt-core`` command loading a profiles.yml containing Jinja
+    variables.
+    """
     jinja_profile_content = yaml.dump(
         {
             "default": {
