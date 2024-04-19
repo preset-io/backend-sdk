@@ -19,6 +19,8 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_metrics_for_model,
     get_models_from_sql,
     get_superset_metrics_per_model,
+    remove_line_break_wrappers,
+    replace_metric_syntax,
 )
 
 
@@ -931,6 +933,15 @@ def test_get_superset_metrics_per_model_og_derived(
         ),
         og_metric_schema.load(
             {
+                "name": "revenue",
+                "unique_id": "revenue",
+                "depends_on": ["orders"],
+                "calculation_method": "sum",
+                "expression": "price_each",
+            },
+        ),
+        og_metric_schema.load(
+            {
                 "name": "derived_metric_missing_model_info",
                 "unique_id": "derived_metric_missing_model_info",
                 "depends_on": [],
@@ -980,6 +991,38 @@ SUM(
 """,
             },
         ),
+        og_metric_schema.load(
+            {
+                "name": "derived_combining_other_derived_including_jinja",
+                "unique_id": "derived_combining_other_derived_including_jinja",
+                "depends_on": ["derived_metric_with_jinja_and_other_metric", "revenue"],
+                "dialect": "postgres",
+                "calculation_method": "derived",
+                "expression": "derived_metric_with_jinja_and_other_metric / revenue",
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "simple_derived",
+                "unique_id": "simple_derived",
+                "depends_on": [],
+                "dialect": "postgres",
+                "calculation_method": "derived",
+                "expression": "max(order_date)",
+                "meta": {"superset": {"model": "customers"}},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "last_derived_example",
+                "unique_id": "last_derived_example",
+                "depends_on": ["simple_derived"],
+                "dialect": "postgres",
+                "calculation_method": "derived",
+                "expression": "simple_derived - 1",
+                "meta": {"superset": {"model": "customers"}},
+            },
+        ),
     ]
 
     result = get_superset_metrics_per_model(og_metrics, [])
@@ -1000,16 +1043,30 @@ SUM(
                 "extra": "{}",
             },
             {
-                "expression": """
-SUM(
+                "expression": """SUM(
     {% for x in filter_values('x_values') %}
         {{ + x_values }}
     {% endfor %}
-)
-""",
+)""",
                 "metric_name": "derived_metric_with_jinja",
                 "metric_type": "derived",
                 "verbose_name": "derived_metric_with_jinja",
+                "description": "",
+                "extra": "{}",
+            },
+            {
+                "expression": "max(order_date)",
+                "metric_name": "simple_derived",
+                "metric_type": "derived",
+                "verbose_name": "simple_derived",
+                "description": "",
+                "extra": "{}",
+            },
+            {
+                "expression": "MAX(order_date) - 1",
+                "metric_name": "last_derived_example",
+                "metric_type": "derived",
+                "verbose_name": "last_derived_example",
                 "description": "",
                 "extra": "{}",
             },
@@ -1024,18 +1081,88 @@ SUM(
                 "verbose_name": "sales",
             },
             {
-                "expression": """
-SUM(
+                "description": "",
+                "expression": "SUM(price_each)",
+                "extra": "{}",
+                "metric_name": "revenue",
+                "metric_type": "sum",
+                "verbose_name": "revenue",
+            },
+            {
+                "expression": """SUM(
     {% for x in filter_values('x_values') %}
         {{ my_sales + SUM(1) }}
     {% endfor %}
-)
-""",
+)""",
                 "metric_name": "derived_metric_with_jinja_and_other_metric",
                 "metric_type": "derived",
                 "verbose_name": "derived_metric_with_jinja_and_other_metric",
                 "description": "",
                 "extra": "{}",
             },
+            {
+                "expression": """SUM(
+    {% for x in filter_values('x_values') %}
+        {{ my_sales + SUM(1) }}
+    {% endfor %}
+) / SUM(price_each)""",
+                "metric_name": "derived_combining_other_derived_including_jinja",
+                "metric_type": "derived",
+                "verbose_name": "derived_combining_other_derived_including_jinja",
+                "description": "",
+                "extra": "{}",
+            },
         ],
     }
+
+
+def test_remove_line_break_wrappers() -> None:
+    """
+    Test the ``remove_line_break_wrappers`` method.
+    """
+    expression = """
+SUM(
+    price_each
+)
+"""
+    assert (
+        remove_line_break_wrappers(expression)
+        == """SUM(
+    price_each
+)"""
+    )
+
+
+def test_replace_metric_syntax() -> None:
+    """
+    Test the ``replace_metric_syntax`` method.
+    """
+    og_metric_schema = MetricSchema()
+    sql = "revenue - cost"
+    metrics = {
+        "revenue": og_metric_schema.load(
+            {
+                "name": "revenue",
+                "unique_id": "revenue",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": "SUM({{ url_param['aggreagtor'] }})",
+                "dialect": "postgres",
+            },
+        ),
+        "cost": og_metric_schema.load(
+            {
+                "name": "cost",
+                "unique_id": "cost",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": "SUM({{ filter_values['test'] }})",
+                "dialect": "postgres",
+            },
+        ),
+    }
+    result = replace_metric_syntax(sql, ["revenue", "cost"], metrics)
+    assert (
+        result
+        == "SUM({{ url_param['aggreagtor'] }}) - SUM({{ filter_values['test'] }})"
+    )
