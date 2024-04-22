@@ -5,6 +5,14 @@ Changelog
 Next
 ====
 
+Version 0.2.15 - 2024-04-22
+===========================
+
+- The ``profiles.yml`` content is now rendered so that Jinja variables are handled properly (`#280 <https://github.com/preset-io/backend-sdk/pull/280>`_).
+- Added an upper bound limit to the ``sqlglot`` version that gets installed to avoid compatibility issues (`#283 <https://github.com/preset-io/backend-sdk/pull/283>`_).
+- The ``sync native`` command now tries to retrieve the DB connection ``uuid`` through the API first, to avoid exporting assets if not necessary (`#284 <https://github.com/preset-io/backend-sdk/pull/284>`_).
+- Added support for syncing derived metrics that rely on other derived metrics containing Superset-specific Jinja syntax (`#285 <https://github.com/preset-io/backend-sdk/pull/285>`_).
+
 Version 0.2.14 - 2024-04-10
 ===========================
 
