@@ -89,31 +89,26 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
         return f"COUNT(DISTINCT {sql})"
 
     if type_ in {"expression", "derived"}:
+        if metric.get("skip_parsing"):
+            return sql.strip()
+
         try:
             expression = sqlglot.parse_one(sql, dialect=metric["dialect"])
+            tokens = expression.find_all(exp.Column)
+
+            for token in tokens:
+                if token.sql() in metrics:
+                    parent_sql = get_metric_expression(token.sql(), metrics)
+                    parent_expression = sqlglot.parse_one(
+                        parent_sql,
+                        dialect=metric["dialect"],
+                    )
+                    token.replace(parent_expression)
+
+            return expression.sql(dialect=metric["dialect"])
         except ParseError:
-            for parent_metric in metric["depends_on"]:
-                parent_metric_name = parent_metric.split(".")[-1]
-                pattern = r"\b" + re.escape(parent_metric_name) + r"\b"
-                parent_metric_syntax = get_metric_expression(
-                    parent_metric_name,
-                    metrics,
-                )
-                sql = re.sub(pattern, parent_metric_syntax, sql)
+            sql = replace_metric_syntax(sql, metric["depends_on"], metrics)
             return sql
-
-        tokens = expression.find_all(exp.Column)
-
-        for token in tokens:
-            if token.sql() in metrics:
-                parent_sql = get_metric_expression(token.sql(), metrics)
-                parent_expression = sqlglot.parse_one(
-                    parent_sql,
-                    dialect=metric["dialect"],
-                )
-                token.replace(parent_expression)
-
-        return expression.sql(dialect=metric["dialect"])
 
     sorted_metric = dict(sorted(metric.items()))
     raise Exception(f"Unable to generate metric expression from: {sorted_metric}")
@@ -206,11 +201,7 @@ def get_metric_definition(
     kwargs = meta.pop("superset", {})
 
     return {
-        "expression": (
-            get_metric_expression(metric_name, metric_map)
-            if not metric.get("skip_parsing")
-            else metric.get("expression") or metric.get("sql")
-        ),
+        "expression": get_metric_expression(metric_name, metric_map),
         "metric_name": metric_name,
         "metric_type": (metric.get("type") or metric.get("calculation_method")),
         "verbose_name": metric.get("label", metric_name),
@@ -229,14 +220,17 @@ def get_superset_metrics_per_model(
     """
     superset_metrics = defaultdict(list)
     for metric in og_metrics:
-        metric_models = get_metric_models(metric["unique_id"], og_metrics)
-
-        # dbt supports creating derived metrics with raw syntax
-        if len(metric_models) == 0:
-            try:
-                metric_models.add(metric["meta"]["superset"].pop("model"))
+        # dbt supports creating derived metrics with raw syntax. In case the metric doesn't
+        # rely on other metrics (or rely on other metrics that aren't associated with any
+        # model), it's required to specify the dataset the metric should be associated with
+        # under the ``meta.superset.model`` key. If the derived metric is just an expression
+        # with no dependency, it's not required to parse the metric SQL.
+        if model := metric.get("meta", {}).get("superset", {}).pop("model", None):
+            if len(metric["depends_on"]) == 0:
                 metric["skip_parsing"] = True
-            except KeyError:
+        else:
+            metric_models = get_metric_models(metric["unique_id"], og_metrics)
+            if len(metric_models) == 0:
                 _logger.warning(
                     "Metric %s cannot be calculated because it's not associated with any model."
                     " Please specify the model under metric.meta.superset.model.",
@@ -244,19 +238,19 @@ def get_superset_metrics_per_model(
                 )
                 continue
 
-        if len(metric_models) != 1:
-            _logger.warning(
-                "Metric %s cannot be calculated because it depends on multiple models: %s",
-                metric["name"],
-                ", ".join(sorted(metric_models)),
-            )
-            continue
+            if len(metric_models) != 1:
+                _logger.warning(
+                    "Metric %s cannot be calculated because it depends on multiple models: %s",
+                    metric["name"],
+                    ", ".join(sorted(metric_models)),
+                )
+                continue
+            model = metric_models.pop()
 
         metric_definition = get_metric_definition(
             metric["name"],
             og_metrics,
         )
-        model = metric_models.pop()
         superset_metrics[model].append(metric_definition)
 
     for sl_metric in sl_metrics or []:
@@ -399,3 +393,24 @@ def get_models_from_sql(
             raise ValueError(f"Unable to find model for SQL source {table}")
 
     return [model_map[ModelKey(table.db, table.name)] for table in sources]
+
+
+def replace_metric_syntax(
+    sql: str,
+    dependencies: List[str],
+    metrics: Dict[str, MetricSchema],
+) -> str:
+    """
+    Replace metric keys with their SQL syntax.
+    This method is a fallback in case ``sqlglot`` raises a ``ParseError``.
+    """
+    for parent_metric in dependencies:
+        parent_metric_name = parent_metric.split(".")[-1]
+        pattern = r"\b" + re.escape(parent_metric_name) + r"\b"
+        parent_metric_syntax = get_metric_expression(
+            parent_metric_name,
+            metrics,
+        )
+        sql = re.sub(pattern, parent_metric_syntax, sql)
+
+    return sql.strip()
