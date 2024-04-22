@@ -1904,6 +1904,97 @@ def test_dbt_core_merge_metadata(
     )
 
 
+def test_dbt_core_load_profile_jinja_variables(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command loading a profiles.yml containing Jinja
+    variables.
+    """
+    jinja_profile_content = yaml.dump(
+        {
+            "default": {
+                "outputs": {
+                    "dev": {
+                        "type": "{{ env_var('DBT_TYPE') }}",
+                        "dbname": "{{ env_var('DBT_DBNAME') }}",
+                        "host": "{{ env_var('DBT_HOST') }}",
+                        "user": "{{ env_var('DBT_USER') }}",
+                        "pass": "{{ env_var('DBT_PASS') }}",
+                        "port": "{{ env_var('DBT_PORT') | as_number }}",
+                        "threads": "{{ env_var('DBT_THREADS') | as_number }}",
+                        "schema": "{{ env_var('DBT_SCHEMA') }}",
+                    },
+                },
+            },
+        },
+    )
+
+    mocker.patch.dict(
+        os.environ,
+        {
+            "DBT_DBNAME": "database",
+            "DBT_HOST": "hostname",
+            "DBT_USER": "username",
+            "DBT_PASS": "password",
+            "DBT_PORT": "5432",
+            "DBT_SCHEMA": "schema",
+            "DBT_THREADS": "1",
+            "DBT_TYPE": "postgres",
+        },
+    )
+
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles, contents=jinja_profile_content)
+    exposures = root / "models/exposures.yml"
+    fs.create_file(exposures)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--exposures",
+            str(exposures),
+            "--project",
+            "default",
+            "--target",
+            "dev",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    sync_database.assert_called_with(
+        client,
+        profiles,
+        "default",
+        "default",
+        "dev",
+        False,
+        False,
+        "",
+    )
+
+
 def test_dbt_core_raise_failures_flag_no_failures(
     mocker: MockerFixture,
     fs: FakeFilesystem,
