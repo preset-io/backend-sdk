@@ -19,7 +19,6 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_metrics_for_model,
     get_models_from_sql,
     get_superset_metrics_per_model,
-    remove_line_break_wrappers,
     replace_metric_syntax,
 )
 
@@ -1114,23 +1113,6 @@ SUM(
             },
         ],
     }
-
-
-def test_remove_line_break_wrappers() -> None:
-    """
-    Test the ``remove_line_break_wrappers`` method.
-    """
-    expression = """
-SUM(
-    price_each
-)
-"""
-    assert (
-        remove_line_break_wrappers(expression)
-        == """SUM(
-    price_each
-)"""
-    )
 
 
 def test_replace_metric_syntax() -> None:

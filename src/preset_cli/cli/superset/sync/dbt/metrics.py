@@ -90,7 +90,7 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) ->
 
     if type_ in {"expression", "derived"}:
         if metric.get("skip_parsing"):
-            return remove_line_break_wrappers(sql)
+            return sql.strip()
 
         try:
             expression = sqlglot.parse_one(sql, dialect=metric["dialect"])
@@ -395,14 +395,6 @@ def get_models_from_sql(
     return [model_map[ModelKey(table.db, table.name)] for table in sources]
 
 
-def remove_line_break_wrappers(sql: str) -> str:
-    """
-    Remove leading and trailing line breaks from SQL statements.
-    """
-    pattern = r"^\s*\n|\n\s*$"
-    return re.sub(pattern, "", sql, flags=re.MULTILINE)
-
-
 def replace_metric_syntax(
     sql: str,
     dependencies: List[str],
@@ -421,4 +413,4 @@ def replace_metric_syntax(
         )
         sql = re.sub(pattern, parent_metric_syntax, sql)
 
-    return remove_line_break_wrappers(sql)
+    return sql.strip()
