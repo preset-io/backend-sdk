@@ -769,7 +769,7 @@ def test_create_dataset_virtual(mocker: MockerFixture) -> None:
     Test ``create_dataset`` for virtual datasets.
     """
     create_engine = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.datasets.create_engine",
+        "preset_cli.cli.superset.sync.dbt.lib.create_sqlalchemy_engine",
     )
     create_engine().dialect.identifier_preparer.quote = lambda token: token
     client = mocker.MagicMock()
@@ -790,6 +790,45 @@ def test_create_dataset_virtual(mocker: MockerFixture) -> None:
         table_name="messages_channels",
         sql="SELECT * FROM examples_dev.public.messages_channels",
     )
+
+
+def test_create_dataset_virtual_missing_dependency(
+    capsys: pytest.CaptureFixture[str],
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test ``create_dataset`` for virtual datasets when the DB connection requires
+    an additional package.
+    """
+    client = mocker.MagicMock()
+
+    with pytest.raises(NotImplementedError):
+        create_dataset(
+            client,
+            {
+                "id": 1,
+                "schema": "public",
+                "name": "Database",
+                "sqlalchemy_uri": "blah://user@host/examples",
+            },
+            models[0],
+        )
+
+    with pytest.raises(SystemExit) as excinfo:
+        create_dataset(
+            client,
+            {
+                "id": 1,
+                "schema": "public",
+                "name": "other_db",
+                "sqlalchemy_uri": "snowflake://user@host/examples",
+            },
+            models[0],
+        )
+    output_content = capsys.readouterr()
+    assert excinfo.type == SystemExit
+    assert excinfo.value.code == 1
+    assert "preset-cli[snowflake]" in output_content.out
 
 
 def test_get_or_create_dataset_existing_dataset(mocker: MockerFixture) -> None:

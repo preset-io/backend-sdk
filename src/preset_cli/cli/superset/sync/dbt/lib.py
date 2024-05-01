@@ -210,8 +210,8 @@ def create_sqlalchemy_engine(url: URL):
     except NoSuchModuleError as exc:
         string_url = str(url)
         dialect = string_url.split("://", maxsplit=1)[0]
+        # TODO: Handle more DB engines that require an additional package
         if dialect == "snowflake":
-            # TODO: Check if we can progamatically read all options listed under options.extra_require
             raise CLIError(
                 (
                     "Missing required package. "
