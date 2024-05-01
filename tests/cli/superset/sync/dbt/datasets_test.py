@@ -769,7 +769,7 @@ def test_create_dataset_virtual(mocker: MockerFixture) -> None:
     Test ``create_dataset`` for virtual datasets.
     """
     create_engine = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.lib.create_sqlalchemy_engine",
+        "preset_cli.cli.superset.sync.dbt.lib.create_engine",
     )
     create_engine().dialect.identifier_preparer.quote = lambda token: token
     client = mocker.MagicMock()
