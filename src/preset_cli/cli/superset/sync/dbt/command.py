@@ -394,7 +394,7 @@ def get_sl_metric(
     sql = output[start:]
 
     models = get_models_from_sql(sql, dialect, model_map)
-    if len(models) > 1:
+    if not models or len(models) > 1:
         return None
     model = models[0]
 
@@ -427,7 +427,7 @@ def fetch_sl_metrics(
             continue
 
         models = get_models_from_sql(sql, dialect, model_map)
-        if len(models) > 1:
+        if not models or len(models) > 1:
             continue
         model = models[0]
 

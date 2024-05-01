@@ -381,7 +381,7 @@ def get_models_from_sql(
     sql: str,
     dialect: MFSQLEngine,
     model_map: Dict[ModelKey, ModelSchema],
-) -> List[ModelSchema]:
+) -> Optional[List[ModelSchema]]:
     """
     Return the model associated with a SQL query.
     """
@@ -390,7 +390,7 @@ def get_models_from_sql(
 
     for table in sources:
         if ModelKey(table.db, table.name) not in model_map:
-            raise ValueError(f"Unable to find model for SQL source {table}")
+            return None
 
     return [model_map[ModelKey(table.db, table.name)] for table in sources]
 

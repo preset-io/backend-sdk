@@ -811,9 +811,9 @@ def test_get_models_from_sql() -> None:
         model_map,  # type: ignore
     ) == [{"name": "a"}, {"name": "b"}]
 
-    with pytest.raises(ValueError) as excinfo:
-        get_models_from_sql("SELECT 1 FROM schema.c", MFSQLEngine.BIGQUERY, {})
-    assert str(excinfo.value) == "Unable to find model for SQL source schema.c"
+    assert (
+        get_models_from_sql("SELECT 1 FROM schema.c", MFSQLEngine.BIGQUERY, {}) is None
+    )
 
 
 def test_get_superset_metrics_per_model() -> None:

@@ -791,6 +791,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                             name
                             description
                             type
+                            meta
                         }
                     }
                 }
