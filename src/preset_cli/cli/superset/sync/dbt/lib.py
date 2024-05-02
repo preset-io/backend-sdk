@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
 
 import yaml
 from jinja2 import Environment
-from sqlalchemy.engine import create_engine
+from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import NoSuchModuleError
 
@@ -201,7 +201,7 @@ def build_snowflake_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
     return parameters
 
 
-def create_sqlalchemy_engine(url: URL):
+def create_engine_with_check(url: URL) -> Engine:
     """
     Returns a SQLAlchemy engine or raises an error if missing required dependency.
     """

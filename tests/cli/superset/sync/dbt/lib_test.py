@@ -18,7 +18,7 @@ from preset_cli.cli.superset.sync.dbt.lib import (
     apply_select,
     as_number,
     build_sqlalchemy_params,
-    create_sqlalchemy_engine,
+    create_engine_with_check,
     env_var,
     filter_models,
     list_failed_models,
@@ -228,32 +228,32 @@ def test_build_sqlalchemy_params_unsupported() -> None:
     )
 
 
-def test_create_sqlalchemy_engine(mocker: MockerFixture) -> None:
+def test_create_engine_with_check(mocker: MockerFixture) -> None:
     """
-    Test the ``create_sqlalchemy_engine`` method.
+    Test the ``create_engine_with_check`` method.
     """
     mock_engine = mocker.patch("preset_cli.cli.superset.sync.dbt.lib.create_engine")
-    test = create_sqlalchemy_engine(URL("blah://blah"))
+    test = create_engine_with_check(URL("blah://blah"))
     assert test == mock_engine.return_value
 
 
-def test_create_sqlalchemy_engine_missing_snowflake() -> None:
+def test_create_engine_with_check_missing_snowflake() -> None:
     """
-    Test the ``create_sqlalchemy_engine`` method when the Snowflake driver is
+    Test the ``create_engine_with_check`` method when the Snowflake driver is
     not installed.
     """
     with pytest.raises(CLIError) as excinfo:
-        create_sqlalchemy_engine(URL("snowflake://blah"))
+        create_engine_with_check(URL("snowflake://blah"))
     assert 'run ``pip install "preset-cli[snowflake]"``' in str(excinfo.value)
 
 
-def test_create_sqlalchemy_engine_missing_unknown_driver() -> None:
+def test_create_engine_with_check_missing_unknown_driver() -> None:
     """
-    Test the ``create_sqlalchemy_engine`` method when a SQLAlchemy driver is
+    Test the ``create_engine_with_check`` method when a SQLAlchemy driver is
     not installed.
     """
     with pytest.raises(NotImplementedError) as excinfo:
-        create_sqlalchemy_engine(URL("mssql+odbc://blah"))
+        create_engine_with_check(URL("mssql+odbc://blah"))
     assert "Unable to build a SQLAlchemy Engine for the mssql+odbc connection" in str(
         excinfo.value,
     )

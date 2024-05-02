@@ -15,7 +15,7 @@ from yarl import URL
 from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient, SupersetMetricDefinition
 from preset_cli.api.operators import OneToMany
-from preset_cli.cli.superset.sync.dbt.lib import create_sqlalchemy_engine
+from preset_cli.cli.superset.sync.dbt.lib import create_engine_with_check
 from preset_cli.exceptions import CLIError, SupersetError
 from preset_cli.lib import raise_cli_errors
 
@@ -74,7 +74,7 @@ def create_dataset(
             "table_name": model.get("alias") or model["name"],
         }
     else:
-        engine = create_sqlalchemy_engine(url)
+        engine = create_engine_with_check(url)
         quote = engine.dialect.identifier_preparer.quote
         source = ".".join(quote(model[key]) for key in ("database", "schema", "name"))
         kwargs = {
