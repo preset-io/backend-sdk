@@ -11,17 +11,20 @@ from typing import List
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
+from sqlalchemy.engine.url import URL
 
 from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.cli.superset.sync.dbt.lib import (
     apply_select,
     as_number,
     build_sqlalchemy_params,
+    create_engine_with_check,
     env_var,
     filter_models,
     list_failed_models,
     load_profiles,
 )
+from preset_cli.exceptions import CLIError
 
 
 def test_build_sqlalchemy_params_postgres(mocker: MockerFixture) -> None:
@@ -222,6 +225,37 @@ def test_build_sqlalchemy_params_unsupported() -> None:
         "Unable to build a SQLAlchemy URI for a target of type mysql. Please file "
         "an issue at https://github.com/preset-io/backend-sdk/issues/new?"
         "labels=enhancement&title=Backend+for+mysql."
+    )
+
+
+def test_create_engine_with_check(mocker: MockerFixture) -> None:
+    """
+    Test the ``create_engine_with_check`` method.
+    """
+    mock_engine = mocker.patch("preset_cli.cli.superset.sync.dbt.lib.create_engine")
+    test = create_engine_with_check(URL("blah://blah"))
+    assert test == mock_engine.return_value
+
+
+def test_create_engine_with_check_missing_snowflake() -> None:
+    """
+    Test the ``create_engine_with_check`` method when the Snowflake driver is
+    not installed.
+    """
+    with pytest.raises(CLIError) as excinfo:
+        create_engine_with_check(URL("snowflake://blah"))
+    assert 'run ``pip install "preset-cli[snowflake]"``' in str(excinfo.value)
+
+
+def test_create_engine_with_check_missing_unknown_driver() -> None:
+    """
+    Test the ``create_engine_with_check`` method when a SQLAlchemy driver is
+    not installed.
+    """
+    with pytest.raises(NotImplementedError) as excinfo:
+        create_engine_with_check(URL("mssql+odbc://blah"))
+    assert "Unable to build a SQLAlchemy Engine for the mssql+odbc connection" in str(
+        excinfo.value,
     )
 
 
