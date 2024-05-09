@@ -1433,6 +1433,9 @@ def test_clean_metadata() -> None:
         "precision": "very precise",
         "scale": "to the max",
         "max_length": 9000,
+        "info": {
+            "custom_info": "blah",
+        },
     }
     result = clean_metadata(test_data)
     assert result == {

@@ -50,6 +50,7 @@ def clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         "precision",
         "scale",
         "max_length",
+        "info",
     ):
         if key in metadata:
             del metadata[key]
