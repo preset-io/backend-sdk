@@ -732,7 +732,10 @@ def test_verify_db_connectivity_error(mocker: MockerFixture) -> None:
     )
 
 
-def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+def test_native_split(  # pylint: disable=too-many-locals
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
     """
     Test the ``native`` command with split imports.
     """
@@ -768,7 +771,83 @@ def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 },
             },
         },
+        "metadata": {},
         "uuid": "4",
+    }
+    dataset_filter_config = {
+        "table_name": "filter_test",
+        "is_managed_externally": False,
+        "database_uuid": "1",
+        "uuid": "5",
+    }
+    dashboard_with_filter_config = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {},
+        "metadata": {
+            "native_filter_configuration": [
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "some_column",
+                            "datasetUuid": "5",
+                        },
+                    ],
+                },
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "other_column",
+                            "datasetUuid": "5",
+                        },
+                    ],
+                },
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "blah",
+                            "datasetUuid": "2",
+                        },
+                    ],
+                },
+            ],
+        },
+        "uuid": "6",
+    }
+    dashboard_with_temporal_filter = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {},
+        "metadata": {
+            "native_filter_configuration": [
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [],
+                },
+            ],
+        },
+        "uuid": "6",
+    }
+    dashboard_deleted_dataset = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {},
+        "metadata": {
+            "native_filter_configuration": [
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "some_column",
+                        },
+                    ],
+                },
+            ],
+        },
+        "uuid": "6",
     }
     fs.create_file(
         root / "databases/gsheets.yaml",
@@ -785,6 +864,22 @@ def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     fs.create_file(
         root / "dashboards/dashboard.yaml",
         contents=yaml.dump(dashboard_config),
+    )
+    fs.create_file(
+        root / "datasets/gsheets/filter_test.yaml",
+        contents=yaml.dump(dataset_filter_config),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard_with_filter_config.yaml",
+        contents=yaml.dump(dashboard_with_filter_config),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard_with_temporal_filter.yaml",
+        contents=yaml.dump(dashboard_with_temporal_filter),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard_deleted_dataset.yaml",
+        contents=yaml.dump(dashboard_deleted_dataset),
     )
 
     SupersetClient = mocker.patch(
@@ -814,6 +909,16 @@ def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             ),
             mock.call(
                 {
+                    "bundle/datasets/gsheets/filter_test.yaml": yaml.dump(
+                        dataset_filter_config,
+                    ),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
                     "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
                     "bundle/databases/gsheets.yaml": yaml.dump(database_config),
                 },
@@ -823,6 +928,38 @@ def test_native_split(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             mock.call(
                 {
                     "bundle/charts/chart.yaml": yaml.dump(chart_config),
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/dashboards/dashboard_deleted_dataset.yaml": yaml.dump(
+                        dashboard_deleted_dataset,
+                    ),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/dashboards/dashboard_with_temporal_filter.yaml": yaml.dump(
+                        dashboard_with_temporal_filter,
+                    ),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/dashboards/dashboard_with_filter_config.yaml": yaml.dump(
+                        dashboard_with_filter_config,
+                    ),
+                    "bundle/datasets/gsheets/filter_test.yaml": yaml.dump(
+                        dataset_filter_config,
+                    ),
                     "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
                     "bundle/databases/gsheets.yaml": yaml.dump(database_config),
                 },
