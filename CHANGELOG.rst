@@ -5,6 +5,14 @@ Changelog
 Next
 ====
 
+Version 0.2.16 - 2024-05-10
+===========================
+
+- Changed the dbt sync logic so that metrics that are not associated with the models being synced are ignored (`#289 <https://github.com/preset-io/backend-sdk/pull/289>`_).
+- The dbt sync now indicates if the snowflake SQLAlchemy package is missing in the environment (`#290 <https://github.com/preset-io/backend-sdk/pull/290>`_).
+- The dbt sync now removes Redshift-specific metatada from columns when refreshing a dataset (`#291 <https://github.com/preset-io/backend-sdk/pull/291>`_).
+- Datasets used in dashboard filters are now included when importing assets individually with the ``--split`` flag (`#292 <https://github.com/preset-io/backend-sdk/pull/292>`_).
+
 Version 0.2.15 - 2024-04-22
 ===========================
 
