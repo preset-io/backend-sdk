@@ -80,7 +80,12 @@ def create_dataset(
     else:
         engine = create_engine_with_check(url)
         quote = engine.dialect.identifier_preparer.quote
-        source = ".".join(quote(model[key]) for key in ("database", "schema", "name"))
+        table_name = model.get("alias") or model["name"]
+        source = ".".join([
+            quote(model["database"]),
+            quote(model["schema"]),
+            quote(table_name)
+        ])
         kwargs = {
             "database": database["id"],
             "schema": model["schema"],
