@@ -70,14 +70,22 @@ def create_dataset(
     Virtual datasets are created when the table database is different from the main
     database, for systems that support cross-database queries (Trino, BigQuery, etc.)
     """
+    kwargs = {
+        "database": database["id"],
+        "catalog": model["database"],
+        "schema": model["schema"],
+        "table_name": model.get("alias") or model["name"],
+    }
+    try:
+        # try to create dataset with catalog
+        return client.create_dataset(**kwargs)
+    except SupersetError as ex:
+        if not no_catalog_support(ex):
+            raise ex
+        del kwargs["catalog"]
+
     url = make_url(database["sqlalchemy_uri"])
-    if model_in_database(model, url):
-        kwargs = {
-            "database": database["id"],
-            "schema": model["schema"],
-            "table_name": model.get("alias") or model["name"],
-        }
-    else:
+    if not model_in_database(model, url):
         engine = create_engine_with_check(url)
         quote = engine.dialect.identifier_preparer.quote
         source = ".".join(quote(model[key]) for key in ("database", "schema", "name"))
@@ -89,6 +97,32 @@ def create_dataset(
         }
 
     return client.create_dataset(**kwargs)
+
+
+def no_catalog_support(ex: SupersetError) -> bool:
+    """
+    Return if the error is due to a lack of catalog support.
+
+    The errors payload looks like this:
+
+        [
+            {
+                "message": json.dumps({"message": {"catalog": ["Unknown field."]}}),
+                "error_type": "UNKNOWN_ERROR",
+                "level": ErrorLevel.ERROR,
+            },
+        ]
+
+    """
+    for error in ex.errors:
+        try:
+            message = json.loads(error["message"])
+            if "Unknown field." in message["message"]["catalog"]:
+                return True
+        except Exception:  # pylint: disable=broad-except
+            pass
+
+    return False
 
 
 def get_or_create_dataset(
