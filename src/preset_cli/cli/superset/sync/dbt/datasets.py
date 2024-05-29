@@ -82,15 +82,10 @@ def create_dataset(
     except SupersetError as ex:
         if not no_catalog_support(ex):
             raise ex
+        del kwargs["catalog"]
 
     url = make_url(database["sqlalchemy_uri"])
-    if model_in_database(model, url):
-        kwargs = {
-            "database": database["id"],
-            "schema": model["schema"],
-            "table_name": model.get("alias") or model["name"],
-        }
-    else:
+    if not model_in_database(model, url):
         engine = create_engine_with_check(url)
         quote = engine.dialect.identifier_preparer.quote
         source = ".".join(quote(model[key]) for key in ("database", "schema", "name"))
