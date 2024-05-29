@@ -89,12 +89,7 @@ def create_dataset(
         engine = create_engine_with_check(url)
         quote = engine.dialect.identifier_preparer.quote
         source = ".".join(quote(model[key]) for key in ("database", "schema", "name"))
-        kwargs = {
-            "database": database["id"],
-            "schema": model["schema"],
-            "table_name": model.get("alias") or model["name"],
-            "sql": f"SELECT * FROM {source}",
-        }
+        kwargs["sql"] = f"SELECT * FROM {source}"
 
     return client.create_dataset(**kwargs)
 
