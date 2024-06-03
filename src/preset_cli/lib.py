@@ -5,9 +5,8 @@ Basic helper functions.
 import json
 import logging
 import sys
-import warnings
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 import click
 from requests import Response
@@ -125,17 +124,6 @@ def dict_merge(base: Dict[Any, Any], overrides: Dict[Any, Any]) -> None:
             dict_merge(base[k], overrides[k])
         else:
             base[k] = overrides[k]
-
-
-def log_warning(warn_message: str, warn_type: Type[Warning]) -> None:
-    """
-    Logs a warning message.
-    """
-    warnings.warn(
-        warn_message,
-        category=warn_type,
-        stacklevel=2,
-    )
 
 
 def raise_cli_errors(function: Callable[..., Any]) -> Callable[..., Any]:
