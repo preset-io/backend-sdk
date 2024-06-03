@@ -9,8 +9,8 @@ Version 0.2.17 - 2024-06-03
 ===========================
 
 - The dbt sync now supports creating physical datasets in other catalogs (requires catalog Support in Superset)  (`#295 <https://github.com/preset-io/backend-sdk/pull/295>`_ and `#297 <https://github.com/preset-io/backend-sdk/pull/297>`_).
-- The dbt ModelSchema now supports models with `columns` set to `None` (`#298 <https://github.com/preset-io/backend-sdk/pull/298>`_).
-- It's now deprecated to trigger a dbt Core sync passing a `dbt_project.yml` file (support for passing the `manifest.json` file is no longer deprecated) (`#299 <https://github.com/preset-io/backend-sdk/pull/299>`_).
+- The dbt ModelSchema now supports models with ``columns`` set to ``None`` (`#298 <https://github.com/preset-io/backend-sdk/pull/298>`_).
+- It's now deprecated to trigger a dbt Core sync passing a ``dbt_project.yml`` file (support for passing the `manifest.json` file is no longer deprecated) (`#299 <https://github.com/preset-io/backend-sdk/pull/299>`_).
 
 Version 0.2.16 - 2024-05-10
 ===========================
