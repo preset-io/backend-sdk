@@ -127,17 +127,6 @@ def dict_merge(base: Dict[Any, Any], overrides: Dict[Any, Any]) -> None:
             base[k] = overrides[k]
 
 
-def log_warning(warn_message: str, warn_type: Type[Warning]) -> None:
-    """
-    Logs a warning message.
-    """
-    warnings.warn(
-        warn_message,
-        category=warn_type,
-        stacklevel=2,
-    )
-
-
 def raise_cli_errors(function: Callable[..., Any]) -> Callable[..., Any]:
     """
     Decorator to catch any CLIError raised and exits the execution with an error code.

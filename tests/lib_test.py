@@ -11,7 +11,6 @@ from pytest_mock import MockerFixture
 from preset_cli.exceptions import CLIError, ErrorLevel, SupersetError
 from preset_cli.lib import (
     dict_merge,
-    log_warning,
     raise_cli_errors,
     remove_root,
     setup_logging,
@@ -112,21 +111,6 @@ def test_dict_merge() -> None:
     overrides = {"a": {"c": 44}, "d": 2, "f": 3}
     dict_merge(base, overrides)
     assert base == {"a": {"b": 42, "c": 44}, "d": 2, "e": 3, "f": 3}
-
-
-def test_log_warning(mocker: MockerFixture) -> None:
-    """
-    Test ``log_warning``.
-    """
-    mock_warn = mocker.patch.object(warnings, "warn")
-    test_warning = "Test warning message"
-    test_warning_type = UserWarning
-    log_warning(test_warning, test_warning_type)
-    mock_warn.assert_called_once_with(
-        test_warning,
-        category=test_warning_type,
-        stacklevel=2,
-    )
 
 
 def test_raise_cli_errors_decorator_when_raising(

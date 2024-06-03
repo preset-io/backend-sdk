@@ -36,7 +36,7 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_superset_metrics_per_model,
 )
 from preset_cli.exceptions import CLIError, DatabaseNotFoundError
-from preset_cli.lib import log_warning, raise_cli_errors
+from preset_cli.lib import raise_cli_errors
 
 _logger = logging.getLogger(__name__)
 
@@ -137,8 +137,6 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     deprecation_notice: bool = False
-    if raise_failures:
-        warnings.simplefilter("always", DeprecationWarning)
 
     if (preserve_columns or preserve_metadata) and merge_metadata:
         error_message = (
@@ -160,17 +158,17 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             "The managed externally feature was only introduced in Superset v1.5."
             "Make sure you are running a compatible version."
         )
-        log_warning(warn_message, UserWarning)
+        _logger.debug(warn_message)
     if file_path.name == "manifest.json":
-        deprecation_notice = True
-        warn_message = (
-            "Passing the manifest.json file is deprecated. "
-            "Please pass the dbt_project.yml file instead."
-        )
-        log_warning(warn_message, DeprecationWarning)
         manifest = file_path
         profile = project = project or "default"
     elif file_path.name == "dbt_project.yml":
+        deprecation_notice = True
+        warn_message = (
+            "Passing the dbt_project.yml file is deprecated and will be removed in a future version. "
+            "Please pass the manifest.json file instead."
+        )
+        _logger.warning(warn_message)
         with open(file_path, encoding="utf-8") as input_:
             dbt_project = yaml.load(input_, Loader=yaml.SafeLoader)
 
