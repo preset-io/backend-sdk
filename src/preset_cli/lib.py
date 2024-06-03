@@ -5,9 +5,8 @@ Basic helper functions.
 import json
 import logging
 import sys
-import warnings
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 import click
 from requests import Response

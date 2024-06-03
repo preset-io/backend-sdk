@@ -5,7 +5,6 @@ A command to sync dbt models/metrics to Superset and charts/dashboards back as e
 import logging
 import os.path
 import subprocess
-import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -165,7 +164,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     elif file_path.name == "dbt_project.yml":
         deprecation_notice = True
         warn_message = (
-            "Passing the dbt_project.yml file is deprecated and will be removed in a future version. "
+            "Passing the dbt_project.yml file is deprecated and "
+            "will be removed in a future version. "
             "Please pass the manifest.json file instead."
         )
         _logger.warning(warn_message)

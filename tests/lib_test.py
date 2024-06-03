@@ -3,7 +3,6 @@ Tests for ``preset_cli.lib``.
 """
 
 import logging
-import warnings
 
 import pytest
 from pytest_mock import MockerFixture
