@@ -1292,6 +1292,28 @@ def test_dbt_client_get_sl_metrics(mocker: MockerFixture) -> None:
     ]
 
 
+def test_dbt_client_get_sl_metrics_no_semantic_layer(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_metrics`` method for old dbt projects that don't have a
+    semantic layer defined yet.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": None,
+        "errors": [
+            {
+                "message": "Empty semantic manifest was found. Ensure that you have semantic models defined.",
+                "locations": [{"line": 3, "column": 17}],
+                "path": ["metrics"],
+            },
+        ],
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_metrics(108380) == []
+
+
 def test_dbt_client_get_sl_metric_sql(mocker: MockerFixture) -> None:
     """
     Test the ``get_sl_metric_sql`` method.
