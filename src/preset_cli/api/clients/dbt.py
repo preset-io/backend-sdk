@@ -862,7 +862,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             variables={"environmentId": environment_id},
             headers=self.session.headers,
         )
-
+        # In case the project doesn't have a semantic layer (old versions)
+        if payload["data"] is None:
+            return []
         metric_schema = MFMetricSchema()
         metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
 
