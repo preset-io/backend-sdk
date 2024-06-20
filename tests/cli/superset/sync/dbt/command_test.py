@@ -45,6 +45,13 @@ profiles_contents = yaml.dump(
                 },
             },
         },
+        "athena_project": {
+            "outputs": {
+                "dev": {
+                    "type": "athena",
+                },
+            },
+        },
     },
 )
 
@@ -1669,6 +1676,53 @@ def test_dbt_core_metricflow_not_found(
         "`mf` command not found, if you're using Metricflow make sure you have it "
         "installed in order to sync metrics",
     )
+
+
+def test_dbt_core_metricflow_dialect_not_found(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt-core`` command when  the project dialect is not
+    compatible with MetricFlow.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=manifest_metricflow_contents)
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles, contents=profiles_contents)
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    get_sl_metric_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_sl_metric",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--project",
+            "athena_project",
+            "--target",
+            "dev",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    get_sl_metric_mock.assert_not_called()
 
 
 def test_dbt_core_preserve_metadata(
