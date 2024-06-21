@@ -5,6 +5,13 @@ Changelog
 Next
 ====
 
+Version 0.2.18 - 2024-06-21
+===========================
+
+- It's now possible to sync a dbt Cloud project that doesn't have a semantic layer (`#301 <https://github.com/preset-io/backend-sdk/pull/301>`_).
+- The dbt Core sync now supports syncing legacy metrics from dialects that are not supported by MetricFlow (`#302 <https://github.com/preset-io/backend-sdk/pull/302>`_).
+- The dbt Cloud sync API endpoints were updated to support custom base domains (`#303 <https://github.com/preset-io/backend-sdk/pull/303>`_).
+
 Version 0.2.17 - 2024-06-03
 ===========================
 
