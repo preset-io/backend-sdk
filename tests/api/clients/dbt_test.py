@@ -1377,8 +1377,8 @@ def test_get_custom_urls() -> None:
 
     assert get_custom_urls("https://ab123.us1.dbt.com") == {
         "admin": URL("https://ab123.us1.dbt.com"),
-        "discovery": URL("https://ab123.metadata.us1.dbt.com"),
-        "semantic-layer": URL("https://ab123.semantic-layer.us1.dbt.com"),
+        "discovery": URL("https://ab123.metadata.us1.dbt.com/graphql"),
+        "semantic-layer": URL("https://ab123.semantic-layer.us1.dbt.com/api/graphql"),
     }
 
     with pytest.raises(Exception) as excinfo:
