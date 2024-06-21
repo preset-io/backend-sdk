@@ -684,10 +684,12 @@ def get_custom_urls(access_url: Optional[str] = None) -> Dict[str, URL]:
             ),
             "discovery": parsed.with_host(
                 f"{match['code']}.metadata.{match['region']}.dbt.com",
-            ),
+            )
+            / "graphql",
             "semantic-layer": parsed.with_host(
                 f"{match['code']}.semantic-layer.{match['region']}.dbt.com",
-            ),
+            )
+            / "api/graphql",
         }
 
     raise Exception("Invalid host in custom URL")
