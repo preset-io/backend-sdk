@@ -111,7 +111,7 @@ _logger = logging.getLogger(__name__)
 )
 @raise_cli_errors
 @click.pass_context
-def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements
+def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements # noqa: C901
     ctx: click.core.Context,
     file: str,
     project: Optional[str],
@@ -186,7 +186,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
 
     config = load_profiles(Path(profiles), project, profile, target)
     dialect = config[project]["outputs"][target]["type"]
-    mf_dialect = MFSQLEngine(dialect.upper())
+    try:
+        mf_dialect = MFSQLEngine(dialect.upper())
+    except ValueError:
+        mf_dialect = None
 
     model_schema = ModelSchema()
     models = []
@@ -219,7 +222,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
                 config["uniqueId"] = config.pop("unique_id")
                 config["dialect"] = dialect
                 og_metrics.append(metric_schema.load(config))
-            elif sl_metric := get_sl_metric(config, model_map, mf_dialect):
+            # Only validate semantic layer metrics if MF dialect is specified
+            elif mf_dialect is not None and (
+                sl_metric := get_sl_metric(config, model_map, mf_dialect)
+            ):
                 sl_metrics.append(sl_metric)
 
         superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
