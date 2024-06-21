@@ -3,9 +3,12 @@ Tests for the dbt import command.
 """
 # pylint: disable=invalid-name, too-many-lines, line-too-long
 
+import copy
+import json
 import os
 from pathlib import Path
 from subprocess import CalledProcessError
+from unittest import mock
 
 import pytest
 import yaml
@@ -128,33 +131,6 @@ dbt_core_models = [
     },
 ]
 
-dbt_core_metrics = [
-    {
-        "label": "",
-        "sql": "*",
-        "depends_on": ["model.superset_examples.messages_channels"],
-        "meta": {},
-        "description": "",
-        "name": "cnt",
-        "type": "count",
-        "filters": [],
-        "unique_id": "metric.superset_examples.cnt",
-        "created_at": 1642630986.1942852,
-        "package_name": "superset_examples",
-        "sources": [],
-        "root_path": "/Users/beto/Projects/dbt-examples/superset_examples",
-        "path": "slack/schema.yml",
-        "resource_type": "metric",
-        "original_file_path": "models/slack/schema.yml",
-        "model": "ref('messages_channels')",
-        "timestamp": None,
-        "fqn": ["superset_examples", "slack", "cnt"],
-        "time_grains": [],
-        "tags": [],
-        "refs": [["messages_channels"]],
-        "dimensions": [],
-    },
-]
 
 superset_metrics = {
     "model.superset_examples.messages_channels": [
@@ -2848,6 +2824,176 @@ def test_dbt_core_disallow_edits_superset(
         False,
         True,
         "",
+    )
+
+
+def test_dbt_core_metrics_with_syntax_defined(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``dbt_core`` command with metrics that have the SQL to be used in
+    the Superset metric already defined and therefore don't require evaluation.
+    """
+    updated_manifest = json.loads(copy.deepcopy(manifest_contents))
+
+    # Setting metrics in all schemas that have an ``expression`` and
+    # ``model`` already set. The model is different to purposefully test this.
+    updated_manifest["metrics"] = {
+        "metric.superset_examples.cnt": {
+            "depends_on": {"nodes": ["model.superset_examples.messages_channels"]},
+            "description": "",
+            "filters": [],
+            "label": "Metric from an old version",
+            "meta": {
+                "superset": {
+                    "expression": "MAX(id)",
+                    "model": "model.other_project.other_model",
+                },
+            },
+            "name": "old_dbt_version_metric",
+            "sql": "*",
+            "type": "count",
+            "unique_id": "metric.superset_examples.cnt",
+        },
+        "metric.superset_examples.other_metric": {
+            "depends_on": {"nodes": ["model.superset_examples.messages_channels"]},
+            "description": "",
+            "filters": [],
+            "label": "Metric in the legacy semantic layer",
+            "meta": {
+                "superset": {
+                    "expression": "MIN(id)",
+                    "model": "model.other_project.other_model",
+                },
+            },
+            "name": "legacy_semantic_layer_metric",
+            "expression": "quantity",
+            "calculation_method": "sum",
+            "unique_id": "metric.superset_examples.other_metric",
+        },
+        # Semantic layer metric as well
+        "metric.superset_examples.sl_metric": {
+            "name": "sl_metric",
+            "resource_type": "metric",
+            "package_name": "superset_examples",
+            "unique_id": "metric.superset_examples.sl_metric",
+            "description": "Semantic Layer Metric",
+            "label": "Semantic Layer Metric - label",
+            "type": "simple",
+            "type_params": {
+                "measure": {
+                    "name": "customers_with_orders",
+                    "filter": None,
+                    "alias": None,
+                },
+                "input_measures": [
+                    {"name": "customers_with_orders", "filter": None, "alias": None},
+                ],
+                "metrics": [],
+            },
+            "filter": None,
+            "metadata": None,
+            "meta": {
+                "superset": {
+                    "expression": "MAX(price_each) - MAX(cost)",
+                    "model": "model.other_project.other_model",
+                },
+            },
+            "depends_on": {
+                "macros": [],
+                "nodes": ["semantic_model.jaffle_shop.orders"],
+            },
+            "refs": [],
+            "metrics": [],
+        },
+    }
+
+    # Create other model so that the logic still works
+    new_model = copy.deepcopy(
+        updated_manifest["nodes"]["model.superset_examples.messages_channels"],
+    )
+    new_model_id = "model.other_project.other_model"
+    new_model["unique_id"] = new_model_id
+    updated_manifest["nodes"][new_model_id] = new_model
+    updated_manifest["child_map"][new_model_id] = []
+
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    manifest = root / "default/target/manifest.json"
+    fs.create_file(manifest, contents=json.dumps(updated_manifest))
+    profiles = root / ".dbt/profiles.yml"
+    fs.create_file(profiles, contents=profiles_contents)
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_database = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_database",
+    )
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-core",
+            str(manifest),
+            "--profiles",
+            str(profiles),
+            "--project",
+            "default",
+            "--target",
+            "dev",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Testing only about the metric relationship/syntax in this test
+    sync_datasets.assert_called_with(
+        client,
+        mock.ANY,
+        {
+            "model.other_project.other_model": [
+                {
+                    "description": "",
+                    "expression": "MAX(id)",
+                    "extra": "{}",
+                    "metric_name": "old_dbt_version_metric",
+                    "metric_type": "derived",
+                    "verbose_name": "Metric from an old version",
+                },
+                {
+                    "description": "",
+                    "expression": "MIN(id)",
+                    "extra": "{}",
+                    "metric_name": "legacy_semantic_layer_metric",
+                    "metric_type": "derived",
+                    "verbose_name": "Metric in the legacy semantic layer",
+                },
+                {
+                    "description": "Semantic Layer Metric",
+                    "expression": "MAX(price_each) - MAX(cost)",
+                    "extra": "{}",
+                    "metric_name": "sl_metric",
+                    "metric_type": "derived",
+                    "verbose_name": "Semantic Layer Metric - label",
+                },
+            ],
+        },
+        sync_database(),
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
     )
 
 
