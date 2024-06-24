@@ -233,7 +233,10 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
                 og_metrics.append(metric)
 
             # dbt semantic layer
-            elif sl_metric := get_sl_metric(config, model_map, mf_dialect):
+            # Only validate semantic layer metrics if MF dialect is specified
+            elif mf_dialect is not None and (
+                sl_metric := get_sl_metric(config, model_map, mf_dialect)
+            ):
                 sl_metrics.append(sl_metric)
 
         superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
