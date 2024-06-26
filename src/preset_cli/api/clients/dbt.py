@@ -842,6 +842,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             variables={"jobId": job_id},
             headers=self.session.headers,
         )
+
         metric_schema = MetricSchema()
         metrics = [metric_schema.load(metric) for metric in payload["data"]["job"]["metrics"]]
 
