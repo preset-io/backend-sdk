@@ -844,7 +844,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         )
 
         metric_schema = MetricSchema()
-        metrics = [metric_schema.load(metric) for metric in payload["data"]["job"]["metrics"]]
+        metrics = [
+            metric_schema.load(metric) for metric in payload["data"]["job"]["metrics"]
+        ]
 
         return metrics
 

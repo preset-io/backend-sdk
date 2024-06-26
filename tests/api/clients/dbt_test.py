@@ -1144,7 +1144,11 @@ def test_dbt_client_get_og_metrics(mocker: MockerFixture) -> None:
                         "type": "count",
                         "sql": "customer_id",
                         "filters": [
-                            {"field": "number_of_orders", "operator": ">", "value": "0"},
+                            {
+                                "field": "number_of_orders",
+                                "operator": ">",
+                                "value": "0",
+                            },
                         ],
                         "dependsOn": ["model.jaffle_shop.customers"],
                         "description": "The number of paid customers using the product",
