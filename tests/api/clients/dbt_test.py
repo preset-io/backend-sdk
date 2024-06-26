@@ -1135,21 +1135,23 @@ def test_dbt_client_get_og_metrics(mocker: MockerFixture) -> None:
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
         "data": {
-            "metrics": [
-                {
-                    "uniqueId": "metric.jaffle_shop.new_customers",
-                    "name": "new_customers",
-                    "label": "New Customers",
-                    "type": "count",
-                    "sql": "customer_id",
-                    "filters": [
-                        {"field": "number_of_orders", "operator": ">", "value": "0"},
-                    ],
-                    "dependsOn": ["model.jaffle_shop.customers"],
-                    "description": "The number of paid customers using the product",
-                    "meta": {},
-                },
-            ],
+            "job": {
+                "metrics": [
+                    {
+                        "uniqueId": "metric.jaffle_shop.new_customers",
+                        "name": "new_customers",
+                        "label": "New Customers",
+                        "type": "count",
+                        "sql": "customer_id",
+                        "filters": [
+                            {"field": "number_of_orders", "operator": ">", "value": "0"},
+                        ],
+                        "dependsOn": ["model.jaffle_shop.customers"],
+                        "description": "The number of paid customers using the product",
+                        "meta": {},
+                    },
+                ],
+            },
         },
     }
     auth = Auth()

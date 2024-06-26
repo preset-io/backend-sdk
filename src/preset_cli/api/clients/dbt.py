@@ -817,21 +817,23 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         Fetch all available metrics.
         """
         query = """
-            query GetMetrics($jobId: Int!) {
-                metrics(jobId: $jobId) {
-                    uniqueId
-                    name
-                    label
-                    type
-                    sql
-                    filters {
-                        field
-                        operator
-                        value
+            query GetMetrics($jobId: BigInt!) {
+                job(id: $jobId) {
+                    metrics {
+                        uniqueId
+                        name
+                        label
+                        type
+                        sql
+                        filters {
+                            field
+                            operator
+                            value
+                        }
+                        dependsOn
+                        description
+                        meta
                     }
-                    dependsOn
-                    description
-                    meta
                 }
             }
         """
@@ -840,9 +842,8 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             variables={"jobId": job_id},
             headers=self.session.headers,
         )
-
         metric_schema = MetricSchema()
-        metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
+        metrics = [metric_schema.load(metric) for metric in payload["data"]["job"]["metrics"]]
 
         return metrics
 
