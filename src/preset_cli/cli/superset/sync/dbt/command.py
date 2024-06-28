@@ -15,7 +15,6 @@ from yarl import URL
 from preset_cli.api.clients.dbt import (
     DBTClient,
     JobSchema,
-    MetricSchema,
     MFMetricWithSQLSchema,
     MFSQLEngine,
     ModelSchema,
@@ -27,6 +26,7 @@ from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
 from preset_cli.cli.superset.sync.dbt.lib import (
     apply_select,
+    get_og_metric_from_config,
     list_failed_models,
     load_profiles,
 )
@@ -214,14 +214,25 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     else:
         og_metrics = []
         sl_metrics = []
-        metric_schema = MetricSchema()
         for config in configs["metrics"].values():
-            if "calculation_method" in config or "sql" in config:
-                # conform to the same schema that dbt Cloud uses for metrics
-                config["dependsOn"] = config.pop("depends_on")["nodes"]
-                config["uniqueId"] = config.pop("unique_id")
-                config["dialect"] = dialect
-                og_metrics.append(metric_schema.load(config))
+            # First validate if metadata is already available
+            if config.get("meta", {}).get("superset", {}).get("model") and (
+                sql := config.get("meta", {}).get("superset", {}).pop("expression")
+            ):
+                metric = get_og_metric_from_config(
+                    config,
+                    dialect,
+                    depends_on=[],
+                    sql=sql,
+                )
+                og_metrics.append(metric)
+
+            # dbt legacy schema
+            elif "calculation_method" in config or "sql" in config:
+                metric = get_og_metric_from_config(config, dialect)
+                og_metrics.append(metric)
+
+            # dbt semantic layer
             # Only validate semantic layer metrics if MF dialect is specified
             elif mf_dialect is not None and (
                 sl_metric := get_sl_metric(config, model_map, mf_dialect)

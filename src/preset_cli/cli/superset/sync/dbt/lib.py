@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import NoSuchModuleError
 
-from preset_cli.api.clients.dbt import ModelSchema
+from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
 from preset_cli.exceptions import CLIError
 
 _logger = logging.getLogger(__name__)
@@ -498,3 +498,31 @@ def list_failed_models(failed_models: List[str]) -> str:
         error_message += f"\n - {failed_model}"
 
     return error_message
+
+
+def get_og_metric_from_config(
+    metric_config: Dict[str, Any],
+    dialect: str,
+    depends_on: Optional[List[str]] = None,
+    sql: Optional[str] = None,
+) -> MetricSchema:
+    """
+    Return an og metric from the config, adhering to the dbt Cloud schema.
+    """
+    metric_schema = MetricSchema()
+    if depends_on is not None:
+        metric_config["dependsOn"] = depends_on
+        metric_config.pop("depends_on", None)
+    else:
+        metric_config["dependsOn"] = metric_config.pop("depends_on")["nodes"]
+
+    if sql is not None:
+        metric_config["expression"] = sql
+        metric_config["calculation_method"] = "derived"
+        metric_config.pop("type", None)
+        metric_config.pop("sql", None)
+
+    metric_config["uniqueId"] = metric_config.pop("unique_id")
+    metric_config["dialect"] = dialect
+
+    return metric_schema.load(metric_config)
