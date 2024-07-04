@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.2.19 - 2024-07-04
+===========================
+
+- It's now possible to bypass MetricFlow when syncing metrics from dbt Core (`#305 <https://github.com/preset-io/backend-sdk/pull/305>`_).
+- Migrated the GraphQL query to fetch metrics from dbt Cloud to support jobs with an ID exceeding 32 bits  (`#306 <https://github.com/preset-io/backend-sdk/pull/306>`_).
+
 Version 0.2.18 - 2024-06-21
 ===========================
 
