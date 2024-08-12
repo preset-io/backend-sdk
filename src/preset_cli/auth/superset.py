@@ -9,7 +9,7 @@ from yarl import URL
 
 from preset_cli.auth.main import Auth
 from preset_cli.auth.token import TokenAuth
-
+from preset_cli.auth.lib import get_oauth_access_token
 
 class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
     """
@@ -73,3 +73,41 @@ class SupersetJWTAuth(TokenAuth):  # pylint: disable=abstract-method
             "Authorization": f"Bearer {self.token}",
             "X-CSRFToken": self.get_csrf_token(self.token),
         }
+
+
+class SupersetOAuth(Auth):  # pylint: disable=abstract-method
+    """
+    Auth to Superset via Client ID and Secret.
+    """
+
+    def __init__(self, client_id: str, client_secret: str, token_url: URL, baseurl: URL):
+        self.baseurl = baseurl
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.token_url = token_url
+        self.access_token = ""
+        self.auth()
+
+    def get_headers(self) -> Dict[str, str]:
+        return {
+            "X-CSRFToken": self.get_csrf_token(self.access_token)
+        }
+
+    def get_csrf_token(self, access_token: str) -> str:
+        """
+        Get a CSRF token.
+        """
+        response = self.session.get(
+            self.baseurl / "api/v1/security/csrf_token/",  # type: ignore
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload["result"]
+
+    def auth(self) -> None:
+        """
+        Login to get CSRF token and cookies.
+        """
+
+        self.access_token = get_oauth_access_token(self.client_id, self.client_secret, self.token_url)
