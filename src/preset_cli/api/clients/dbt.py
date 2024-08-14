@@ -612,6 +612,8 @@ class MFMetricSchema(PostelSchema):
     name = fields.String()
     description = fields.String()
     type = PostelEnumField(MFMetricType)
+    meta = fields.Raw()
+    label = fields.String()
 
 
 class MFSQLEngine(str, Enum):
@@ -860,6 +862,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                     name
                     description
                     type
+                    label
                 }
             }
         """

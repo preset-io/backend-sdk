@@ -526,3 +526,16 @@ def get_og_metric_from_config(
     metric_config["dialect"] = dialect
 
     return metric_schema.load(metric_config)
+
+
+def parse_metric_meta(metric_meta: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parses the metric's meta information.
+    """
+    kwargs = metric_meta.pop("superset", {})
+    metric_name_override = kwargs.pop("metric_name", None)
+    return {
+        "meta": metric_meta,
+        "kwargs": kwargs,
+        "metric_name_override": metric_name_override,
+    }

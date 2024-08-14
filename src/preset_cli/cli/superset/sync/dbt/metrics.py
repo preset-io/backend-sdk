@@ -36,6 +36,7 @@ from preset_cli.api.clients.dbt import (
 )
 from preset_cli.api.clients.superset import SupersetMetricDefinition
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
+from preset_cli.cli.superset.sync.dbt.lib import parse_metric_meta
 
 _logger = logging.getLogger(__name__)
 
@@ -197,17 +198,19 @@ def get_metric_definition(
     """
     metric_map = {metric["name"]: metric for metric in metrics}
     metric = metric_map[metric_name]
-    meta = metric.get("meta", {})
-    kwargs = meta.pop("superset", {})
+    metric_meta = parse_metric_meta(
+        metric.get("meta", metric.get("config", {}).get("meta", {})),
+    )
+    final_metric_name = metric_meta["metric_name_override"] or metric_name
 
     return {
         "expression": get_metric_expression(metric_name, metric_map),
-        "metric_name": metric_name,
+        "metric_name": final_metric_name,
         "metric_type": (metric.get("type") or metric.get("calculation_method")),
-        "verbose_name": metric.get("label", metric_name),
+        "verbose_name": metric.get("label", final_metric_name),
         "description": metric.get("description", ""),
-        "extra": json.dumps(meta),
-        **kwargs,  # type: ignore
+        "extra": json.dumps(metric_meta["meta"]),
+        **metric_meta["kwargs"],  # type: ignore
     }
 
 
@@ -254,13 +257,7 @@ def get_superset_metrics_per_model(
         superset_metrics[model].append(metric_definition)
 
     for sl_metric in sl_metrics or []:
-        metric_definition = convert_metric_flow_to_superset(
-            sl_metric["name"],
-            sl_metric["description"],
-            sl_metric["type"],
-            sl_metric["sql"],
-            sl_metric["dialect"],
-        )
+        metric_definition = convert_metric_flow_to_superset(sl_metric)
         model = sl_metric["model"]
         superset_metrics[model].append(metric_definition)
 
@@ -337,11 +334,7 @@ def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
 
 
 def convert_metric_flow_to_superset(
-    name: str,
-    description: str,
-    metric_type: str,
-    sql: str,
-    dialect: MFSQLEngine,
+    sl_metric: MFMetricWithSQLSchema,
 ) -> SupersetMetricDefinition:
     """
     Convert a MetricFlow metric to a Superset metric.
@@ -368,12 +361,18 @@ def convert_metric_flow_to_superset(
         SUM(CASE WHEN order_total > 20 THEN 1 END)
 
     """
+    metric_meta = parse_metric_meta(sl_metric.get("meta", {}))
     return {
-        "expression": convert_query_to_projection(sql, dialect),
-        "metric_name": name,
-        "metric_type": metric_type,
-        "verbose_name": name,
-        "description": description,
+        "expression": convert_query_to_projection(
+            sl_metric["sql"],
+            sl_metric["dialect"],
+        ),
+        "metric_name": metric_meta["metric_name_override"] or sl_metric["name"],
+        "metric_type": sl_metric["type"],
+        "verbose_name": sl_metric["label"],
+        "description": sl_metric["description"],
+        "extra": json.dumps(metric_meta["meta"]),
+        **metric_meta["kwargs"],  # type: ignore
     }
 
 

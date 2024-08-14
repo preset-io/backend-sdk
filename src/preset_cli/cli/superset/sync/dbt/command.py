@@ -416,11 +416,13 @@ def get_sl_metric(
     return mf_metric_schema.load(
         {
             "name": metric["name"],
+            "label": metric["label"],
             "type": metric["type"],
             "description": metric["description"],
             "sql": sql,
             "dialect": dialect.value,
             "model": model["unique_id"],
+            "meta": metric.get("meta", metric.get("config", {}).get("meta", {})),
         },
     )
 
@@ -452,9 +454,11 @@ def fetch_sl_metrics(
                     "name": metric["name"],
                     "type": metric["type"],
                     "description": metric["description"],
+                    "label": metric["label"],
                     "sql": sql,
                     "dialect": dialect.value,
                     "model": model["unique_id"],
+                    # TODO (Vitor-Avila): Pull meta from ``config.meta`` (supported in versionless)
                 },
             ),
         )

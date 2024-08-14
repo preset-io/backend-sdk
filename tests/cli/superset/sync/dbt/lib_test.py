@@ -25,6 +25,7 @@ from preset_cli.cli.superset.sync.dbt.lib import (
     get_og_metric_from_config,
     list_failed_models,
     load_profiles,
+    parse_metric_meta,
 )
 from preset_cli.exceptions import CLIError
 
@@ -814,4 +815,33 @@ def test_get_og_metric_from_config_ready_metric() -> None:
         "refs": [{"name": "vehicle_sales", "package": None, "version": None}],
         "time_grains": [],
         "model_unique_id": None,
+    }
+
+
+def test_parse_metric_meta() -> None:
+    """
+    Test the ``parse_metric_meta`` helper.
+    """
+    assert parse_metric_meta(
+        {
+            "superset": {
+                "d3format": ",.2f",
+                "metric_name": "revenue_metric",
+            },
+            "airflow": "other_id",
+        },
+    ) == {
+        "meta": {
+            "airflow": "other_id",
+        },
+        "kwargs": {
+            "d3format": ",.2f",
+        },
+        "metric_name_override": "revenue_metric",
+    }
+
+    assert parse_metric_meta({}) == {
+        "meta": {},
+        "kwargs": {},
+        "metric_name_override": None,
     }
