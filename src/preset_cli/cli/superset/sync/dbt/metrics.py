@@ -29,10 +29,10 @@ from sqlglot.optimizer import traverse_scope
 
 from preset_cli.api.clients.dbt import (
     FilterSchema,
-    MetricSchema,
     MFMetricWithSQLSchema,
     MFSQLEngine,
     ModelSchema,
+    OGMetricSchema,
 )
 from preset_cli.api.clients.superset import SupersetMetricDefinition
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
@@ -52,7 +52,7 @@ DIALECT_MAP = {
 
 
 # pylint: disable=too-many-locals
-def get_metric_expression(metric_name: str, metrics: Dict[str, MetricSchema]) -> str:
+def get_metric_expression(metric_name: str, metrics: Dict[str, OGMetricSchema]) -> str:
     """
     Return a SQL expression for a given dbt metric using sqlglot.
     """
@@ -125,7 +125,7 @@ def apply_filters(sql: str, filters: List[FilterSchema]) -> str:
     return f"CASE WHEN {condition} THEN {sql} END"
 
 
-def is_derived(metric: MetricSchema) -> bool:
+def is_derived(metric: OGMetricSchema) -> bool:
     """
     Return if the metric is derived.
     """
@@ -138,8 +138,8 @@ def is_derived(metric: MetricSchema) -> bool:
 
 def get_metrics_for_model(
     model: ModelSchema,
-    metrics: List[MetricSchema],
-) -> List[MetricSchema]:
+    metrics: List[OGMetricSchema],
+) -> List[OGMetricSchema]:
     """
     Given a list of metrics, return those that are based on a given model.
     """
@@ -171,7 +171,7 @@ def get_metrics_for_model(
     return related_metrics
 
 
-def get_metric_models(unique_id: str, metrics: List[MetricSchema]) -> Set[str]:
+def get_metric_models(unique_id: str, metrics: List[OGMetricSchema]) -> Set[str]:
     """
     Given a metric, return the models it depends on.
     """
@@ -191,16 +191,14 @@ def get_metric_models(unique_id: str, metrics: List[MetricSchema]) -> Set[str]:
 
 def get_metric_definition(
     metric_name: str,
-    metrics: List[MetricSchema],
+    metrics: List[OGMetricSchema],
 ) -> SupersetMetricDefinition:
     """
     Build a Superset metric definition from an OG (< 1.6) dbt metric.
     """
     metric_map = {metric["name"]: metric for metric in metrics}
     metric = metric_map[metric_name]
-    metric_meta = parse_metric_meta(
-        metric.get("meta", metric.get("config", {}).get("meta", {})),
-    )
+    metric_meta = parse_metric_meta(metric)
     final_metric_name = metric_meta["metric_name_override"] or metric_name
 
     return {
@@ -215,7 +213,7 @@ def get_metric_definition(
 
 
 def get_superset_metrics_per_model(
-    og_metrics: List[MetricSchema],
+    og_metrics: List[OGMetricSchema],
     sl_metrics: Optional[List[MFMetricWithSQLSchema]] = None,
 ) -> Dict[str, List[SupersetMetricDefinition]]:
     """
@@ -361,7 +359,7 @@ def convert_metric_flow_to_superset(
         SUM(CASE WHEN order_total > 20 THEN 1 END)
 
     """
-    metric_meta = parse_metric_meta(sl_metric.get("meta", {}))
+    metric_meta = parse_metric_meta(sl_metric)
     return {
         "expression": convert_query_to_projection(
             sl_metric["sql"],
@@ -397,7 +395,7 @@ def get_models_from_sql(
 def replace_metric_syntax(
     sql: str,
     dependencies: List[str],
-    metrics: Dict[str, MetricSchema],
+    metrics: Dict[str, OGMetricSchema],
 ) -> str:
     """
     Replace metric keys with their SQL syntax.

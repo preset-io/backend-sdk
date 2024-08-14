@@ -14,7 +14,7 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 from sqlalchemy.engine.url import URL
 
-from preset_cli.api.clients.dbt import ModelSchema
+from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
 from preset_cli.cli.superset.sync.dbt.lib import (
     apply_select,
     as_number,
@@ -822,14 +822,22 @@ def test_parse_metric_meta() -> None:
     """
     Test the ``parse_metric_meta`` helper.
     """
+    metric_schema = MetricSchema()
     assert parse_metric_meta(
-        {
-            "superset": {
-                "d3format": ",.2f",
-                "metric_name": "revenue_metric",
+        metric_schema.load(
+            {
+                "name": "test metric",
+                "label": "Test Metric",
+                "description": "This is a test metric",
+                "meta": {
+                    "superset": {
+                        "d3format": ",.2f",
+                        "metric_name": "revenue_metric",
+                    },
+                    "airflow": "other_id",
+                },
             },
-            "airflow": "other_id",
-        },
+        ),
     ) == {
         "meta": {
             "airflow": "other_id",
@@ -840,7 +848,43 @@ def test_parse_metric_meta() -> None:
         "metric_name_override": "revenue_metric",
     }
 
-    assert parse_metric_meta({}) == {
+    assert parse_metric_meta(
+        metric_schema.load(
+            {
+                "name": "Sabe but using config",
+                "label": "Meta inside config",
+                "description": "",
+                "config": {
+                    "meta": {
+                        "superset": {
+                            "d3format": ",.2f",
+                            "metric_name": "revenue_metric",
+                        },
+                        "airflow": "other_id",
+                    },
+                },
+            },
+        ),
+    ) == {
+        "meta": {
+            "airflow": "other_id",
+        },
+        "kwargs": {
+            "d3format": ",.2f",
+        },
+        "metric_name_override": "revenue_metric",
+    }
+
+    assert parse_metric_meta(
+        metric_schema.load(
+            {
+                "name": "Sabe but using config",
+                "label": "Meta inside config",
+                "description": "",
+                "meta": {},
+            },
+        ),
+    ) == {
         "meta": {},
         "kwargs": {},
         "metric_name_override": None,

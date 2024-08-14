@@ -9,7 +9,11 @@ from typing import Dict
 import pytest
 from pytest_mock import MockerFixture
 
-from preset_cli.api.clients.dbt import MetricSchema, MFMetricWithSQLSchema, MFSQLEngine
+from preset_cli.api.clients.dbt import (
+    MFMetricWithSQLSchema,
+    MFSQLEngine,
+    OGMetricSchema,
+)
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
 from preset_cli.cli.superset.sync.dbt.metrics import (
     convert_metric_flow_to_superset,
@@ -27,8 +31,8 @@ def test_get_metric_expression() -> None:
     """
     Tests for ``get_metric_expression``.
     """
-    metric_schema = MetricSchema()
-    metrics: Dict[str, MetricSchema] = {
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
         "one": metric_schema.load(
             {
                 "type": "count",
@@ -121,8 +125,8 @@ def test_get_metric_expression_new_schema() -> None:
 
     See https://docs.getdbt.com/guides/migration/versions/upgrading-to-v1.3#for-users-of-dbt-metrics
     """
-    metric_schema = MetricSchema()
-    metrics: Dict[str, MetricSchema] = {
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
         "one": metric_schema.load(
             {
                 "calculation_method": "count",
@@ -146,8 +150,8 @@ def test_get_metric_expression_derived_legacy() -> None:
     """
     Test ``get_metric_expression`` with derived metrics created using a legacy dbt version.
     """
-    metric_schema = MetricSchema()
-    metrics: Dict[str, MetricSchema] = {
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
         "revenue_verbose_name_from_dbt": metric_schema.load(
             {
                 "name": "revenue_verbose_name_from_dbt",
@@ -476,7 +480,7 @@ def test_get_metric_models() -> None:
     """
     Tests for ``get_metric_models``.
     """
-    metric_schema = MetricSchema()
+    metric_schema = OGMetricSchema()
     metrics = [
         metric_schema.load(
             {
@@ -859,7 +863,7 @@ def test_get_superset_metrics_per_model() -> None:
     Tests for the ``get_superset_metrics_per_model`` function.
     """
     mf_metric_schema = MFMetricWithSQLSchema()
-    og_metric_schema = MetricSchema()
+    og_metric_schema = OGMetricSchema()
 
     og_metrics = [
         og_metric_schema.load(obj)
@@ -1018,7 +1022,7 @@ def test_get_superset_metrics_per_model_og_derived(
     Tests for the ``get_superset_metrics_per_model`` function
     with derived OG metrics.
     """
-    og_metric_schema = MetricSchema()
+    og_metric_schema = OGMetricSchema()
 
     og_metrics = [
         og_metric_schema.load(
@@ -1219,7 +1223,7 @@ def test_replace_metric_syntax() -> None:
     """
     Test the ``replace_metric_syntax`` method.
     """
-    og_metric_schema = MetricSchema()
+    og_metric_schema = OGMetricSchema()
     sql = "revenue - cost"
     metrics = {
         "revenue": og_metric_schema.load(
