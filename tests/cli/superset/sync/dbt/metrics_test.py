@@ -875,12 +875,14 @@ def test_get_superset_metrics_per_model() -> None:
                 "calculation_method": "sum",
                 "expression": "1",
                 "label": "Sales",
+                "meta": {},
             },
             {
                 "name": "multi-model",
                 "unique_id": "multi-model",
                 "depends_on": ["a", "b"],
                 "calculation_method": "derived",
+                "meta": {},
             },
             {
                 "name": "a",
@@ -900,11 +902,9 @@ def test_get_superset_metrics_per_model() -> None:
                 "depends_on": ["customers"],
                 "calculation_method": "sum",
                 "expression": "1",
-                "config": {
-                    "meta": {
-                        "superset": {
-                            "warning_text": "meta under config",
-                        },
+                "meta": {
+                    "superset": {
+                        "warning_text": "meta under config",
                     },
                 },
             },
@@ -915,11 +915,9 @@ def test_get_superset_metrics_per_model() -> None:
                 "depends_on": ["customers"],
                 "calculation_method": "max",
                 "expression": "1",
-                "config": {
-                    "meta": {
-                        "superset": {
-                            "metric_name": "new_key",
-                        },
+                "meta": {
+                    "superset": {
+                        "metric_name": "new_key",
                     },
                 },
             },
@@ -937,6 +935,7 @@ def test_get_superset_metrics_per_model() -> None:
                 "sql": "SELECT COUNT(1) FROM a.b.c",
                 "dialect": MFSQLEngine.BIGQUERY,
                 "model": "new-model",
+                "meta": {},
             },
             {
                 "name": "other_new",
@@ -1032,6 +1031,7 @@ def test_get_superset_metrics_per_model_og_derived(
                 "depends_on": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -1041,6 +1041,7 @@ def test_get_superset_metrics_per_model_og_derived(
                 "depends_on": ["orders"],
                 "calculation_method": "sum",
                 "expression": "price_each",
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -1050,6 +1051,7 @@ def test_get_superset_metrics_per_model_og_derived(
                 "depends_on": [],
                 "calculation_method": "derived",
                 "expression": "price_each * 1.2",
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -1092,6 +1094,7 @@ SUM(
     {% endfor %}
 )
 """,
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -1102,6 +1105,7 @@ SUM(
                 "dialect": "postgres",
                 "calculation_method": "derived",
                 "expression": "derived_metric_with_jinja_and_other_metric / revenue",
+                "meta": {},
             },
         ),
         og_metric_schema.load(

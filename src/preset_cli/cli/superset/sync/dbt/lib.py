@@ -532,11 +532,10 @@ def parse_metric_meta(metric: MetricSchema) -> Dict[str, Any]:
     """
     Parses the metric's meta information.
     """
-    metric_meta = metric.get("meta", metric.get("config", {}).get("meta", {}))
-    kwargs = metric_meta.pop("superset", {})
+    kwargs = metric.get("meta", {}).pop("superset", {})
     metric_name_override = kwargs.pop("metric_name", None)
     return {
-        "meta": metric_meta,
+        "meta": metric.get("meta", {}),
         "kwargs": kwargs,
         "metric_name_override": metric_name_override,
     }

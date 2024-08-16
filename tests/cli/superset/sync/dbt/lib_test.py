@@ -854,14 +854,12 @@ def test_parse_metric_meta() -> None:
                 "name": "Sabe but using config",
                 "label": "Meta inside config",
                 "description": "",
-                "config": {
-                    "meta": {
-                        "superset": {
-                            "d3format": ",.2f",
-                            "metric_name": "revenue_metric",
-                        },
-                        "airflow": "other_id",
+                "meta": {
+                    "superset": {
+                        "d3format": ",.2f",
+                        "metric_name": "revenue_metric",
                     },
+                    "airflow": "other_id",
                 },
             },
         ),
