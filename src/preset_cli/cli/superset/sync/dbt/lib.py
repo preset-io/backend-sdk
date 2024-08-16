@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import NoSuchModuleError
 
-from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
+from preset_cli.api.clients.dbt import MetricSchema, ModelSchema, OGMetricSchema
 from preset_cli.exceptions import CLIError
 
 _logger = logging.getLogger(__name__)
@@ -505,11 +505,11 @@ def get_og_metric_from_config(
     dialect: str,
     depends_on: Optional[List[str]] = None,
     sql: Optional[str] = None,
-) -> MetricSchema:
+) -> OGMetricSchema:
     """
     Return an og metric from the config, adhering to the dbt Cloud schema.
     """
-    metric_schema = MetricSchema()
+    metric_schema = OGMetricSchema()
     if depends_on is not None:
         metric_config["dependsOn"] = depends_on
         metric_config.pop("depends_on", None)
@@ -526,3 +526,16 @@ def get_og_metric_from_config(
     metric_config["dialect"] = dialect
 
     return metric_schema.load(metric_config)
+
+
+def parse_metric_meta(metric: MetricSchema) -> Dict[str, Any]:
+    """
+    Parses the metric's meta information.
+    """
+    kwargs = metric.get("meta", {}).pop("superset", {})
+    metric_name_override = kwargs.pop("metric_name", None)
+    return {
+        "meta": metric.get("meta", {}),
+        "kwargs": kwargs,
+        "metric_name_override": metric_name_override,
+    }

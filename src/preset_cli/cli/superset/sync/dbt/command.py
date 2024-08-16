@@ -215,9 +215,14 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
         og_metrics = []
         sl_metrics = []
         for config in configs["metrics"].values():
+            # dbt is shifting from `metric.meta` to `metric.config.meta`
+            config["meta"] = config.get("meta") or config.get("config", {}).get(
+                "meta",
+                {},
+            )
             # First validate if metadata is already available
-            if config.get("meta", {}).get("superset", {}).get("model") and (
-                sql := config.get("meta", {}).get("superset", {}).pop("expression")
+            if config["meta"].get("superset", {}).get("model") and (
+                sql := config["meta"].get("superset", {}).pop("expression")
             ):
                 metric = get_og_metric_from_config(
                     config,
@@ -416,11 +421,13 @@ def get_sl_metric(
     return mf_metric_schema.load(
         {
             "name": metric["name"],
+            "label": metric["label"],
             "type": metric["type"],
             "description": metric["description"],
             "sql": sql,
             "dialect": dialect.value,
             "model": model["unique_id"],
+            "meta": metric["meta"],
         },
     )
 
@@ -452,9 +459,11 @@ def fetch_sl_metrics(
                     "name": metric["name"],
                     "type": metric["type"],
                     "description": metric["description"],
+                    "label": metric["label"],
                     "sql": sql,
                     "dialect": dialect.value,
                     "model": model["unique_id"],
+                    # TODO (Vitor-Avila): Pull meta from ``config.meta`` (supported in versionless)
                 },
             ),
         )

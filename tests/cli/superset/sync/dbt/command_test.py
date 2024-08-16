@@ -190,9 +190,14 @@ dbt_cloud_metrics = [
 ]
 
 dbt_metricflow_metrics = [
-    {"name": "a", "type": "Simple", "description": "The simplest metric"},
-    {"name": "b", "type": "derived", "description": "Too complex for Superset"},
-    {"name": "c", "type": "derived", "description": "Multiple models"},
+    {"name": "a", "type": "Simple", "description": "The simplest metric", "label": "A"},
+    {
+        "name": "b",
+        "type": "derived",
+        "description": "Too complex for Superset",
+        "label": "B",
+    },
+    {"name": "c", "type": "derived", "description": "Multiple models", "label": "C"},
 ]
 
 
@@ -3065,7 +3070,8 @@ def test_dbt_cloud(mocker: MockerFixture) -> None:
                     "expression": "COUNT(*)",
                     "metric_name": "a",
                     "metric_type": "Simple",
-                    "verbose_name": "a",
+                    "verbose_name": "A",
+                    "extra": "{}",
                 },
             ],
         },

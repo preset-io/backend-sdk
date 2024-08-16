@@ -9,7 +9,11 @@ from typing import Dict
 import pytest
 from pytest_mock import MockerFixture
 
-from preset_cli.api.clients.dbt import MetricSchema, MFMetricWithSQLSchema, MFSQLEngine
+from preset_cli.api.clients.dbt import (
+    MFMetricWithSQLSchema,
+    MFSQLEngine,
+    OGMetricSchema,
+)
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
 from preset_cli.cli.superset.sync.dbt.metrics import (
     convert_metric_flow_to_superset,
@@ -27,8 +31,8 @@ def test_get_metric_expression() -> None:
     """
     Tests for ``get_metric_expression``.
     """
-    metric_schema = MetricSchema()
-    metrics: Dict[str, MetricSchema] = {
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
         "one": metric_schema.load(
             {
                 "type": "count",
@@ -121,8 +125,8 @@ def test_get_metric_expression_new_schema() -> None:
 
     See https://docs.getdbt.com/guides/migration/versions/upgrading-to-v1.3#for-users-of-dbt-metrics
     """
-    metric_schema = MetricSchema()
-    metrics: Dict[str, MetricSchema] = {
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
         "one": metric_schema.load(
             {
                 "calculation_method": "count",
@@ -146,8 +150,8 @@ def test_get_metric_expression_derived_legacy() -> None:
     """
     Test ``get_metric_expression`` with derived metrics created using a legacy dbt version.
     """
-    metric_schema = MetricSchema()
-    metrics: Dict[str, MetricSchema] = {
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
         "revenue_verbose_name_from_dbt": metric_schema.load(
             {
                 "name": "revenue_verbose_name_from_dbt",
@@ -476,7 +480,7 @@ def test_get_metric_models() -> None:
     """
     Tests for ``get_metric_models``.
     """
-    metric_schema = MetricSchema()
+    metric_schema = OGMetricSchema()
     metrics = [
         metric_schema.load(
             {
@@ -771,21 +775,59 @@ def test_convert_metric_flow_to_superset(mocker: MockerFixture) -> None:
     """
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.metrics.convert_query_to_projection",
-        return_value="SUM(order_total)",
+        side_effect=["SUM(order_total)", "SUM(price_each)"],
+    )
+    mf_metric_schema = MFMetricWithSQLSchema()
+    semantic_metric = mf_metric_schema.load(
+        {
+            "name": "sales",
+            "description": "All sales",
+            "label": "Sales",
+            "type": "SIMPLE",
+            "sql": "SELECT SUM(order_total) AS order_total FROM orders",
+            "dialect": MFSQLEngine.BIGQUERY,
+            "meta": {
+                "superset": {
+                    "d3format": "0.2f",
+                },
+            },
+        },
     )
 
-    assert convert_metric_flow_to_superset(
-        name="sales",
-        description="All sales",
-        metric_type="SIMPLE",
-        sql="SELECT SUM(order_total) AS order_total FROM orders",
-        dialect=MFSQLEngine.BIGQUERY,
-    ) == {
+    assert convert_metric_flow_to_superset(semantic_metric) == {
         "expression": "SUM(order_total)",
         "metric_name": "sales",
         "metric_type": "SIMPLE",
-        "verbose_name": "sales",
+        "verbose_name": "Sales",
         "description": "All sales",
+        "d3format": "0.2f",
+        "extra": "{}",
+    }
+
+    # Metric key override
+    other_semantic_metric = mf_metric_schema.load(
+        {
+            "name": "revenue",
+            "description": "Total revenue in the period",
+            "label": "Total Revenue",
+            "type": "SIMPLE",
+            "sql": "SELECT SUM(price_each) AS price_each FROM orders",
+            "dialect": MFSQLEngine.BIGQUERY,
+            "meta": {
+                "superset": {
+                    "metric_name": "preset_specific_key",
+                },
+            },
+        },
+    )
+
+    assert convert_metric_flow_to_superset(other_semantic_metric) == {
+        "expression": "SUM(price_each)",
+        "metric_name": "preset_specific_key",
+        "metric_type": "SIMPLE",
+        "verbose_name": "Total Revenue",
+        "description": "Total revenue in the period",
+        "extra": "{}",
     }
 
 
@@ -821,7 +863,7 @@ def test_get_superset_metrics_per_model() -> None:
     Tests for the ``get_superset_metrics_per_model`` function.
     """
     mf_metric_schema = MFMetricWithSQLSchema()
-    og_metric_schema = MetricSchema()
+    og_metric_schema = OGMetricSchema()
 
     og_metrics = [
         og_metric_schema.load(obj)
@@ -832,12 +874,15 @@ def test_get_superset_metrics_per_model() -> None:
                 "depends_on": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
+                "label": "Sales",
+                "meta": {},
             },
             {
                 "name": "multi-model",
                 "unique_id": "multi-model",
                 "depends_on": ["a", "b"],
                 "calculation_method": "derived",
+                "meta": {},
             },
             {
                 "name": "a",
@@ -845,6 +890,11 @@ def test_get_superset_metrics_per_model() -> None:
                 "depends_on": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
+                "meta": {
+                    "superset": {
+                        "warning_text": "caution",
+                    },
+                },
             },
             {
                 "name": "b",
@@ -852,6 +902,24 @@ def test_get_superset_metrics_per_model() -> None:
                 "depends_on": ["customers"],
                 "calculation_method": "sum",
                 "expression": "1",
+                "meta": {
+                    "superset": {
+                        "warning_text": "meta under config",
+                    },
+                },
+            },
+            {
+                "name": "to_be_updated",
+                "label": "Preset Label",
+                "unique_id": "to_be_updated",
+                "depends_on": ["customers"],
+                "calculation_method": "max",
+                "expression": "1",
+                "meta": {
+                    "superset": {
+                        "metric_name": "new_key",
+                    },
+                },
             },
         ]
     ]
@@ -862,10 +930,26 @@ def test_get_superset_metrics_per_model() -> None:
             {
                 "name": "new",
                 "description": "New metric",
+                "label": "New Label",
                 "type": "SIMPLE",
                 "sql": "SELECT COUNT(1) FROM a.b.c",
                 "dialect": MFSQLEngine.BIGQUERY,
                 "model": "new-model",
+                "meta": {},
+            },
+            {
+                "name": "other_new",
+                "description": "This is a test replacing the metric key",
+                "label": "top Label",
+                "type": "SIMPLE",
+                "sql": "SELECT COUNT(1) FROM a.b.c",
+                "dialect": MFSQLEngine.BIGQUERY,
+                "model": "new-model",
+                "meta": {
+                    "superset": {
+                        "metric_name": "preset_sl_key",
+                    },
+                },
             },
         ]
     ]
@@ -876,7 +960,7 @@ def test_get_superset_metrics_per_model() -> None:
                 "expression": "SUM(1)",
                 "metric_name": "sales",
                 "metric_type": "sum",
-                "verbose_name": "sales",
+                "verbose_name": "Sales",
                 "description": "",
                 "extra": "{}",
             },
@@ -886,6 +970,7 @@ def test_get_superset_metrics_per_model() -> None:
                 "metric_type": "sum",
                 "verbose_name": "a",
                 "description": "",
+                "warning_text": "caution",
                 "extra": "{}",
             },
         ],
@@ -896,6 +981,15 @@ def test_get_superset_metrics_per_model() -> None:
                 "metric_type": "sum",
                 "verbose_name": "b",
                 "description": "",
+                "warning_text": "meta under config",
+                "extra": "{}",
+            },
+            {
+                "expression": "MAX(1)",
+                "metric_name": "new_key",
+                "metric_type": "max",
+                "verbose_name": "Preset Label",
+                "description": "",
                 "extra": "{}",
             },
         ],
@@ -904,8 +998,17 @@ def test_get_superset_metrics_per_model() -> None:
                 "expression": "COUNT(1)",
                 "metric_name": "new",
                 "metric_type": "SIMPLE",
-                "verbose_name": "new",
+                "verbose_name": "New Label",
                 "description": "New metric",
+                "extra": "{}",
+            },
+            {
+                "expression": "COUNT(1)",
+                "metric_name": "preset_sl_key",
+                "metric_type": "SIMPLE",
+                "verbose_name": "top Label",
+                "description": "This is a test replacing the metric key",
+                "extra": "{}",
             },
         ],
     }
@@ -918,7 +1021,7 @@ def test_get_superset_metrics_per_model_og_derived(
     Tests for the ``get_superset_metrics_per_model`` function
     with derived OG metrics.
     """
-    og_metric_schema = MetricSchema()
+    og_metric_schema = OGMetricSchema()
 
     og_metrics = [
         og_metric_schema.load(
@@ -928,6 +1031,7 @@ def test_get_superset_metrics_per_model_og_derived(
                 "depends_on": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -937,6 +1041,7 @@ def test_get_superset_metrics_per_model_og_derived(
                 "depends_on": ["orders"],
                 "calculation_method": "sum",
                 "expression": "price_each",
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -946,6 +1051,7 @@ def test_get_superset_metrics_per_model_og_derived(
                 "depends_on": [],
                 "calculation_method": "derived",
                 "expression": "price_each * 1.2",
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -988,6 +1094,7 @@ SUM(
     {% endfor %}
 )
 """,
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -998,6 +1105,7 @@ SUM(
                 "dialect": "postgres",
                 "calculation_method": "derived",
                 "expression": "derived_metric_with_jinja_and_other_metric / revenue",
+                "meta": {},
             },
         ),
         og_metric_schema.load(
@@ -1119,7 +1227,7 @@ def test_replace_metric_syntax() -> None:
     """
     Test the ``replace_metric_syntax`` method.
     """
-    og_metric_schema = MetricSchema()
+    og_metric_schema = OGMetricSchema()
     sql = "revenue - cost"
     metrics = {
         "revenue": og_metric_schema.load(

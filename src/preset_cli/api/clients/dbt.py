@@ -574,15 +574,22 @@ class FilterSchema(PostelSchema):
 
 class MetricSchema(PostelSchema):
     """
-    Schema for a metric.
+    Base schema for a dbt metric.
+    """
+
+    name = fields.String()
+    label = fields.String()
+    description = fields.String()
+    meta = fields.Raw()
+
+
+class OGMetricSchema(MetricSchema):
+    """
+    Schema for an OG metric.
     """
 
     depends_on = fields.List(fields.String(), data_key="dependsOn")
-    description = fields.String()
     filters = fields.List(fields.Nested(FilterSchema))
-    meta = fields.Raw()
-    name = fields.String()
-    label = fields.String()
     sql = fields.String()
     type = fields.String()
     unique_id = fields.String(data_key="uniqueId")
@@ -604,13 +611,11 @@ class MFMetricType(str, Enum):
     DERIVED = "DERIVED"
 
 
-class MFMetricSchema(PostelSchema):
+class MFMetricSchema(MetricSchema):
     """
     Schema for a MetricFlow metric.
     """
 
-    name = fields.String()
-    description = fields.String()
     type = PostelEnumField(MFMetricType)
 
 
@@ -812,7 +817,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         return models
 
-    def get_og_metrics(self, job_id: int) -> List[MetricSchema]:
+    def get_og_metrics(self, job_id: int) -> List[OGMetricSchema]:
         """
         Fetch all available metrics.
         """
@@ -843,7 +848,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             headers=self.session.headers,
         )
 
-        metric_schema = MetricSchema()
+        metric_schema = OGMetricSchema()
         metrics = [
             metric_schema.load(metric) for metric in payload["data"]["job"]["metrics"]
         ]
@@ -860,6 +865,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                     name
                     description
                     type
+                    label
                 }
             }
         """

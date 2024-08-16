@@ -12,7 +12,7 @@ from pytest_mock import MockerFixture
 from sqlalchemy.engine.url import make_url
 from yarl import URL
 
-from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
+from preset_cli.api.clients.dbt import ModelSchema, OGMetricSchema
 from preset_cli.api.clients.superset import SupersetMetricDefinition
 from preset_cli.cli.superset.sync.dbt.datasets import (
     DEFAULT_CERTIFICATION,
@@ -36,7 +36,7 @@ from preset_cli.exceptions import (
     SupersetError,
 )
 
-metric_schema = MetricSchema()
+metric_schema = OGMetricSchema()
 
 metrics: Dict[str, List[SupersetMetricDefinition]] = {
     "model.superset_examples.messages_channels": [
