@@ -349,11 +349,17 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
         # compute columns
         final_dataset_columns = []
         if not reload_columns:
-            refreshed_columns_list = client.get_refreshed_dataset_columns(dataset["id"])
-            final_dataset_columns = compute_columns(
-                dataset["columns"],
-                refreshed_columns_list,
-            )
+            try:
+                refreshed_columns_list = client.get_refreshed_dataset_columns(
+                    dataset["id"],
+                )
+                final_dataset_columns = compute_columns(
+                    dataset["columns"],
+                    refreshed_columns_list,
+                )
+            except SupersetError:
+                failed_datasets.append(model["unique_id"])
+                continue
 
         # compute update payload
         update = compute_dataset_metadata(
