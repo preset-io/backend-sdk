@@ -261,6 +261,34 @@ def test_sync_datasets_second_update_fails(mocker: MockerFixture) -> None:
     assert failed == [models[0]["unique_id"]]
 
 
+def test_sync_datasets_sync_columns_fails(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` when the request to sync columns fails.
+    """
+    client = mocker.MagicMock()
+    client.get_refreshed_dataset_columns.side_effect = [SupersetError([error])]
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.datasets.get_or_create_dataset",
+        return_value={"id": 1, "metrics": [], "columns": []},
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.datasets.compute_metrics",
+    )
+    working, failed = sync_datasets(
+        client=client,
+        models=models,
+        metrics=metrics,
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="",
+        reload_columns=False,
+    )
+
+    client.update_dataset.assert_not_called()
+    assert working == []
+    assert failed == [models[0]["unique_id"]]
+
+
 def test_sync_datasets_with_alias(mocker: MockerFixture) -> None:
     """
     Test ``sync_datasets`` when the model has an alias.
