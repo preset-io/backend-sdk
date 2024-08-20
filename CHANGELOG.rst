@@ -5,6 +5,13 @@ Changelog
 Next
 ====
 
+Version 0.2.20 - 2024-08-20
+===========================
+
+- It's now possible to link dbt metrics with Preset metrics that don't have the same name (`#311 <https://github.com/preset-io/backend-sdk/pull/311>`_).
+- The dbt sync continues in case syncing columns for a dataset fails (`#313 <https://github.com/preset-io/backend-sdk/pull/313>`_).
+- dbt Cloud versionless jobs are now supported (`#314 <https://github.com/preset-io/backend-sdk/pull/314>`_).
+
 Version 0.2.19 - 2024-07-04
 ===========================
 
