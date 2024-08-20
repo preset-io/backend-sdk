@@ -1175,6 +1175,60 @@ def test_dbt_client_get_og_metrics(mocker: MockerFixture) -> None:
     ]
 
 
+def test_dbt_client_get_og_metrics_versionless_jobs(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_og_metrics`` method when querying a versionless job. In this case,
+    this API call will return both OG and SL metrics. Only metrics with ``sql`` should
+    be returned.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": {
+            "job": {
+                "metrics": [
+                    {
+                        "uniqueId": "metric.jaffle_shop.new_customers",
+                        "name": "new_customers",
+                        "label": "New Customers",
+                        "type": "count",
+                        "sql": "customer_id",
+                        "filters": [
+                            {
+                                "field": "number_of_orders",
+                                "operator": ">",
+                                "value": "0",
+                            },
+                        ],
+                        "dependsOn": ["model.jaffle_shop.customers"],
+                        "description": "The number of paid customers using the product",
+                        "meta": {},
+                    },
+                    {
+                        "name": "SL metric",
+                        "description": "Semantic Layer Metric",
+                        "type": "SIMPLE",
+                    },
+                ],
+            },
+        },
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+    assert client.get_og_metrics(108380) == [
+        {
+            "meta": {},
+            "name": "new_customers",
+            "type": "count",
+            "label": "New Customers",
+            "unique_id": "metric.jaffle_shop.new_customers",
+            "description": "The number of paid customers using the product",
+            "sql": "customer_id",
+            "depends_on": ["model.jaffle_shop.customers"],
+            "filters": [{"operator": ">", "value": "0", "field": "number_of_orders"}],
+        },
+    ]
+
+
 def test_dbt_client_get_database_name(mocker: MockerFixture) -> None:
     """
     Test the ``get_database_name`` method.
