@@ -120,6 +120,7 @@ def test_export_resource(
         client=client,
         overwrite=False,
         disable_jinja_escaping=False,
+        force_unix_eol=False,
     )
     with open(root / "databases/gsheets.yaml", encoding="utf-8") as input_:
         assert input_.read() == "database_name: GSheets\nsqlalchemy_uri: gsheets://\n"
@@ -132,6 +133,7 @@ def test_export_resource(
         client=client,
         overwrite=False,
         disable_jinja_escaping=False,
+        force_unix_eol=False,
     )
     with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
         assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
@@ -156,6 +158,7 @@ GROUP BY action""",
         client=client,
         overwrite=False,
         disable_jinja_escaping=False,
+        force_unix_eol=False,
     )
     with open(root / "charts/test_01.yaml", encoding="utf-8") as input_:
         # load `query_context` as JSON to avoid
@@ -229,6 +232,7 @@ def test_export_resource_overwrite(
         client=client,
         overwrite=False,
         disable_jinja_escaping=False,
+        force_unix_eol=False,
     )
     with pytest.raises(Exception) as excinfo:
         export_resource(
@@ -238,6 +242,7 @@ def test_export_resource_overwrite(
             client=client,
             overwrite=False,
             disable_jinja_escaping=False,
+            force_unix_eol=False,
         )
     assert str(excinfo.value) == (
         "File already exists and ``--overwrite`` was not specified: "
@@ -251,6 +256,7 @@ def test_export_resource_overwrite(
         client=client,
         overwrite=True,
         disable_jinja_escaping=False,
+        force_unix_eol=False,
     )
 
 
@@ -284,6 +290,7 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "dataset",
@@ -293,6 +300,7 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "chart",
@@ -302,6 +310,7 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "dashboard",
@@ -311,6 +320,7 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
         ],
     )
@@ -352,6 +362,7 @@ def test_export_assets_by_id(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 False,
                 skip_related=False,
+                force_unix_eol=False,
             ),
         ],
     )
@@ -395,6 +406,7 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "dashboard",
@@ -404,6 +416,7 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
         ],
     )
@@ -439,6 +452,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "dataset",
@@ -448,6 +462,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "chart",
@@ -457,6 +472,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "dashboard",
@@ -466,6 +482,7 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 False,
                 skip_related=True,
+                force_unix_eol=False,
             ),
         ],
     )
@@ -645,6 +662,7 @@ def test_export_resource_jinja_escaping_disabled(
         client=client,
         overwrite=False,
         disable_jinja_escaping=True,
+        force_unix_eol=False,
     )
     with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
         assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
@@ -703,6 +721,7 @@ def test_export_resource_jinja_escaping_disabled_command(
                 False,
                 True,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "dataset",
@@ -712,6 +731,7 @@ def test_export_resource_jinja_escaping_disabled_command(
                 False,
                 True,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "chart",
@@ -721,6 +741,7 @@ def test_export_resource_jinja_escaping_disabled_command(
                 False,
                 True,
                 skip_related=True,
+                force_unix_eol=False,
             ),
             mock.call(
                 "dashboard",
@@ -730,6 +751,7 @@ def test_export_resource_jinja_escaping_disabled_command(
                 False,
                 True,
                 skip_related=True,
+                force_unix_eol=False,
             ),
         ],
     )
