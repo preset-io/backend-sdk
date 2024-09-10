@@ -755,3 +755,77 @@ def test_export_resource_jinja_escaping_disabled_command(
             ),
         ],
     )
+
+
+def test_export_resource_force_unix_eol_command(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_assets`` with ``--force-unix-eol`` command.
+    """
+    # root must exist for command to succeed
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export",
+            "/path/to/root",
+            "--force-unix-eol",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    export_resource.assert_has_calls(
+        [
+            mock.call(
+                "database",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                False,
+                skip_related=True,
+                force_unix_eol=True,
+            ),
+            mock.call(
+                "dataset",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                False,
+                skip_related=True,
+                force_unix_eol=True,
+            ),
+            mock.call(
+                "chart",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                False,
+                skip_related=True,
+                force_unix_eol=True,
+            ),
+            mock.call(
+                "dashboard",
+                set(),
+                Path("/path/to/root"),
+                client,
+                False,
+                False,
+                skip_related=True,
+                force_unix_eol=True,
+            ),
+        ],
+    )

@@ -39,7 +39,7 @@ assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
     "--force-unix-eol",
     is_flag=True,
     default=False,
-    help="Force Unix end-of-line characters, otherwise use system default"
+    help="Force Unix end-of-line characters, otherwise use system default",
 )
 @click.option(
     "--asset-type",
@@ -77,7 +77,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     dashboard_ids: List[str],
     overwrite: bool = False,
     disable_jinja_escaping: bool = False,
-    force_unix_eol: bool = False
+    force_unix_eol: bool = False,
 ) -> None:
     """
     Export DBs/datasets/charts/dashboards to a directory.
@@ -107,7 +107,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
                 overwrite,
                 disable_jinja_escaping,
                 skip_related=not ids_requested,
-                force_unix_eol=force_unix_eol
+                force_unix_eol=force_unix_eol,
             )
 
 
@@ -119,7 +119,7 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
     overwrite: bool,
     disable_jinja_escaping: bool,
     skip_related: bool = True,
-    force_unix_eol: bool = False
+    force_unix_eol: bool = False,
 ) -> None:
     """
     Export a given resource and unzip it in a directory.
@@ -238,10 +238,14 @@ def jinja_escaper(value: str) -> str:
     "--force-unix-eol",
     is_flag=True,
     default=False,
-    help="Force Unix end-of-line characters, otherwise use system default"
+    help="Force Unix end-of-line characters, otherwise use system default",
 )
 @click.pass_context
-def export_users(ctx: click.core.Context, path: str, force_unix_eol: bool=False) -> None:
+def export_users(
+    ctx: click.core.Context,
+    path: str,
+    force_unix_eol: bool = False,
+) -> None:
     """
     Export users and their roles to a YAML file.
     """
@@ -271,10 +275,14 @@ def export_users(ctx: click.core.Context, path: str, force_unix_eol: bool=False)
     "--force-unix-eol",
     is_flag=True,
     default=False,
-    help="Force Unix end-of-line characters, otherwise use system default"
+    help="Force Unix end-of-line characters, otherwise use system default",
 )
 @click.pass_context
-def export_roles(ctx: click.core.Context, path: str, force_unix_eol: bool=False) -> None:
+def export_roles(
+    ctx: click.core.Context,
+    path: str,
+    force_unix_eol: bool = False,
+) -> None:
     """
     Export roles to a YAML file.
     """
@@ -300,10 +308,14 @@ def export_roles(ctx: click.core.Context, path: str, force_unix_eol: bool=False)
     "--force-unix-eol",
     is_flag=True,
     default=False,
-    help="Force Unix end-of-line characters, otherwise use system default"
+    help="Force Unix end-of-line characters, otherwise use system default",
 )
 @click.pass_context
-def export_rls(ctx: click.core.Context, path: str, force_unix_eol: bool=False) -> None:
+def export_rls(
+    ctx: click.core.Context,
+    path: str,
+    force_unix_eol: bool = False,
+) -> None:
     """
     Export RLS rules to a YAML file.
     """
@@ -329,10 +341,14 @@ def export_rls(ctx: click.core.Context, path: str, force_unix_eol: bool=False) -
     "--force-unix-eol",
     is_flag=True,
     default=False,
-    help="Force Unix end-of-line characters, otherwise use system default"
+    help="Force Unix end-of-line characters, otherwise use system default",
 )
 @click.pass_context
-def export_ownership(ctx: click.core.Context, path: str, force_unix_eol: bool=False) -> None:
+def export_ownership(
+    ctx: click.core.Context,
+    path: str,
+    force_unix_eol: bool = False,
+) -> None:
     """
     Export DBs/datasets/charts/dashboards ownership to a YAML file.
     """
