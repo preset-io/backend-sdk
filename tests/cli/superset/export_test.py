@@ -526,6 +526,51 @@ def test_export_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     ]
 
 
+def test_export_users_force_unix_eol_enable(
+    mocker: MockerFixture, fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_users`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {
+            "first_name": "admin",
+            "last_name": "admin",
+            "username": "admin",
+            "email": "admin@example.com",
+            "role": ["Admin"],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-users",
+            "users.yaml",
+            "--force-unix-eol",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    with open("users.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == [
+        {
+            "first_name": "admin",
+            "last_name": "admin",
+            "username": "admin",
+            "email": "admin@example.com",
+            "role": ["Admin"],
+        },
+    ]
+
+
 def test_export_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``export_roles`` command.
@@ -544,6 +589,45 @@ def test_export_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     result = runner.invoke(
         superset_cli,
         ["https://superset.example.org/", "export-roles", "roles.yaml"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    with open("roles.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == [
+        {
+            "name": "Public",
+            "permissions": [],
+        },
+    ]
+
+
+def test_export_roles_force_unix_eol_enable(
+    mocker: MockerFixture, fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_roles`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_roles.return_value = [
+        {
+            "name": "Public",
+            "permissions": [],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-roles",
+            "roles.yaml",
+            "--force-unix-eol",
+        ],
         catch_exceptions=False,
     )
     assert result.exit_code == 0
@@ -600,6 +684,50 @@ def test_export_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     ]
 
 
+def test_export_rls_force_unix_eol_enable(
+    mocker: MockerFixture, fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_rls`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_rls.return_value = [
+        {
+            "clause": "client_id = 9",
+            "description": "This is a rule. There are many others like it, but this one is mine.",
+            "filter_type": "Regular",
+            "group_key": "department",
+            "name": "My rule",
+            "roles": ["Gamma"],
+            "tables": ["main.test_table"],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "export-rls", "rls.yaml", "--force-unix-eol"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    with open("rls.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == [
+        {
+            "clause": "client_id = 9",
+            "description": "This is a rule. There are many others like it, but this one is mine.",
+            "filter_type": "Regular",
+            "group_key": "department",
+            "name": "My rule",
+            "roles": ["Gamma"],
+            "tables": ["main.test_table"],
+        },
+    ]
+
+
 def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``export_ownership`` command.
@@ -623,6 +751,48 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     result = runner.invoke(
         superset_cli,
         ["https://superset.example.org/", "export-ownership"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "chart": [
+            {
+                "name": "My chart",
+                "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
+                "owners": ["adoe@example.com", "bdoe@example.com"],
+            },
+        ],
+    }
+
+
+def test_export_ownership_force_unix_eol_enable(
+    mocker: MockerFixture, fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_ownership.side_effect = [
+        [],
+        [
+            {
+                "name": "My chart",
+                "uuid": UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+                "owners": ["adoe@example.com", "bdoe@example.com"],
+            },
+        ],
+        [],
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "export-ownership", "--force-unix-eol"],
         catch_exceptions=False,
     )
     assert result.exit_code == 0
@@ -755,6 +925,49 @@ def test_export_resource_jinja_escaping_disabled_command(
             ),
         ],
     )
+
+
+def test_export_resource_force_unix_eol_enabled(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    chart_export: BytesIO,
+) -> None:
+    """
+    Test ``export_resource`` with ``--disable-jinja-escaping``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    client = mocker.MagicMock()
+    client.export_zip.return_value = chart_export
+
+    # check that Jinja2 was not escaped
+    export_resource(
+        resource_name="dataset",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=False,
+        disable_jinja_escaping=True,
+        force_unix_eol=True,
+    )
+    with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
+        assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
+            "table_name": "test",
+            "sql": """
+SELECT action, count(*) as times
+FROM logs
+{% if filter_values('action_type')|length %}
+    WHERE action is null
+    {% for action in filter_values('action_type') %}
+        or action = '{{ action }}'
+    {% endfor %}
+{% endif %}
+GROUP BY action""",
+        }
+
+    # metadata file should be ignored
+    assert not (root / "metadata.yaml").exists()
 
 
 def test_export_resource_force_unix_eol_command(
