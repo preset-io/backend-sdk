@@ -44,7 +44,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         """
         Login to get CSRF token and cookies.
         """
-        self.session.headers = {"Authorization": f"Bearer {self.get_access_token()}"}
+        self.session.headers["Authorization"] = f"Bearer {self.get_access_token()}"
         csrf_token = self.get_csrf_token()
 
         if csrf_token:
