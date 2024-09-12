@@ -32,20 +32,13 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         """
         Login to get CSRF token and cookies.
         """
-        data = {"username": self.username, "password": self.password}
-
-        response = self.session.get(self.baseurl / "login/")
-        soup = BeautifulSoup(response.text, "html.parser")
-        input_ = soup.find("input", {"id": "csrf_token"})
-        csrf_token = input_["value"] if input_ else None
+        body = {"username": self.username, "password": self.password, "provider": "ldap"}
+        response = self.session.post(self.baseurl / "api/v1/security/login", json=body)
+        response.raise_for_status()
+        csrf_token = response.json().get("access_token")
         if csrf_token:
             self.session.headers["X-CSRFToken"] = csrf_token
-            data["csrf_token"] = csrf_token
             self.csrf_token = csrf_token
-
-        # set cookies
-        response = self.session.post(self.baseurl / "login/", data=data)
-        response.raise_for_status()
 
 
 class SupersetJWTAuth(TokenAuth):  # pylint: disable=abstract-method
