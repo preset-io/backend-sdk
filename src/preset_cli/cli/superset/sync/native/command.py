@@ -155,6 +155,13 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     default=False,
     help="Split imports into individual assets",
 )
+@click.option(
+    "--resources",
+    "-r",
+    multiple=True,
+    default=None,
+    help="Resources to be imported (if no one is specified, all resources will be imported)",
+)
 @click.pass_context
 def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
     ctx: click.core.Context,
@@ -166,6 +173,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     external_url_prefix: str = "",
     load_env: bool = False,
     split: bool = False,
+    resources: Tuple[str, ...] = (),
 ) -> None:
     """
     Sync exported DBs/datasets/charts/dashboards to Superset.
@@ -174,6 +182,9 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     root = Path(directory)
+
+    if resources and not split:
+        raise click.UsageError('Resources must be specified if splitting is enabled')
 
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
@@ -242,7 +253,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
             configs["bundle" / relative_path] = config
 
     if split:
-        import_resources_individually(configs, client, overwrite)
+        import_resources_individually(configs, client, overwrite, resources)
     else:
         contents = {str(k): yaml.dump(v) for k, v in configs.items()}
         import_resources(contents, client, overwrite)
@@ -252,6 +263,7 @@ def import_resources_individually(
     configs: Dict[Path, AssetConfig],
     client: SupersetClient,
     overwrite: bool,
+    resources: Tuple[str, ...] = ()
 ) -> None:
     """
     Import contents individually.
@@ -274,6 +286,8 @@ def import_resources_individually(
             ("charts", lambda config: [config["dataset_uuid"]]),
             ("dashboards", get_dashboard_related_uuids),
         ]
+        if resources:
+            imports = [(name, func) for name, func in imports if name in resources]
         related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
         for resource_name, get_related_uuids in imports:
             for path, config in configs.items():
