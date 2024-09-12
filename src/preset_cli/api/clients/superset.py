@@ -399,6 +399,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         headers = {
             "Accept": "application/json",
+            "Content-Type": "application/json",
         }
         self.session.headers.update(headers)
 
