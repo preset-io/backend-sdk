@@ -410,7 +410,8 @@ def import_resources(
                 output.write(file_content.encode())
     buf.seek(0)
     try:
-        client.import_zip(resource_name, buf, overwrite=overwrite)
+        client.import_zip(resource_name if resource_name == "assets" else resource_name.rstrip('s'),
+                          buf, overwrite=overwrite)
     except SupersetError as ex:
         click.echo(
             click.style(
