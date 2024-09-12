@@ -27,7 +27,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
     def get_headers(self) -> Dict[str, str]:
         return {"X-CSRFToken": self.csrf_token} if self.csrf_token else {}
 
-    def get_access_token(self)
+    def get_access_token(self):
         body = {"username": self.username, "password": self.password, "provider": "ldap"}
         response = self.session.post(self.baseurl / "api/v1/security/login", json=body)
         response.raise_for_status()
