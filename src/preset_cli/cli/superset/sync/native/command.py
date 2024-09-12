@@ -302,7 +302,7 @@ def import_resources_individually(
                 _logger.info("Importing %s", path.relative_to("bundle"))
                 contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
                 if path not in imported:
-                    import_resources(contents, client, overwrite)
+                    import_resources(contents, client, overwrite, resource_name)
                     imported.add(path)
                     log.write(str(path) + "\n")
                     log.flush()
@@ -390,6 +390,7 @@ def import_resources(
     contents: Dict[str, str],
     client: SupersetClient,
     overwrite: bool,
+    resource_name = "assets"
 ) -> None:
     """
     Import a bundle of assets.
@@ -409,7 +410,7 @@ def import_resources(
                 output.write(file_content.encode())
     buf.seek(0)
     try:
-        client.import_zip("assets", buf, overwrite=overwrite)
+        client.import_zip(resource_name, buf, overwrite=overwrite)
     except SupersetError as ex:
         click.echo(
             click.style(
