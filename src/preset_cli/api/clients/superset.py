@@ -758,8 +758,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         url = self.baseurl / "api/v1" / resource_name / "import/"
 
         self.session.headers.update({"Accept": "application/json"})
-        if key == "formData":
-            self.session.headers.update({"Content-Type": "multipart/form-data"})
         data = {"overwrite": json.dumps(overwrite)}
         _logger.debug("POST %s\n%s\n%s", url, json.dumps(data, indent=4), files)
         response = self.session.post(
