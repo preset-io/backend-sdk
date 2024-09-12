@@ -395,7 +395,7 @@ def import_resources(
     """
     Import a bundle of assets.
     """
-    resource = resource_name if resource_name == "assets" else resource_name.rstrip('s')
+    resource = resource_name if resource_name == "assets" else resource_name.rstrip('s').title()
     contents["bundle/metadata.yaml"] = yaml.dump(
         dict(
             version="1.0.0",
