@@ -398,7 +398,7 @@ def import_resources(
     contents["bundle/metadata.yaml"] = yaml.dump(
         dict(
             version="1.0.0",
-            type="assets",
+            type=resource_name,
             timestamp=datetime.now(tz=timezone.utc).isoformat(),
         ),
     )
