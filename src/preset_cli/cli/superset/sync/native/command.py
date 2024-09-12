@@ -395,10 +395,11 @@ def import_resources(
     """
     Import a bundle of assets.
     """
+    resource = resource_name if resource_name == "assets" else resource_name.rstrip('s')
     contents["bundle/metadata.yaml"] = yaml.dump(
         dict(
             version="1.0.0",
-            type=resource_name,
+            type=resource,
             timestamp=datetime.now(tz=timezone.utc).isoformat(),
         ),
     )
@@ -410,8 +411,7 @@ def import_resources(
                 output.write(file_content.encode())
     buf.seek(0)
     try:
-        client.import_zip(resource_name if resource_name == "assets" else resource_name.rstrip('s'),
-                          buf, overwrite=overwrite)
+        client.import_zip(resource, buf, overwrite=overwrite)
     except SupersetError as ex:
         click.echo(
             click.style(
