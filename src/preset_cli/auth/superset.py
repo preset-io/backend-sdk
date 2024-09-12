@@ -47,7 +47,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
 
         if csrf_token:
             self.session.headers["X-CSRFToken"] = csrf_token
-            self.session.headers["Referer"] = self.baseurl / "/api/v1/security/csrf_token/"
+            self.session.headers["Referer"] = self.baseurl / "api/v1/security/csrf_token/"
             self.csrf_token = csrf_token
 
 
