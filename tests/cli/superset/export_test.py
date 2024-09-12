@@ -1,7 +1,7 @@
 """
 Tests for the export commands.
 """
-# pylint: disable=redefined-outer-name, invalid-name, unused-argument
+# pylint: disable=redefined-outer-name, invalid-name, unused-argument, too-many-lines
 
 import json
 from io import BytesIO
@@ -527,7 +527,8 @@ def test_export_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
 
 def test_export_users_force_unix_eol_enable(
-    mocker: MockerFixture, fs: FakeFilesystem,
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
 ) -> None:
     """
     Test the ``export_users`` command.
@@ -604,7 +605,8 @@ def test_export_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
 
 def test_export_roles_force_unix_eol_enable(
-    mocker: MockerFixture, fs: FakeFilesystem,
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
 ) -> None:
     """
     Test the ``export_roles`` command.
@@ -685,7 +687,8 @@ def test_export_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
 
 def test_export_rls_force_unix_eol_enable(
-    mocker: MockerFixture, fs: FakeFilesystem,
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
 ) -> None:
     """
     Test the ``export_rls`` command.
@@ -769,7 +772,8 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
 
 def test_export_ownership_force_unix_eol_enable(
-    mocker: MockerFixture, fs: FakeFilesystem,
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
 ) -> None:
     """
     Test the ``export_ownership`` command.
