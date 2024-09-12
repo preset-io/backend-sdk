@@ -160,7 +160,7 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     "-r",
     multiple=True,
     default=None,
-    help="Resources to be imported (if no one is specified, all resources will be imported)",
+    help="Resources to be imported e.g.  (if no one is specified, all resources will be imported)",
 )
 @click.pass_context
 def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
@@ -185,6 +185,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
 
     if resources and not split:
         raise click.UsageError('Resources must be specified if splitting is enabled')
+    assert set(resources).issubset({"databases", "datasets", "charts", "dashboards"}), "Invalid resources specified"
 
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
