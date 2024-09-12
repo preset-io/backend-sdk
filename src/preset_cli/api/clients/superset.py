@@ -399,7 +399,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         headers = {
             "Accept": "application/json",
-            "Content-Type": "application/json",
         }
         self.session.headers.update(headers)
 
@@ -758,7 +757,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         files = {key: form_data}
         url = self.baseurl / "api/v1" / resource_name / "import/"
 
-        self.session.headers.update({"Accept": "application/json"})
+        self.session.headers.update({
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        })
         data = {"overwrite": json.dumps(overwrite)}
         _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
         response = self.session.post(
