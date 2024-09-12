@@ -761,7 +761,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         if key == "formData":
             self.session.headers.update({"Content-Type": "multipart/form-data"})
         data = {"overwrite": json.dumps(overwrite)}
-        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
+        _logger.debug("POST %s\n%s\n%s", url, json.dumps(data, indent=4), files)
         response = self.session.post(
             url,
             files=files,
