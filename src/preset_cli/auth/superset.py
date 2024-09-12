@@ -34,7 +34,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         return response.json()["access_token"]
 
     def get_csrf_token(self):
-        response = self.session.get(self.baseurl / "/api/v1/security/csrf_token/")
+        response = self.session.get(self.baseurl / "api/v1/security/csrf_token/")
         response.raise_for_status()
         return response.json()["result"]
 
