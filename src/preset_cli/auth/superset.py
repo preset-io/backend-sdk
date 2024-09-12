@@ -44,7 +44,8 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
             self.csrf_token = csrf_token
 
         # set cookies
-        self.session.post(self.baseurl / "login/", data=data)
+        response = self.session.post(self.baseurl / "login/", data=data)
+        response.raise_for_status()
 
 
 class SupersetJWTAuth(TokenAuth):  # pylint: disable=abstract-method
