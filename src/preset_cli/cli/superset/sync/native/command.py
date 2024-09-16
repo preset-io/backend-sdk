@@ -403,7 +403,7 @@ def import_resources(
         ),
     )
 
-    _logger.info("Importing %s \n Content %s", resource_name, contents)
+    _logger.debug("Importing %s \n Content %s", resource_name, contents)
 
     buf = BytesIO()
     with ZipFile(buf, "w") as bundle:
