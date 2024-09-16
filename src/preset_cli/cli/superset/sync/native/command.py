@@ -155,13 +155,6 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     default=False,
     help="Split imports into individual assets",
 )
-@click.option(
-    "--resources",
-    "-r",
-    multiple=True,
-    default=None,
-    help="Resources to be imported e.g.  (if no one is specified, all resources will be imported)",
-)
 @click.pass_context
 def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
     ctx: click.core.Context,
@@ -173,7 +166,6 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     external_url_prefix: str = "",
     load_env: bool = False,
     split: bool = False,
-    resources: Tuple[str, ...] = (),
 ) -> None:
     """
     Sync exported DBs/datasets/charts/dashboards to Superset.
@@ -182,10 +174,6 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     root = Path(directory)
-
-    if resources and not split:
-        raise click.UsageError('Resources must be specified if splitting is enabled')
-    assert set(resources).issubset({"databases", "datasets", "charts", "dashboards"}), "Invalid resources specified"
 
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
@@ -254,7 +242,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
             configs["bundle" / relative_path] = config
 
     if split:
-        import_resources_individually(configs, client, overwrite, resources)
+        import_resources_individually(configs, client, overwrite)
     else:
         contents = {str(k): yaml.dump(v) for k, v in configs.items()}
         import_resources(contents, client, overwrite)
@@ -264,7 +252,6 @@ def import_resources_individually(
     configs: Dict[Path, AssetConfig],
     client: SupersetClient,
     overwrite: bool,
-    resources: Tuple[str, ...] = ()
 ) -> None:
     """
     Import contents individually.
@@ -287,8 +274,6 @@ def import_resources_individually(
             ("charts", lambda config: [config["dataset_uuid"]]),
             ("dashboards", get_dashboard_related_uuids),
         ]
-        if resources:
-            imports = [(name, func) for name, func in imports if name in resources]
         related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
         for resource_name, get_related_uuids in imports:
             for path, config in configs.items():
@@ -302,7 +287,7 @@ def import_resources_individually(
                 _logger.info("Importing %s", path.relative_to("bundle"))
                 contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
                 if path not in imported:
-                    import_resources(contents, client, overwrite, resource_name)
+                    import_resources(contents, client, overwrite)
                     imported.add(path)
                     log.write(str(path) + "\n")
                     log.flush()
@@ -390,7 +375,6 @@ def import_resources(
     contents: Dict[str, str],
     client: SupersetClient,
     overwrite: bool,
-    resource_name = "assets"
 ) -> None:
     """
     Import a bundle of assets.
@@ -398,12 +382,10 @@ def import_resources(
     contents["bundle/metadata.yaml"] = yaml.dump(
         dict(
             version="1.0.0",
-            type=resource_name if resource_name == "assets" else resource_name.rstrip('s').title(),
+            type="assets",
             timestamp=datetime.now(tz=timezone.utc).isoformat(),
         ),
     )
-
-    _logger.debug("Importing %s \n Content %s", resource_name, contents)
 
     buf = BytesIO()
     with ZipFile(buf, "w") as bundle:
@@ -412,7 +394,7 @@ def import_resources(
                 output.write(file_content.encode())
     buf.seek(0)
     try:
-        client.import_zip(resource_name if resource_name == "assets" else resource_name.rstrip('s'), buf, overwrite=overwrite)
+        client.import_zip("assets", buf, overwrite=overwrite)
     except SupersetError as ex:
         click.echo(
             click.style(
