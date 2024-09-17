@@ -1,12 +1,11 @@
 pyenv: .python-version
 
 .python-version: setup.cfg
-	if [ -z "`pyenv virtualenvs | grep backend-sdk`" ]; then\
-	    pyenv virtualenv backend-sdk;\
+	if [ ! -d "backend-sdk" ]; then \
+		pyenv local 3.11; \
+		python -m venv backend-sdk; \
 	fi
-	if [ ! -f .python-version ]; then\
-	    pyenv local backend-sdk;\
-	fi
+	backend-sdk/bin/activate; \
 	pip install -e '.[testing]'
 	touch .python-version
 
