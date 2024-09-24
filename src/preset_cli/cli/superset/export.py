@@ -6,7 +6,7 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, List, Set, Tuple
+from typing import Any, Callable, List, Set, Tuple, Union
 from zipfile import ZipFile
 
 import click
@@ -21,7 +21,7 @@ JINJA2_CLOSE_MARKER = "__JINJA2_CLOSE__"
 assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
 
 
-def get_newline_char(force_unix_eol: bool = False) -> str | None:
+def get_newline_char(force_unix_eol: bool = False) -> Union[str, None]:
     """Returns the newline character used by the open function"""
     return "\n" if force_unix_eol else None
 
