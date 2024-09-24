@@ -21,6 +21,11 @@ JINJA2_CLOSE_MARKER = "__JINJA2_CLOSE__"
 assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
 
 
+def get_newline_char(force_unix_eol: bool = False) -> str | None:
+    """Returns the newline character used by the open function"""
+    return "\n" if force_unix_eol else None
+
+
 @click.command()
 @click.argument("directory", type=click.Path(exists=True, resolve_path=True))
 @click.option(
@@ -158,10 +163,7 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
 
             file_contents = yaml.dump(asset_content, sort_keys=False)
 
-        if force_unix_eol:
-            newline = "\n"
-        else:
-            newline = None
+        newline = get_newline_char(force_unix_eol)
         with open(target, "w", encoding="utf-8", newline=newline) as output:
             output.write(file_contents)
 
@@ -257,10 +259,7 @@ def export_users(
         {k: v for k, v in user.items() if k != "id"} for user in client.export_users()
     ]
 
-    if force_unix_eol:
-        newline = "\n"
-    else:
-        newline = None
+    newline = get_newline_char(force_unix_eol)
     with open(path, "w", encoding="utf-8", newline=newline) as output:
         yaml.dump(users, output)
 
@@ -290,10 +289,7 @@ def export_roles(
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
-    if force_unix_eol:
-        newline = "\n"
-    else:
-        newline = None
+    newline = get_newline_char(force_unix_eol)
     with open(path, "w", encoding="utf-8", newline=newline) as output:
         yaml.dump(list(client.export_roles()), output)
 
@@ -323,10 +319,7 @@ def export_rls(
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
-    if force_unix_eol:
-        newline = "\n"
-    else:
-        newline = None
+    newline = get_newline_char(force_unix_eol)
     with open(path, "w", encoding="utf-8", newline=newline) as output:
         yaml.dump(list(client.export_rls()), output, sort_keys=False)
 
@@ -367,9 +360,6 @@ def export_ownership(
                 },
             )
 
-    if force_unix_eol:
-        newline = "\n"
-    else:
-        newline = None
+    newline = get_newline_char(force_unix_eol)
     with open(path, "w", encoding="utf-8", newline=newline) as output:
         yaml.dump(dict(ownership), output)
