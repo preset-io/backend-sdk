@@ -531,7 +531,7 @@ def test_export_users_force_unix_eol_enable(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``export_users`` command.
+    Test the ``export_users`` command with ``--force-unix-eol`` flag.
     """
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
@@ -609,7 +609,7 @@ def test_export_roles_force_unix_eol_enable(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``export_roles`` command.
+    Test the ``export_roles`` command with ``--force-unix-eol`` flag.
     """
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
@@ -691,7 +691,7 @@ def test_export_rls_force_unix_eol_enable(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``export_rls`` command.
+    Test the ``export_rls`` command with ``--force-unix-eol`` flag.
     """
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
@@ -776,7 +776,7 @@ def test_export_ownership_force_unix_eol_enable(
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test the ``export_ownership`` command.
+    Test the ``export_ownership`` command with ``--force-unix-eol`` flag.
     """
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
@@ -937,15 +937,17 @@ def test_export_resource_force_unix_eol_enabled(
     chart_export: BytesIO,
 ) -> None:
     """
-    Test ``export_resource`` with ``--disable-jinja-escaping``.
+    Test ``export_resource`` with ``--force-unix-eol`` flag
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
 
     client = mocker.MagicMock()
     client.export_zip.return_value = chart_export
+    get_newline_char = mocker.patch("preset_cli.cli.superset.export.get_newline_char")
+    get_newline_char.return_value = "\n"
 
-    # check that Jinja2 was not escaped
+    # check the newline char
     export_resource(
         resource_name="dataset",
         requested_ids=set(),
@@ -955,23 +957,8 @@ def test_export_resource_force_unix_eol_enabled(
         disable_jinja_escaping=True,
         force_unix_eol=True,
     )
-    with open(root / "datasets/gsheets/test.yaml", encoding="utf-8") as input_:
-        assert yaml.load(input_.read(), Loader=yaml.SafeLoader) == {
-            "table_name": "test",
-            "sql": """
-SELECT action, count(*) as times
-FROM logs
-{% if filter_values('action_type')|length %}
-    WHERE action is null
-    {% for action in filter_values('action_type') %}
-        or action = '{{ action }}'
-    {% endfor %}
-{% endif %}
-GROUP BY action""",
-        }
 
-    # metadata file should be ignored
-    assert not (root / "metadata.yaml").exists()
+    get_newline_char.assert_called_once_with(True)
 
 
 def test_export_resource_force_unix_eol_command(
