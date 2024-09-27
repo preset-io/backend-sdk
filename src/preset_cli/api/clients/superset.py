@@ -767,6 +767,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         )
         validate_response(response)
 
+        _logger.debug(response.text)
+
         payload = response.json()
 
         return payload["message"] == "OK"

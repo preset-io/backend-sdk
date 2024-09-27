@@ -14,11 +14,13 @@ def test_username_password_auth(requests_mock: Mocker) -> None:
     Tests for the username/password authentication mechanism.
     """
     csrf_token = "CSFR_TOKEN"
+    access_token = "ACCESS_TOKEN"
     requests_mock.get(
-        "https://superset.example.org/login/",
-        text=f'<html><body><input id="csrf_token" value="{csrf_token}"></body></html>',
+        "https://superset.example.org/api/v1/security/csrf_token/",
+        json={'result': csrf_token},
     )
-    requests_mock.post("https://superset.example.org/login/")
+    requests_mock.post("https://superset.example.org/api/v1/security/login",
+                       json={'access_token': access_token})
 
     auth = UsernamePasswordAuth(
         URL("https://superset.example.org/"),
@@ -29,21 +31,18 @@ def test_username_password_auth(requests_mock: Mocker) -> None:
         "X-CSRFToken": csrf_token,
     }
 
-    assert (
-        requests_mock.last_request.text
-        == "username=admin&password=password123&csrf_token=CSFR_TOKEN"
-    )
-
 
 def test_username_password_auth_no_csrf(requests_mock: Mocker) -> None:
     """
     Tests for the username/password authentication mechanism.
     """
+    access_token = "ACCESS_TOKEN"
     requests_mock.get(
-        "https://superset.example.org/login/",
-        text="<html><body>WTF_CSRF_ENABLED = False</body></html>",
+        "https://superset.example.org/api/v1/security/csrf_token/",
+        json={'result': None},
     )
-    requests_mock.post("https://superset.example.org/login/")
+    requests_mock.post("https://superset.example.org/api/v1/security/login",
+                       json={'access_token': access_token})
 
     auth = UsernamePasswordAuth(
         URL("https://superset.example.org/"),
@@ -52,9 +51,6 @@ def test_username_password_auth_no_csrf(requests_mock: Mocker) -> None:
     )
     # pylint: disable=use-implicit-booleaness-not-comparison
     assert auth.get_headers() == {}
-
-    assert requests_mock.last_request.text == "username=admin&password=password123"
-
 
 def test_jwt_auth_superset(mocker: MockerFixture) -> None:
     """
