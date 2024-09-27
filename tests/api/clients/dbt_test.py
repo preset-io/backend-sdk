@@ -1135,21 +1135,81 @@ def test_dbt_client_get_og_metrics(mocker: MockerFixture) -> None:
     GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
     GraphqlClient().execute.return_value = {
         "data": {
-            "metrics": [
-                {
-                    "uniqueId": "metric.jaffle_shop.new_customers",
-                    "name": "new_customers",
-                    "label": "New Customers",
-                    "type": "count",
-                    "sql": "customer_id",
-                    "filters": [
-                        {"field": "number_of_orders", "operator": ">", "value": "0"},
-                    ],
-                    "dependsOn": ["model.jaffle_shop.customers"],
-                    "description": "The number of paid customers using the product",
-                    "meta": {},
-                },
-            ],
+            "job": {
+                "metrics": [
+                    {
+                        "uniqueId": "metric.jaffle_shop.new_customers",
+                        "name": "new_customers",
+                        "label": "New Customers",
+                        "type": "count",
+                        "sql": "customer_id",
+                        "filters": [
+                            {
+                                "field": "number_of_orders",
+                                "operator": ">",
+                                "value": "0",
+                            },
+                        ],
+                        "dependsOn": ["model.jaffle_shop.customers"],
+                        "description": "The number of paid customers using the product",
+                        "meta": {},
+                    },
+                ],
+            },
+        },
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+    assert client.get_og_metrics(108380) == [
+        {
+            "meta": {},
+            "name": "new_customers",
+            "type": "count",
+            "label": "New Customers",
+            "unique_id": "metric.jaffle_shop.new_customers",
+            "description": "The number of paid customers using the product",
+            "sql": "customer_id",
+            "depends_on": ["model.jaffle_shop.customers"],
+            "filters": [{"operator": ">", "value": "0", "field": "number_of_orders"}],
+        },
+    ]
+
+
+def test_dbt_client_get_og_metrics_versionless_jobs(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_og_metrics`` method when querying a versionless job. In this case,
+    this API call will return both OG and SL metrics. Only metrics with ``sql`` should
+    be returned.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": {
+            "job": {
+                "metrics": [
+                    {
+                        "uniqueId": "metric.jaffle_shop.new_customers",
+                        "name": "new_customers",
+                        "label": "New Customers",
+                        "type": "count",
+                        "sql": "customer_id",
+                        "filters": [
+                            {
+                                "field": "number_of_orders",
+                                "operator": ">",
+                                "value": "0",
+                            },
+                        ],
+                        "dependsOn": ["model.jaffle_shop.customers"],
+                        "description": "The number of paid customers using the product",
+                        "meta": {},
+                    },
+                    {
+                        "name": "SL metric",
+                        "description": "Semantic Layer Metric",
+                        "type": "SIMPLE",
+                    },
+                ],
+            },
         },
     }
     auth = Auth()
@@ -1292,6 +1352,28 @@ def test_dbt_client_get_sl_metrics(mocker: MockerFixture) -> None:
     ]
 
 
+def test_dbt_client_get_sl_metrics_no_semantic_layer(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_sl_metrics`` method for old dbt projects that don't have a
+    semantic layer defined yet.
+    """
+    GraphqlClient = mocker.patch("preset_cli.api.clients.dbt.GraphqlClient")
+    GraphqlClient().execute.return_value = {
+        "data": None,
+        "errors": [
+            {
+                "message": "Empty semantic manifest was found. Ensure that you have semantic models defined.",
+                "locations": [{"line": 3, "column": 17}],
+                "path": ["metrics"],
+            },
+        ],
+    }
+    auth = Auth()
+    client = DBTClient(auth)
+
+    assert client.get_sl_metrics(108380) == []
+
+
 def test_dbt_client_get_sl_metric_sql(mocker: MockerFixture) -> None:
     """
     Test the ``get_sl_metric_sql`` method.
@@ -1355,8 +1437,8 @@ def test_get_custom_urls() -> None:
 
     assert get_custom_urls("https://ab123.us1.dbt.com") == {
         "admin": URL("https://ab123.us1.dbt.com"),
-        "discovery": URL("https://ab123.metadata.us1.dbt.com"),
-        "semantic-layer": URL("https://ab123.semantic-layer.us1.dbt.com"),
+        "discovery": URL("https://ab123.metadata.us1.dbt.com/graphql"),
+        "semantic-layer": URL("https://ab123.semantic-layer.us1.dbt.com/api/graphql"),
     }
 
     with pytest.raises(Exception) as excinfo:

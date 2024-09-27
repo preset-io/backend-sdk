@@ -12,9 +12,12 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union
 
 import yaml
 from jinja2 import Environment
+from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.engine.url import URL
+from sqlalchemy.exc import NoSuchModuleError
 
-from preset_cli.api.clients.dbt import ModelSchema
+from preset_cli.api.clients.dbt import MetricSchema, ModelSchema, OGMetricSchema
+from preset_cli.exceptions import CLIError
 
 _logger = logging.getLogger(__name__)
 
@@ -196,6 +199,31 @@ def build_snowflake_sqlalchemy_params(target: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return parameters
+
+
+def create_engine_with_check(url: URL) -> Engine:
+    """
+    Returns a SQLAlchemy engine or raises an error if missing required dependency.
+    """
+    try:
+        return create_engine(url)
+    except NoSuchModuleError as exc:
+        string_url = str(url)
+        dialect = string_url.split("://", maxsplit=1)[0]
+        # TODO: Handle more DB engines that require an additional package
+        if dialect == "snowflake":
+            raise CLIError(
+                (
+                    "Missing required package. "
+                    'Please run ``pip install "preset-cli[snowflake]"`` to install it.'
+                ),
+                1,
+            ) from exc
+        raise NotImplementedError(
+            f"Unable to build a SQLAlchemy Engine for the {dialect} connection. Please file an "
+            "issue at https://github.com/preset-io/backend-sdk/issues/new?labels=enhancement&"
+            f"title=Missing+package+for+{dialect}.",
+        ) from exc
 
 
 def env_var(var: str, default: Optional[str] = None) -> str:
@@ -470,3 +498,44 @@ def list_failed_models(failed_models: List[str]) -> str:
         error_message += f"\n - {failed_model}"
 
     return error_message
+
+
+def get_og_metric_from_config(
+    metric_config: Dict[str, Any],
+    dialect: str,
+    depends_on: Optional[List[str]] = None,
+    sql: Optional[str] = None,
+) -> OGMetricSchema:
+    """
+    Return an og metric from the config, adhering to the dbt Cloud schema.
+    """
+    metric_schema = OGMetricSchema()
+    if depends_on is not None:
+        metric_config["dependsOn"] = depends_on
+        metric_config.pop("depends_on", None)
+    else:
+        metric_config["dependsOn"] = metric_config.pop("depends_on")["nodes"]
+
+    if sql is not None:
+        metric_config["expression"] = sql
+        metric_config["calculation_method"] = "derived"
+        metric_config.pop("type", None)
+        metric_config.pop("sql", None)
+
+    metric_config["uniqueId"] = metric_config.pop("unique_id")
+    metric_config["dialect"] = dialect
+
+    return metric_schema.load(metric_config)
+
+
+def parse_metric_meta(metric: MetricSchema) -> Dict[str, Any]:
+    """
+    Parses the metric's meta information.
+    """
+    kwargs = metric.get("meta", {}).pop("superset", {})
+    metric_name_override = kwargs.pop("metric_name", None)
+    return {
+        "meta": metric.get("meta", {}),
+        "kwargs": kwargs,
+        "metric_name_override": metric_name_override,
+    }

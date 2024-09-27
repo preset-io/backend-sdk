@@ -5,7 +5,6 @@ A command to sync dbt models/metrics to Superset and charts/dashboards back as e
 import logging
 import os.path
 import subprocess
-import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -16,7 +15,6 @@ from yarl import URL
 from preset_cli.api.clients.dbt import (
     DBTClient,
     JobSchema,
-    MetricSchema,
     MFMetricWithSQLSchema,
     MFSQLEngine,
     ModelSchema,
@@ -26,13 +24,18 @@ from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
 from preset_cli.cli.superset.sync.dbt.datasets import sync_datasets
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey, sync_exposures
-from preset_cli.cli.superset.sync.dbt.lib import apply_select, list_failed_models
+from preset_cli.cli.superset.sync.dbt.lib import (
+    apply_select,
+    get_og_metric_from_config,
+    list_failed_models,
+    load_profiles,
+)
 from preset_cli.cli.superset.sync.dbt.metrics import (
     get_models_from_sql,
     get_superset_metrics_per_model,
 )
 from preset_cli.exceptions import CLIError, DatabaseNotFoundError
-from preset_cli.lib import log_warning, raise_cli_errors
+from preset_cli.lib import raise_cli_errors
 
 _logger = logging.getLogger(__name__)
 
@@ -108,7 +111,7 @@ _logger = logging.getLogger(__name__)
 )
 @raise_cli_errors
 @click.pass_context
-def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements
+def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements # noqa: C901
     ctx: click.core.Context,
     file: str,
     project: Optional[str],
@@ -133,8 +136,6 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     deprecation_notice: bool = False
-    if raise_failures:
-        warnings.simplefilter("always", DeprecationWarning)
 
     if (preserve_columns or preserve_metadata) and merge_metadata:
         error_message = (
@@ -156,17 +157,18 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
             "The managed externally feature was only introduced in Superset v1.5."
             "Make sure you are running a compatible version."
         )
-        log_warning(warn_message, UserWarning)
+        _logger.debug(warn_message)
     if file_path.name == "manifest.json":
-        deprecation_notice = True
-        warn_message = (
-            "Passing the manifest.json file is deprecated. "
-            "Please pass the dbt_project.yml file instead."
-        )
-        log_warning(warn_message, DeprecationWarning)
         manifest = file_path
         profile = project = project or "default"
     elif file_path.name == "dbt_project.yml":
+        deprecation_notice = True
+        warn_message = (
+            "Passing the dbt_project.yml file is deprecated and "
+            "will be removed in a future version. "
+            "Please pass the manifest.json file instead."
+        )
+        _logger.warning(warn_message)
         with open(file_path, encoding="utf-8") as input_:
             dbt_project = yaml.load(input_, Loader=yaml.SafeLoader)
 
@@ -182,9 +184,12 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     with open(manifest, encoding="utf-8") as input_:
         configs = yaml.load(input_, Loader=yaml.SafeLoader)
 
-    with open(profiles, encoding="utf-8") as input_:
-        config = yaml.safe_load(input_)
-    dialect = MFSQLEngine(config[project]["outputs"][target]["type"].upper())
+    config = load_profiles(Path(profiles), project, profile, target)
+    dialect = config[project]["outputs"][target]["type"]
+    try:
+        mf_dialect = MFSQLEngine(dialect.upper())
+    except ValueError:
+        mf_dialect = None
 
     model_schema = ModelSchema()
     models = []
@@ -209,14 +214,34 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     else:
         og_metrics = []
         sl_metrics = []
-        metric_schema = MetricSchema()
         for config in configs["metrics"].values():
-            if "calculation_method" in config or "sql" in config:
-                # conform to the same schema that dbt Cloud uses for metrics
-                config["dependsOn"] = config.pop("depends_on")["nodes"]
-                config["uniqueId"] = config.pop("unique_id")
-                og_metrics.append(metric_schema.load(config))
-            elif sl_metric := get_sl_metric(config, model_map, dialect):
+            # dbt is shifting from `metric.meta` to `metric.config.meta`
+            config["meta"] = config.get("meta") or config.get("config", {}).get(
+                "meta",
+                {},
+            )
+            # First validate if metadata is already available
+            if config["meta"].get("superset", {}).get("model") and (
+                sql := config["meta"].get("superset", {}).pop("expression")
+            ):
+                metric = get_og_metric_from_config(
+                    config,
+                    dialect,
+                    depends_on=[],
+                    sql=sql,
+                )
+                og_metrics.append(metric)
+
+            # dbt legacy schema
+            elif "calculation_method" in config or "sql" in config:
+                metric = get_og_metric_from_config(config, dialect)
+                og_metrics.append(metric)
+
+            # dbt semantic layer
+            # Only validate semantic layer metrics if MF dialect is specified
+            elif mf_dialect is not None and (
+                sl_metric := get_sl_metric(config, model_map, mf_dialect)
+            ):
                 sl_metrics.append(sl_metric)
 
         superset_metrics = get_superset_metrics_per_model(og_metrics, sl_metrics)
@@ -389,18 +414,20 @@ def get_sl_metric(
     sql = output[start:]
 
     models = get_models_from_sql(sql, dialect, model_map)
-    if len(models) > 1:
+    if not models or len(models) > 1:
         return None
     model = models[0]
 
     return mf_metric_schema.load(
         {
             "name": metric["name"],
+            "label": metric["label"],
             "type": metric["type"],
             "description": metric["description"],
             "sql": sql,
             "dialect": dialect.value,
             "model": model["unique_id"],
+            "meta": metric["meta"],
         },
     )
 
@@ -422,7 +449,7 @@ def fetch_sl_metrics(
             continue
 
         models = get_models_from_sql(sql, dialect, model_map)
-        if len(models) > 1:
+        if not models or len(models) > 1:
             continue
         model = models[0]
 
@@ -432,9 +459,11 @@ def fetch_sl_metrics(
                     "name": metric["name"],
                     "type": metric["type"],
                     "description": metric["description"],
+                    "label": metric["label"],
                     "sql": sql,
                     "dialect": dialect.value,
                     "model": model["unique_id"],
+                    # TODO (Vitor-Avila): Pull meta from ``config.meta`` (supported in versionless)
                 },
             ),
         )
@@ -522,8 +551,8 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
-    raise_failures: bool = False,
     access_url: Optional[str] = None,
+    raise_failures: bool = False,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.

@@ -3,25 +3,59 @@ Test for ``preset_cli.cli.superset.sync.dbt.lib``.
 """
 # pylint: disable=invalid-name
 
+import copy
 import json
 import math
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
 import pytest
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
+from sqlalchemy.engine.url import URL
 
-from preset_cli.api.clients.dbt import ModelSchema
+from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
 from preset_cli.cli.superset.sync.dbt.lib import (
     apply_select,
     as_number,
     build_sqlalchemy_params,
+    create_engine_with_check,
     env_var,
     filter_models,
+    get_og_metric_from_config,
     list_failed_models,
     load_profiles,
+    parse_metric_meta,
 )
+from preset_cli.exceptions import CLIError
+
+base_metric_config: Dict[str, Any] = {
+    "name": "revenue_metric",
+    "expression": "price_each",
+    "description": "revenue.",
+    "calculation_method": "sum",
+    "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
+    "label": "Sales Revenue Metric and this is the dbt label",
+    "depends_on": {
+        "nodes": ["model.postgres.vehicle_sales"],
+    },
+    "metrics": [],
+    "created_at": 1701101973.269536,
+    "resource_type": "metric",
+    "fqn": ["postgres", "revenue_verbose_name_from_dbt"],
+    "model": "ref('vehicle_sales')",
+    "path": "schema.yml",
+    "package_name": "postgres",
+    "original_file_path": "models/schema.yml",
+    "refs": [{"name": "vehicle_sales", "package": None, "version": None}],
+    "time_grains": [],
+    "model_unique_id": None,
+    "meta": {
+        "superset": {
+            "d3format": ",.2f",
+        },
+    },
+}
 
 
 def test_build_sqlalchemy_params_postgres(mocker: MockerFixture) -> None:
@@ -222,6 +256,37 @@ def test_build_sqlalchemy_params_unsupported() -> None:
         "Unable to build a SQLAlchemy URI for a target of type mysql. Please file "
         "an issue at https://github.com/preset-io/backend-sdk/issues/new?"
         "labels=enhancement&title=Backend+for+mysql."
+    )
+
+
+def test_create_engine_with_check(mocker: MockerFixture) -> None:
+    """
+    Test the ``create_engine_with_check`` method.
+    """
+    mock_engine = mocker.patch("preset_cli.cli.superset.sync.dbt.lib.create_engine")
+    test = create_engine_with_check(URL("blah://blah"))
+    assert test == mock_engine.return_value
+
+
+def test_create_engine_with_check_missing_snowflake() -> None:
+    """
+    Test the ``create_engine_with_check`` method when the Snowflake driver is
+    not installed.
+    """
+    with pytest.raises(CLIError) as excinfo:
+        create_engine_with_check(URL("snowflake://blah"))
+    assert 'run ``pip install "preset-cli[snowflake]"``' in str(excinfo.value)
+
+
+def test_create_engine_with_check_missing_unknown_driver() -> None:
+    """
+    Test the ``create_engine_with_check`` method when a SQLAlchemy driver is
+    not installed.
+    """
+    with pytest.raises(NotImplementedError) as excinfo:
+        create_engine_with_check(URL("mssql+odbc://blah"))
+    assert "Unable to build a SQLAlchemy Engine for the mssql+odbc connection" in str(
+        excinfo.value,
     )
 
 
@@ -624,7 +689,7 @@ def test_apply_select_using_path(fs: FakeFilesystem) -> None:
 
 def test_list_failed_models_single_model() -> None:
     """
-    Test ``list_failed_models()`` with a single failed model
+    Test ``list_failed_models`` with a single failed model
     """
     error_list = list_failed_models(["single_failure"])
     assert error_list == "Below model(s) failed to sync:\n - single_failure"
@@ -632,10 +697,193 @@ def test_list_failed_models_single_model() -> None:
 
 def test_list_failed_models_multiple_models() -> None:
     """
-    Test ``list_failed_models()`` with multiple failed models
+    Test ``list_failed_models`` with multiple failed models
     """
     error_list = list_failed_models(["single_failure", "another_failure"])
     assert (
         error_list
         == "Below model(s) failed to sync:\n - single_failure\n - another_failure"
     )
+
+
+def test_get_og_metric_from_config() -> None:
+    """
+    Test ``get_og_metric_from_config`` method.
+    """
+    metric_config = copy.deepcopy(base_metric_config)
+    assert get_og_metric_from_config(metric_config, "my_dialect") == {
+        "depends_on": ["model.postgres.vehicle_sales"],
+        "description": "revenue.",
+        "meta": {
+            "superset": {
+                "d3format": ",.2f",
+            },
+        },
+        "name": "revenue_metric",
+        "label": "Sales Revenue Metric and this is the dbt label",
+        "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
+        "calculation_method": "sum",
+        "expression": "price_each",
+        "dialect": "my_dialect",
+        "metrics": [],
+        "created_at": 1701101973.269536,
+        "resource_type": "metric",
+        "fqn": ["postgres", "revenue_verbose_name_from_dbt"],
+        "model": "ref('vehicle_sales')",
+        "path": "schema.yml",
+        "package_name": "postgres",
+        "original_file_path": "models/schema.yml",
+        "refs": [{"name": "vehicle_sales", "package": None, "version": None}],
+        "time_grains": [],
+        "model_unique_id": None,
+    }
+
+
+def test_get_og_metric_from_config_older_dbt_version() -> None:
+    """
+    Test ``get_og_metric_from_config`` when passing a metric built using an
+    older dbt version (< 1.3).
+    """
+    metric_config = copy.deepcopy(base_metric_config)
+    metric_config["type"] = metric_config.pop("calculation_method")
+    metric_config["sql"] = metric_config.pop("expression")
+    assert get_og_metric_from_config(metric_config, "other_dialect") == {
+        "depends_on": ["model.postgres.vehicle_sales"],
+        "description": "revenue.",
+        "meta": {
+            "superset": {
+                "d3format": ",.2f",
+            },
+        },
+        "name": "revenue_metric",
+        "label": "Sales Revenue Metric and this is the dbt label",
+        "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
+        "type": "sum",
+        "sql": "price_each",
+        "dialect": "other_dialect",
+        "metrics": [],
+        "created_at": 1701101973.269536,
+        "resource_type": "metric",
+        "fqn": ["postgres", "revenue_verbose_name_from_dbt"],
+        "model": "ref('vehicle_sales')",
+        "path": "schema.yml",
+        "package_name": "postgres",
+        "original_file_path": "models/schema.yml",
+        "refs": [{"name": "vehicle_sales", "package": None, "version": None}],
+        "time_grains": [],
+        "model_unique_id": None,
+    }
+
+
+def test_get_og_metric_from_config_ready_metric() -> None:
+    """
+    Test ``get_og_metric_from_config`` when passing a metric that already
+    contains the model's ``unique_id`` and its ``sql``.
+    """
+    metric_config = copy.deepcopy(base_metric_config)
+    metric_config["meta"]["superset"]["model"] = "model.postgres.vehicle_sales"
+
+    # Make sure that:
+    #   - depends_on is empty (so that ``skip_parsing`` gets later set to True)
+    #   - ``expression`` gets the value of ``sql``
+    #   - ``calculation_method`` is set to ``derived``
+    assert get_og_metric_from_config(
+        metric_config,
+        "preset_sql",
+        depends_on=[],
+        sql="SUM(price_each) - max(cost)",
+    ) == {
+        "depends_on": [],
+        "description": "revenue.",
+        "meta": {
+            "superset": {"d3format": ",.2f", "model": "model.postgres.vehicle_sales"},
+        },
+        "name": "revenue_metric",
+        "label": "Sales Revenue Metric and this is the dbt label",
+        "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
+        "calculation_method": "derived",
+        "expression": "SUM(price_each) - max(cost)",
+        "dialect": "preset_sql",
+        "metrics": [],
+        "created_at": 1701101973.269536,
+        "resource_type": "metric",
+        "fqn": ["postgres", "revenue_verbose_name_from_dbt"],
+        "model": "ref('vehicle_sales')",
+        "path": "schema.yml",
+        "package_name": "postgres",
+        "original_file_path": "models/schema.yml",
+        "refs": [{"name": "vehicle_sales", "package": None, "version": None}],
+        "time_grains": [],
+        "model_unique_id": None,
+    }
+
+
+def test_parse_metric_meta() -> None:
+    """
+    Test the ``parse_metric_meta`` helper.
+    """
+    metric_schema = MetricSchema()
+    assert parse_metric_meta(
+        metric_schema.load(
+            {
+                "name": "test metric",
+                "label": "Test Metric",
+                "description": "This is a test metric",
+                "meta": {
+                    "superset": {
+                        "d3format": ",.2f",
+                        "metric_name": "revenue_metric",
+                    },
+                    "airflow": "other_id",
+                },
+            },
+        ),
+    ) == {
+        "meta": {
+            "airflow": "other_id",
+        },
+        "kwargs": {
+            "d3format": ",.2f",
+        },
+        "metric_name_override": "revenue_metric",
+    }
+
+    assert parse_metric_meta(
+        metric_schema.load(
+            {
+                "name": "Sabe but using config",
+                "label": "Meta inside config",
+                "description": "",
+                "meta": {
+                    "superset": {
+                        "d3format": ",.2f",
+                        "metric_name": "revenue_metric",
+                    },
+                    "airflow": "other_id",
+                },
+            },
+        ),
+    ) == {
+        "meta": {
+            "airflow": "other_id",
+        },
+        "kwargs": {
+            "d3format": ",.2f",
+        },
+        "metric_name_override": "revenue_metric",
+    }
+
+    assert parse_metric_meta(
+        metric_schema.load(
+            {
+                "name": "Sabe but using config",
+                "label": "Meta inside config",
+                "description": "",
+                "meta": {},
+            },
+        ),
+    ) == {
+        "meta": {},
+        "kwargs": {},
+        "metric_name_override": None,
+    }

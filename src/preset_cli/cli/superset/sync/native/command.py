@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, Tuple
+from typing import Any, Dict, Iterator, Set, Tuple
 from zipfile import ZipFile
 
 import backoff
@@ -178,7 +178,16 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
     # collecting existing database UUIDs so we know if we're creating or updating
-    existing_databases = {str(uuid) for uuid in client.get_uuids("database").values()}
+    # newer versions expose the DB UUID in the API response,
+    # olders only expose it via export
+    try:
+        existing_databases = {
+            db_connection["uuid"] for db_connection in client.get_databases()
+        }
+    except KeyError:
+        existing_databases = {
+            str(uuid) for uuid in client.get_uuids("database").values()
+        }
 
     # env for Jinja2 templating
     env = dict(pair.split("=", 1) for pair in option if "=" in pair)  # type: ignore
@@ -263,7 +272,7 @@ def import_resources_individually(
             ("databases", lambda config: []),
             ("datasets", lambda config: [config["database_uuid"]]),
             ("charts", lambda config: [config["dataset_uuid"]]),
-            ("dashboards", get_charts_uuids),
+            ("dashboards", get_dashboard_related_uuids),
         ]
         related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
         for resource_name, get_related_uuids in imports:
@@ -288,6 +297,16 @@ def import_resources_individually(
     os.unlink(checkpoint_path)
 
 
+def get_dashboard_related_uuids(config: AssetConfig) -> Iterator[str]:
+    """
+    Extract dataset and chart UUID from a dashboard config.
+    """
+    for uuid in get_charts_uuids(config):
+        yield uuid
+    for uuid in get_dataset_filter_uuids(config):
+        yield uuid
+
+
 def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
     """
     Extract chart UUID from a dashboard config.
@@ -299,6 +318,19 @@ def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
             and "uuid" in child["meta"]
         ):
             yield child["meta"]["uuid"]
+
+
+def get_dataset_filter_uuids(config: AssetConfig) -> Set[str]:
+    """
+    Extract dataset UUID for datasets that are used in dashboard filters.
+    """
+    dataset_uuids = set()
+    for filter_config in config["metadata"].get("native_filter_configuration", []):
+        for target in filter_config["targets"]:
+            if uuid := target.get("datasetUuid"):
+                if uuid not in dataset_uuids:
+                    dataset_uuids.add(uuid)
+    return dataset_uuids
 
 
 def verify_db_connectivity(config: Dict[str, Any]) -> None:

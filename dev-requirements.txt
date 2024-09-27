@@ -43,7 +43,7 @@ numpy==1.23.1
 packaging==21.3
 pandas==1.4.3
 pep517==0.13.0
-pip-tools==6.8.0
+pip-tools==6.13.0
 platformdirs==2.5.2
 pluggy==1.0.0
 pre-commit==2.20.0

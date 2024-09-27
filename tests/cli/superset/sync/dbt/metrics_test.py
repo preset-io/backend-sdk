@@ -2,14 +2,18 @@
 Tests for metrics.
 """
 
-# pylint: disable=line-too-long
+# pylint: disable=line-too-long, too-many-lines
 
 from typing import Dict
 
 import pytest
 from pytest_mock import MockerFixture
 
-from preset_cli.api.clients.dbt import MetricSchema, MFMetricWithSQLSchema, MFSQLEngine
+from preset_cli.api.clients.dbt import (
+    MFMetricWithSQLSchema,
+    MFSQLEngine,
+    OGMetricSchema,
+)
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
 from preset_cli.cli.superset.sync.dbt.metrics import (
     convert_metric_flow_to_superset,
@@ -19,6 +23,7 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_metrics_for_model,
     get_models_from_sql,
     get_superset_metrics_per_model,
+    replace_metric_syntax,
 )
 
 
@@ -26,8 +31,8 @@ def test_get_metric_expression() -> None:
     """
     Tests for ``get_metric_expression``.
     """
-    metric_schema = MetricSchema()
-    metrics: Dict[str, MetricSchema] = {
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
         "one": metric_schema.load(
             {
                 "type": "count",
@@ -38,24 +43,28 @@ def test_get_metric_expression() -> None:
                     {"field": "company_name", "operator": "!=", "value": "'Acme, Inc'"},
                     {"field": "signup_date", "operator": ">=", "value": "'2020-01-01'"},
                 ],
+                "dialect": "postgres",
             },
         ),
         "two": metric_schema.load(
             {
                 "type": "count_distinct",
                 "sql": "user_id",
+                "dialect": "postgres",
             },
         ),
         "three": metric_schema.load(
             {
                 "type": "expression",
                 "sql": "one - two",
+                "dialect": "postgres",
             },
         ),
         "four": metric_schema.load(
             {
                 "type": "hllsketch",
                 "sql": "user_id",
+                "dialect": "postgres",
             },
         ),
         "load_fill_by_weight": metric_schema.load(
@@ -72,6 +81,7 @@ def test_get_metric_expression() -> None:
                 "sql": "load_weight_lbs / load_weight_capacity_lbs",
                 "type": "derived",
                 "unique_id": "metric.breakthrough_dw.load_fill_by_weight",
+                "dialect": "postgres",
             },
         ),
     }
@@ -97,7 +107,7 @@ def test_get_metric_expression() -> None:
         get_metric_expression("four", metrics)
     assert str(excinfo.value) == (
         "Unable to generate metric expression from: "
-        "{'sql': 'user_id', 'type': 'hllsketch'}"
+        "{'dialect': 'postgres', 'sql': 'user_id', 'type': 'hllsketch'}"
     )
 
     with pytest.raises(Exception) as excinfo:
@@ -115,8 +125,8 @@ def test_get_metric_expression_new_schema() -> None:
 
     See https://docs.getdbt.com/guides/migration/versions/upgrading-to-v1.3#for-users-of-dbt-metrics
     """
-    metric_schema = MetricSchema()
-    metrics: Dict[str, MetricSchema] = {
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
         "one": metric_schema.load(
             {
                 "calculation_method": "count",
@@ -133,6 +143,107 @@ def test_get_metric_expression_new_schema() -> None:
     assert get_metric_expression("one", metrics) == (
         "COUNT(CASE WHEN is_paying is true AND lifetime_value >= 100 AND "
         "company_name != 'Acme, Inc' AND signup_date >= '2020-01-01' THEN user_id END)"
+    )
+
+
+def test_get_metric_expression_derived_legacy() -> None:
+    """
+    Test ``get_metric_expression`` with derived metrics created using a legacy dbt version.
+    """
+    metric_schema = OGMetricSchema()
+    metrics: Dict[str, OGMetricSchema] = {
+        "revenue_verbose_name_from_dbt": metric_schema.load(
+            {
+                "name": "revenue_verbose_name_from_dbt",
+                "expression": "price_each",
+                "description": "revenue.",
+                "calculation_method": "sum",
+                "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
+                "label": "Sales Revenue Metric and this is the dbt label",
+                "depends_on": ["model.postgres.vehicle_sales"],
+                "metrics": [],
+                "created_at": 1701101973.269536,
+                "resource_type": "metric",
+                "fqn": ["postgres", "revenue_verbose_name_from_dbt"],
+                "model": "ref('vehicle_sales')",
+                "path": "schema.yml",
+                "package_name": "postgres",
+                "original_file_path": "models/schema.yml",
+                "refs": [{"name": "vehicle_sales", "package": None, "version": None}],
+                "time_grains": [],
+                "model_unique_id": None,
+                "dialect": "postgres",
+            },
+        ),
+        "derived_metric": metric_schema.load(
+            {
+                "name": "derived_metric",
+                "expression": "revenue_verbose_name_from_dbt * 1.1",
+                "description": "",
+                "calculation_method": "derived",
+                "unique_id": "metric.postgres.derived_metric",
+                "label": "Dervied Metric",
+                "depends_on": ["metric.postgres.revenue_verbose_name_from_dbt"],
+                "metrics": [["revenue_verbose_name_from_dbt"]],
+                "created_at": 1704299520.144628,
+                "resource_type": "metric",
+                "fqn": ["postgres", "derived_metric"],
+                "model": None,
+                "path": "schema.yml",
+                "package_name": "bigquery",
+                "original_file_path": "models/schema.yml",
+                "refs": [],
+                "time_grains": [],
+                "model_unique_id": None,
+                "config": {"enabled": True, "group": None},
+                "dialect": "bigquery",
+            },
+        ),
+        "another_derived_metric": metric_schema.load(
+            {
+                "name": "another_derived_metric",
+                "expression": """
+SAFE_DIVIDE(
+        SUM(
+          IF(
+            `product_line` = "Classic Cars",
+            price_each * 0.80,
+            price_each * 0.70
+          )
+        ),
+        revenue_verbose_name_from_dbt
+      )
+""",
+                "description": "",
+                "dialect": "bigquery",
+                "calculation_method": "derived",
+                "unique_id": "metric.postgres.another_derived_metric",
+                "label": "Another Dervied Metric",
+                "depends_on": ["metric.postgres.revenue_verbose_name_from_dbt"],
+                "metrics": [["revenue_verbose_name_from_dbt"]],
+                "created_at": 1704299520.144628,
+                "resource_type": "metric",
+                "fqn": ["postgres", "derived_metric"],
+                "model": None,
+                "path": "schema.yml",
+                "package_name": "postgres",
+                "original_file_path": "models/schema.yml",
+                "refs": [],
+                "time_grains": [],
+                "model_unique_id": None,
+                "config": {"enabled": True, "group": None},
+            },
+        ),
+    }
+    unique_id = "derived_metric"
+    result = get_metric_expression(unique_id, metrics)
+    assert result == "SUM(price_each) * 1.1"
+
+    unique_id = "another_derived_metric"
+    result = get_metric_expression(unique_id, metrics)
+    assert (
+        result
+        == "SAFE_DIVIDE(SUM(IF(`product_line` = 'Classic Cars', price_each * 0.80, price_each * 0.70)), SUM(price_each))"
     )
 
 
@@ -369,7 +480,7 @@ def test_get_metric_models() -> None:
     """
     Tests for ``get_metric_models``.
     """
-    metric_schema = MetricSchema()
+    metric_schema = OGMetricSchema()
     metrics = [
         metric_schema.load(
             {
@@ -577,7 +688,37 @@ WHERE order_id__order_total_dim >= 20
             """,
             MFSQLEngine.BIGQUERY,
         )
-        == "CAST(SUM(CASE WHEN is_food_item = 1 THEN product_price ELSE 0 END) AS DOUBLE) / CAST(NULLIF(SUM(product_price), 0) AS DOUBLE)"
+        == "CAST(SUM(CASE WHEN is_food_item = 1 THEN product_price ELSE 0 END) AS FLOAT64) / CAST(NULLIF(SUM(product_price), 0) AS FLOAT64)"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    AVG(DATE_DIFF(start_date, end_date, DAY)) AS avg_time_diff
+                FROM `dbt-tutorial-347100`.`dbt_beto`.`order_items` order_item_src_98
+            """,
+            MFSQLEngine.BIGQUERY,
+        )
+        == "AVG(DATE_DIFF(start_date, end_date, DAY))"
+    )
+
+    assert (
+        convert_query_to_projection(
+            """
+                SELECT
+                    COUNT(DISTINCT distinct_count_test) AS test_distinct_metric
+                FROM (
+                    SELECT
+                        quantity AS id__quantity
+                        , id AS distinct_count_test
+                    FROM `dbt-tutorial-347100`.`dbt_beto`.`distinct_test` distinct_test_src_10000
+                ) subq_2
+                WHERE id__quantity > 10
+            """,
+            MFSQLEngine.BIGQUERY,
+        )
+        == "COUNT(DISTINCT CASE WHEN quantity > 10 THEN id END)"
     )
 
     with pytest.raises(ValueError) as excinfo:
@@ -634,21 +775,59 @@ def test_convert_metric_flow_to_superset(mocker: MockerFixture) -> None:
     """
     mocker.patch(
         "preset_cli.cli.superset.sync.dbt.metrics.convert_query_to_projection",
-        return_value="SUM(order_total)",
+        side_effect=["SUM(order_total)", "SUM(price_each)"],
+    )
+    mf_metric_schema = MFMetricWithSQLSchema()
+    semantic_metric = mf_metric_schema.load(
+        {
+            "name": "sales",
+            "description": "All sales",
+            "label": "Sales",
+            "type": "SIMPLE",
+            "sql": "SELECT SUM(order_total) AS order_total FROM orders",
+            "dialect": MFSQLEngine.BIGQUERY,
+            "meta": {
+                "superset": {
+                    "d3format": "0.2f",
+                },
+            },
+        },
     )
 
-    assert convert_metric_flow_to_superset(
-        name="sales",
-        description="All sales",
-        metric_type="SIMPLE",
-        sql="SELECT SUM(order_total) AS order_total FROM orders",
-        dialect=MFSQLEngine.BIGQUERY,
-    ) == {
+    assert convert_metric_flow_to_superset(semantic_metric) == {
         "expression": "SUM(order_total)",
         "metric_name": "sales",
         "metric_type": "SIMPLE",
-        "verbose_name": "sales",
+        "verbose_name": "Sales",
         "description": "All sales",
+        "d3format": "0.2f",
+        "extra": "{}",
+    }
+
+    # Metric key override
+    other_semantic_metric = mf_metric_schema.load(
+        {
+            "name": "revenue",
+            "description": "Total revenue in the period",
+            "label": "Total Revenue",
+            "type": "SIMPLE",
+            "sql": "SELECT SUM(price_each) AS price_each FROM orders",
+            "dialect": MFSQLEngine.BIGQUERY,
+            "meta": {
+                "superset": {
+                    "metric_name": "preset_specific_key",
+                },
+            },
+        },
+    )
+
+    assert convert_metric_flow_to_superset(other_semantic_metric) == {
+        "expression": "SUM(price_each)",
+        "metric_name": "preset_specific_key",
+        "metric_type": "SIMPLE",
+        "verbose_name": "Total Revenue",
+        "description": "Total revenue in the period",
+        "extra": "{}",
     }
 
 
@@ -674,9 +853,9 @@ def test_get_models_from_sql() -> None:
         model_map,  # type: ignore
     ) == [{"name": "a"}, {"name": "b"}]
 
-    with pytest.raises(ValueError) as excinfo:
-        get_models_from_sql("SELECT 1 FROM schema.c", MFSQLEngine.BIGQUERY, {})
-    assert str(excinfo.value) == "Unable to find model for SQL source schema.c"
+    assert (
+        get_models_from_sql("SELECT 1 FROM schema.c", MFSQLEngine.BIGQUERY, {}) is None
+    )
 
 
 def test_get_superset_metrics_per_model() -> None:
@@ -684,7 +863,7 @@ def test_get_superset_metrics_per_model() -> None:
     Tests for the ``get_superset_metrics_per_model`` function.
     """
     mf_metric_schema = MFMetricWithSQLSchema()
-    og_metric_schema = MetricSchema()
+    og_metric_schema = OGMetricSchema()
 
     og_metrics = [
         og_metric_schema.load(obj)
@@ -695,12 +874,15 @@ def test_get_superset_metrics_per_model() -> None:
                 "depends_on": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
+                "label": "Sales",
+                "meta": {},
             },
             {
                 "name": "multi-model",
                 "unique_id": "multi-model",
                 "depends_on": ["a", "b"],
                 "calculation_method": "derived",
+                "meta": {},
             },
             {
                 "name": "a",
@@ -708,6 +890,11 @@ def test_get_superset_metrics_per_model() -> None:
                 "depends_on": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
+                "meta": {
+                    "superset": {
+                        "warning_text": "caution",
+                    },
+                },
             },
             {
                 "name": "b",
@@ -715,6 +902,24 @@ def test_get_superset_metrics_per_model() -> None:
                 "depends_on": ["customers"],
                 "calculation_method": "sum",
                 "expression": "1",
+                "meta": {
+                    "superset": {
+                        "warning_text": "meta under config",
+                    },
+                },
+            },
+            {
+                "name": "to_be_updated",
+                "label": "Preset Label",
+                "unique_id": "to_be_updated",
+                "depends_on": ["customers"],
+                "calculation_method": "max",
+                "expression": "1",
+                "meta": {
+                    "superset": {
+                        "metric_name": "new_key",
+                    },
+                },
             },
         ]
     ]
@@ -725,10 +930,26 @@ def test_get_superset_metrics_per_model() -> None:
             {
                 "name": "new",
                 "description": "New metric",
+                "label": "New Label",
                 "type": "SIMPLE",
                 "sql": "SELECT COUNT(1) FROM a.b.c",
                 "dialect": MFSQLEngine.BIGQUERY,
                 "model": "new-model",
+                "meta": {},
+            },
+            {
+                "name": "other_new",
+                "description": "This is a test replacing the metric key",
+                "label": "top Label",
+                "type": "SIMPLE",
+                "sql": "SELECT COUNT(1) FROM a.b.c",
+                "dialect": MFSQLEngine.BIGQUERY,
+                "model": "new-model",
+                "meta": {
+                    "superset": {
+                        "metric_name": "preset_sl_key",
+                    },
+                },
             },
         ]
     ]
@@ -739,7 +960,7 @@ def test_get_superset_metrics_per_model() -> None:
                 "expression": "SUM(1)",
                 "metric_name": "sales",
                 "metric_type": "sum",
-                "verbose_name": "sales",
+                "verbose_name": "Sales",
                 "description": "",
                 "extra": "{}",
             },
@@ -749,6 +970,7 @@ def test_get_superset_metrics_per_model() -> None:
                 "metric_type": "sum",
                 "verbose_name": "a",
                 "description": "",
+                "warning_text": "caution",
                 "extra": "{}",
             },
         ],
@@ -759,6 +981,15 @@ def test_get_superset_metrics_per_model() -> None:
                 "metric_type": "sum",
                 "verbose_name": "b",
                 "description": "",
+                "warning_text": "meta under config",
+                "extra": "{}",
+            },
+            {
+                "expression": "MAX(1)",
+                "metric_name": "new_key",
+                "metric_type": "max",
+                "verbose_name": "Preset Label",
+                "description": "",
                 "extra": "{}",
             },
         ],
@@ -767,8 +998,261 @@ def test_get_superset_metrics_per_model() -> None:
                 "expression": "COUNT(1)",
                 "metric_name": "new",
                 "metric_type": "SIMPLE",
-                "verbose_name": "new",
+                "verbose_name": "New Label",
                 "description": "New metric",
+                "extra": "{}",
+            },
+            {
+                "expression": "COUNT(1)",
+                "metric_name": "preset_sl_key",
+                "metric_type": "SIMPLE",
+                "verbose_name": "top Label",
+                "description": "This is a test replacing the metric key",
+                "extra": "{}",
             },
         ],
     }
+
+
+def test_get_superset_metrics_per_model_og_derived(
+    caplog: pytest.CaptureFixture[str],
+) -> None:
+    """
+    Tests for the ``get_superset_metrics_per_model`` function
+    with derived OG metrics.
+    """
+    og_metric_schema = OGMetricSchema()
+
+    og_metrics = [
+        og_metric_schema.load(
+            {
+                "name": "sales",
+                "unique_id": "sales",
+                "depends_on": ["orders"],
+                "calculation_method": "sum",
+                "expression": "1",
+                "meta": {},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "revenue",
+                "unique_id": "revenue",
+                "depends_on": ["orders"],
+                "calculation_method": "sum",
+                "expression": "price_each",
+                "meta": {},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_metric_missing_model_info",
+                "unique_id": "derived_metric_missing_model_info",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": "price_each * 1.2",
+                "meta": {},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_metric_model_from_meta",
+                "unique_id": "derived_metric_model_from_meta",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": "(SUM(price_each)) * 1.2",
+                "meta": {"superset": {"model": "customers"}},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_metric_with_jinja",
+                "unique_id": "derived_metric_with_jinja",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": """
+SUM(
+    {% for x in filter_values('x_values') %}
+        {{ + x_values }}
+    {% endfor %}
+)
+""",
+                "meta": {"superset": {"model": "customers"}},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_metric_with_jinja_and_other_metric",
+                "unique_id": "derived_metric_with_jinja_and_other_metric",
+                "depends_on": ["sales"],
+                "dialect": "postgres",
+                "calculation_method": "derived",
+                "expression": """
+SUM(
+    {% for x in filter_values('x_values') %}
+        {{ my_sales + sales }}
+    {% endfor %}
+)
+""",
+                "meta": {},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "derived_combining_other_derived_including_jinja",
+                "unique_id": "derived_combining_other_derived_including_jinja",
+                "depends_on": ["derived_metric_with_jinja_and_other_metric", "revenue"],
+                "dialect": "postgres",
+                "calculation_method": "derived",
+                "expression": "derived_metric_with_jinja_and_other_metric / revenue",
+                "meta": {},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "simple_derived",
+                "unique_id": "simple_derived",
+                "depends_on": [],
+                "dialect": "postgres",
+                "calculation_method": "derived",
+                "expression": "max(order_date)",
+                "meta": {"superset": {"model": "customers"}},
+            },
+        ),
+        og_metric_schema.load(
+            {
+                "name": "last_derived_example",
+                "unique_id": "last_derived_example",
+                "depends_on": ["simple_derived"],
+                "dialect": "postgres",
+                "calculation_method": "derived",
+                "expression": "simple_derived - 1",
+                "meta": {"superset": {"model": "customers"}},
+            },
+        ),
+    ]
+
+    result = get_superset_metrics_per_model(og_metrics, [])
+    output_content = caplog.text
+    assert (
+        "Metric derived_metric_missing_model_info cannot be calculated because it's not associated with any model"
+        in output_content
+    )
+
+    assert result == {
+        "customers": [
+            {
+                "expression": "(SUM(price_each)) * 1.2",
+                "metric_name": "derived_metric_model_from_meta",
+                "metric_type": "derived",
+                "verbose_name": "derived_metric_model_from_meta",
+                "description": "",
+                "extra": "{}",
+            },
+            {
+                "expression": """SUM(
+    {% for x in filter_values('x_values') %}
+        {{ + x_values }}
+    {% endfor %}
+)""",
+                "metric_name": "derived_metric_with_jinja",
+                "metric_type": "derived",
+                "verbose_name": "derived_metric_with_jinja",
+                "description": "",
+                "extra": "{}",
+            },
+            {
+                "expression": "max(order_date)",
+                "metric_name": "simple_derived",
+                "metric_type": "derived",
+                "verbose_name": "simple_derived",
+                "description": "",
+                "extra": "{}",
+            },
+            {
+                "expression": "MAX(order_date) - 1",
+                "metric_name": "last_derived_example",
+                "metric_type": "derived",
+                "verbose_name": "last_derived_example",
+                "description": "",
+                "extra": "{}",
+            },
+        ],
+        "orders": [
+            {
+                "description": "",
+                "expression": "SUM(1)",
+                "extra": "{}",
+                "metric_name": "sales",
+                "metric_type": "sum",
+                "verbose_name": "sales",
+            },
+            {
+                "description": "",
+                "expression": "SUM(price_each)",
+                "extra": "{}",
+                "metric_name": "revenue",
+                "metric_type": "sum",
+                "verbose_name": "revenue",
+            },
+            {
+                "expression": """SUM(
+    {% for x in filter_values('x_values') %}
+        {{ my_sales + SUM(1) }}
+    {% endfor %}
+)""",
+                "metric_name": "derived_metric_with_jinja_and_other_metric",
+                "metric_type": "derived",
+                "verbose_name": "derived_metric_with_jinja_and_other_metric",
+                "description": "",
+                "extra": "{}",
+            },
+            {
+                "expression": """SUM(
+    {% for x in filter_values('x_values') %}
+        {{ my_sales + SUM(1) }}
+    {% endfor %}
+) / SUM(price_each)""",
+                "metric_name": "derived_combining_other_derived_including_jinja",
+                "metric_type": "derived",
+                "verbose_name": "derived_combining_other_derived_including_jinja",
+                "description": "",
+                "extra": "{}",
+            },
+        ],
+    }
+
+
+def test_replace_metric_syntax() -> None:
+    """
+    Test the ``replace_metric_syntax`` method.
+    """
+    og_metric_schema = OGMetricSchema()
+    sql = "revenue - cost"
+    metrics = {
+        "revenue": og_metric_schema.load(
+            {
+                "name": "revenue",
+                "unique_id": "revenue",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": "SUM({{ url_param['aggreagtor'] }})",
+                "dialect": "postgres",
+            },
+        ),
+        "cost": og_metric_schema.load(
+            {
+                "name": "cost",
+                "unique_id": "cost",
+                "depends_on": [],
+                "calculation_method": "derived",
+                "expression": "SUM({{ filter_values['test'] }})",
+                "dialect": "postgres",
+            },
+        ),
+    }
+    result = replace_metric_syntax(sql, ["revenue", "cost"], metrics)
+    assert (
+        result
+        == "SUM({{ url_param['aggreagtor'] }}) - SUM({{ filter_values['test'] }})"
+    )

@@ -138,6 +138,8 @@ Commands:
 Options:
   --overwrite               Overwrite existing resources
   --disable-jinja-escaping  Disable Jinja template escaping
+  --force-unix-eol          Force Unix end-of-line characters, otherwise use
+                            system default
   --asset-type TEXT         Asset type
   --database-ids TEXT       Comma separated list of database IDs to export
   --dataset-ids TEXT        Comma separated list of dataset IDs to export

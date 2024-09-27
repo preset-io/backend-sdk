@@ -570,6 +570,18 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         return self.get_resource("dataset", dataset_id)
 
+    def get_refreshed_dataset_columns(self, dataset_id: int) -> List[Any]:
+        """
+        Return dataset columns.
+        """
+        url = self.baseurl / "datasource/external_metadata/table" / str(dataset_id)
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
+        validate_response(response)
+
+        resource = response.json()
+        return resource
+
     def get_datasets(self, **kwargs: str) -> List[Any]:
         """
         Return datasets, possibly filtered.

@@ -558,7 +558,7 @@ class ModelSchema(PostelSchema):
     name = fields.String()
     unique_id = fields.String(data_key="uniqueId")
     tags = fields.List(fields.String())
-    columns = fields.Raw()
+    columns = fields.Raw(allow_none=True)
     config = fields.Dict(fields.String(), fields.Raw(allow_none=True))
 
 
@@ -574,21 +574,30 @@ class FilterSchema(PostelSchema):
 
 class MetricSchema(PostelSchema):
     """
-    Schema for a metric.
+    Base schema for a dbt metric.
+    """
+
+    name = fields.String()
+    label = fields.String()
+    description = fields.String()
+    meta = fields.Raw()
+
+
+class OGMetricSchema(MetricSchema):
+    """
+    Schema for an OG metric.
     """
 
     depends_on = fields.List(fields.String(), data_key="dependsOn")
-    description = fields.String()
     filters = fields.List(fields.Nested(FilterSchema))
-    meta = fields.Raw()
-    name = fields.String()
-    label = fields.String()
     sql = fields.String()
     type = fields.String()
     unique_id = fields.String(data_key="uniqueId")
     # dbt >= 1.3
     calculation_method = fields.String()
     expression = fields.String()
+    dialect = fields.String()
+    skip_parsing = fields.Boolean(allow_none=True)
 
 
 class MFMetricType(str, Enum):
@@ -602,13 +611,11 @@ class MFMetricType(str, Enum):
     DERIVED = "DERIVED"
 
 
-class MFMetricSchema(PostelSchema):
+class MFMetricSchema(MetricSchema):
     """
     Schema for a MetricFlow metric.
     """
 
-    name = fields.String()
-    description = fields.String()
     type = PostelEnumField(MFMetricType)
 
 
@@ -682,10 +689,12 @@ def get_custom_urls(access_url: Optional[str] = None) -> Dict[str, URL]:
             ),
             "discovery": parsed.with_host(
                 f"{match['code']}.metadata.{match['region']}.dbt.com",
-            ),
+            )
+            / "graphql",
             "semantic-layer": parsed.with_host(
                 f"{match['code']}.semantic-layer.{match['region']}.dbt.com",
-            ),
+            )
+            / "api/graphql",
         }
 
     raise Exception("Invalid host in custom URL")
@@ -789,6 +798,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                             name
                             description
                             type
+                            meta
                         }
                     }
                 }
@@ -807,26 +817,28 @@ class DBTClient:  # pylint: disable=too-few-public-methods
 
         return models
 
-    def get_og_metrics(self, job_id: int) -> List[MetricSchema]:
+    def get_og_metrics(self, job_id: int) -> List[OGMetricSchema]:
         """
         Fetch all available metrics.
         """
         query = """
-            query GetMetrics($jobId: Int!) {
-                metrics(jobId: $jobId) {
-                    uniqueId
-                    name
-                    label
-                    type
-                    sql
-                    filters {
-                        field
-                        operator
-                        value
+            query GetMetrics($jobId: BigInt!) {
+                job(id: $jobId) {
+                    metrics {
+                        uniqueId
+                        name
+                        label
+                        type
+                        sql
+                        filters {
+                            field
+                            operator
+                            value
+                        }
+                        dependsOn
+                        description
+                        meta
                     }
-                    dependsOn
-                    description
-                    meta
                 }
             }
         """
@@ -836,8 +848,12 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             headers=self.session.headers,
         )
 
-        metric_schema = MetricSchema()
-        metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
+        metric_schema = OGMetricSchema()
+        metrics = [
+            metric_schema.load(metric)
+            for metric in payload["data"]["job"]["metrics"]
+            if metric.get("sql")
+        ]
 
         return metrics
 
@@ -851,6 +867,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                     name
                     description
                     type
+                    label
                 }
             }
         """
@@ -859,7 +876,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
             variables={"environmentId": environment_id},
             headers=self.session.headers,
         )
-
+        # In case the project doesn't have a semantic layer (old versions)
+        if payload["data"] is None:
+            return []
         metric_schema = MFMetricSchema()
         metrics = [metric_schema.load(metric) for metric in payload["data"]["metrics"]]
 
