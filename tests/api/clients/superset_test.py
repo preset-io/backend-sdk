@@ -1881,7 +1881,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
         },
     )
     requests_mock.get(
-        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships/?page_number=1&page_size=250",
+        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships?page_number=1&page_size=250",
         json={
             "payload": [
                 {
@@ -1908,7 +1908,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
     )
 
     requests_mock.get(
-        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships/?page_number=2&page_size=250",
+        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships?page_number=2&page_size=250",
         json={
             "payload": [
                 {

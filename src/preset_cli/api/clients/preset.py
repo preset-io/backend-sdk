@@ -67,9 +67,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         page_number = 1
         while True:
             params = {"page_number": page_number, "page_size": MANAGER_MAX_PAGE_SIZE}
-            url = (
-                self.get_base_url() / "teams" / team_name / "memberships" / "" % params
-            )
+            url = self.get_base_url() / "teams" / team_name / "memberships" % params
             _logger.debug("GET %s", url)
             response = self.session.get(url)
             validate_response(response)
@@ -147,7 +145,6 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                 / "workspaces"
                 / str(workspace_id)
                 / "memberships"
-                / ""
                 % params
             )
             _logger.debug("GET %s", url)
