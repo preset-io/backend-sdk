@@ -17,6 +17,8 @@ from preset_cli.typing import UserType
 
 _logger = logging.getLogger(__name__)
 
+MANAGER_MAX_PAGE_SIZE = 250
+
 
 class Role(int, Enum):
     """
@@ -61,13 +63,22 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         """
         Retrieve all users for a given team.
         """
-        url = self.get_base_url() / "teams" / team_name / "memberships"
-        _logger.debug("GET %s", url)
-        response = self.session.get(url)
-        validate_response(response)
+        users = []
+        page_number = 1
+        while True:
+            params = {"page_number": page_number, "page_size": MANAGER_MAX_PAGE_SIZE}
+            url = self.get_base_url() / "teams" / team_name / "memberships" % params
+            _logger.debug("GET %s", url)
+            response = self.session.get(url)
+            validate_response(response)
 
-        payload = response.json()
-        users = payload["payload"]
+            payload = response.json()
+            users.extend(payload["payload"])
+
+            if payload["meta"]["count"] <= page_number * MANAGER_MAX_PAGE_SIZE:
+                break
+
+            page_number += 1
 
         return users
 
@@ -123,27 +134,41 @@ class PresetClient:  # pylint: disable=too-few-public-methods
         if team_name is None or workspace_id is None:
             raise Exception("Unable to find workspace and/or team")
 
-        url = (
-            self.get_base_url()
-            / "teams"
-            / team_name
-            / "workspaces"
-            / str(workspace_id)
-            / "memberships"
-        )
-        _logger.debug("GET %s", url)
-        response = self.session.get(url)
-        team_members: List[UserType] = [
-            {
-                "id": 0,
-                "username": payload["user"]["username"],
-                "role": [],  # TODO (betodealmeida)
-                "first_name": payload["user"]["first_name"],
-                "last_name": payload["user"]["last_name"],
-                "email": payload["user"]["email"],
-            }
-            for payload in response.json()["payload"]
-        ]
+        workspace_membership: List[UserType] = []
+        page_number = 1
+        while True:
+            params = {"page_number": page_number, "page_size": MANAGER_MAX_PAGE_SIZE}
+            url = (
+                self.get_base_url()
+                / "teams"
+                / team_name
+                / "workspaces"
+                / str(workspace_id)
+                / "memberships"
+                % params
+            )
+            _logger.debug("GET %s", url)
+            response = self.session.get(url)
+            validate_response(response)
+            payload = response.json()
+
+            team_members: List[UserType] = [
+                {
+                    "id": 0,
+                    "username": payload["user"]["username"],
+                    "role": [],  # TODO (betodealmeida)
+                    "first_name": payload["user"]["first_name"],
+                    "last_name": payload["user"]["last_name"],
+                    "email": payload["user"]["email"],
+                }
+                for payload in payload["payload"]
+            ]
+            workspace_membership.extend(team_members)
+
+            if payload["meta"]["count"] <= page_number * MANAGER_MAX_PAGE_SIZE:
+                break
+
+            page_number += 1
 
         # TODO (betodealmeida): improve this
         url = workspace_url / "roles/add"
@@ -156,7 +181,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             for option in select.find_all("option")
         }
 
-        for team_member in team_members:
+        for team_member in workspace_membership:
             # pylint: disable=consider-using-f-string
             full_name = "{first_name} {last_name}".format(**team_member)
             if full_name in ids:

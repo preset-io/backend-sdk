@@ -1881,7 +1881,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
         },
     )
     requests_mock.get(
-        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships",
+        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships?page_number=1&page_size=250",
         json={
             "payload": [
                 {
@@ -1901,14 +1901,38 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                     },
                 },
             ],
+            "meta": {
+                "count": 251,
+            },
         },
     )
+
+    requests_mock.get(
+        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships?page_number=2&page_size=250",
+        json={
+            "payload": [
+                {
+                    "user": {
+                        "username": "cdoe",
+                        "first_name": "Clarisse",
+                        "last_name": "Doe",
+                        "email": "cdoe@example.com",
+                    },
+                },
+            ],
+            "meta": {
+                "count": 251,
+            },
+        },
+    )
+
     requests_mock.get(
         "https://superset.example.org/roles/add",
         text="""
 <select id="user">
     <option value="1">Alice Doe</option>
     <option value="2">Bob Doe</option>
+    <option value="3">Clarisse Doe</option>
 </select>
     """,
     )
@@ -1930,6 +1954,14 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "bdoe",
             "email": "bdoe@example.com",
+            "role": [],
+        },
+        {
+            "id": 3,
+            "first_name": "Clarisse",
+            "last_name": "Doe",
+            "username": "cdoe",
+            "email": "cdoe@example.com",
             "role": [],
         },
     ]
