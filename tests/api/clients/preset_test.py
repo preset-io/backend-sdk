@@ -91,7 +91,7 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
         },
     )
     requests_mock.get(
-        "https://ws.preset.io/v1/teams/team1/workspaces/2/memberships",
+        "https://ws.preset.io/v1/teams/team1/workspaces/2/memberships/?page_number=1&page_size=250",
         json={
             "payload": [
                 {
@@ -110,6 +110,16 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
                         "email": "bdoe@example.com",
                     },
                 },
+            ],
+            "meta": {
+                "count": 251,
+            },
+        },
+    )
+    requests_mock.get(
+        "https://ws.preset.io/v1/teams/team1/workspaces/2/memberships/?page_number=2&page_size=250",
+        json={
+            "payload": [
                 {
                     "user": {
                         "username": "cdoe",
@@ -119,8 +129,12 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
                     },
                 },
             ],
+            "meta": {
+                "count": 251,
+            },
         },
     )
+
     requests_mock.get(
         "https://superset.example.org/roles/add",
         text="""
@@ -271,7 +285,7 @@ def test_get_team_members(requests_mock: Mocker) -> None:
     Test the ``get_team_members`` method.
     """
     requests_mock.get(
-        "https://ws.preset.io/v1/teams/botafogo/memberships",
+        "https://ws.preset.io/v1/teams/botafogo/memberships/?page_number=1&page_size=250",
         json={
             "payload": [
                 {
@@ -290,6 +304,16 @@ def test_get_team_members(requests_mock: Mocker) -> None:
                         "email": "bdoe@example.com",
                     },
                 },
+            ],
+            "meta": {
+                "count": 251,
+            },
+        },
+    )
+    requests_mock.get(
+        "https://ws.preset.io/v1/teams/botafogo/memberships/?page_number=2&page_size=250",
+        json={
+            "payload": [
                 {
                     "user": {
                         "username": "cdoe",
@@ -299,6 +323,9 @@ def test_get_team_members(requests_mock: Mocker) -> None:
                     },
                 },
             ],
+            "meta": {
+                "count": 251,
+            },
         },
     )
 
