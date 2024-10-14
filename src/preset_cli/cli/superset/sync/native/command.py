@@ -280,13 +280,9 @@ def import_resources_individually(
                     continue
 
                 asset_configs = {path: config}
-                try:
-                    for uuid in get_related_uuids(config):
-                        asset_configs.update(related_configs[uuid])
-                except KeyError as err:
-                    _logger.debug(f"{err=}")
-                    # breakpoint()
-                    raise err
+                for uuid in get_related_uuids(config):
+                    asset_configs.update(related_configs[uuid])
+
                 _logger.info("Importing %s", path.relative_to("bundle"))
                 contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
                 if path not in imported:
@@ -329,7 +325,7 @@ def get_dataset_filter_uuids(config: AssetConfig) -> Set[str]:
     """
     dataset_uuids = set()
     for filter_config in config["metadata"].get("native_filter_configuration", []):
-        for target in filter_config.get("targets", dict()):
+        for target in filter_config["targets"]:
             if uuid := target.get("datasetUuid"):
                 if uuid not in dataset_uuids:
                     dataset_uuids.add(uuid)
