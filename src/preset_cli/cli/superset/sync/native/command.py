@@ -174,7 +174,6 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     root = Path(directory)
-
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
     # collecting existing database UUIDs so we know if we're creating or updating
@@ -281,9 +280,13 @@ def import_resources_individually(
                     continue
 
                 asset_configs = {path: config}
-                for uuid in get_related_uuids(config):
-                    asset_configs.update(related_configs[uuid])
-
+                try:
+                    for uuid in get_related_uuids(config):
+                        asset_configs.update(related_configs[uuid])
+                except KeyError as err:
+                    _logger.debug(f"{err=}")
+                    # breakpoint()
+                    raise err
                 _logger.info("Importing %s", path.relative_to("bundle"))
                 contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
                 if path not in imported:
@@ -326,7 +329,7 @@ def get_dataset_filter_uuids(config: AssetConfig) -> Set[str]:
     """
     dataset_uuids = set()
     for filter_config in config["metadata"].get("native_filter_configuration", []):
-        for target in filter_config["targets"]:
+        for target in filter_config.get("targets", []):  # ["targets"]:
             if uuid := target.get("datasetUuid"):
                 if uuid not in dataset_uuids:
                     dataset_uuids.add(uuid)
