@@ -329,7 +329,7 @@ def get_dataset_filter_uuids(config: AssetConfig) -> Set[str]:
     """
     dataset_uuids = set()
     for filter_config in config["metadata"].get("native_filter_configuration", []):
-        for target in filter_config.get("targets", []):  # ["targets"]:
+        for target in filter_config.get("targets", dict()):
             if uuid := target.get("datasetUuid"):
                 if uuid not in dataset_uuids:
                     dataset_uuids.add(uuid)
