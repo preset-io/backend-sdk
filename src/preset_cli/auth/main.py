@@ -1,13 +1,14 @@
 """
 Mechanisms for authentication and authorization.
 """
-
+import logging
 from typing import Any, Dict
 
 from requests import Response, Session
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
+_logger = logging.getLogger(__name__)
 
 class Auth:  # pylint: disable=too-few-public-methods
     """
@@ -45,6 +46,8 @@ class Auth:  # pylint: disable=too-few-public-methods
         """
         if r.status_code != 401:
             return r
+
+        _logger.info('Token expired. Re-authenticating...')
 
         try:
             self.auth()
