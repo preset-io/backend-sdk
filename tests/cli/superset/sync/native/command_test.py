@@ -21,6 +21,7 @@ from sqlalchemy.engine.url import URL
 
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
+    ResourceType,
     import_resources,
     import_resources_individually,
     load_user_modules,
@@ -72,6 +73,42 @@ def test_import_resources(mocker: MockerFixture) -> None:
         assert (
             bundle.read("bundle/metadata.yaml").decode()
             == "timestamp: '2022-01-01T00:00:00+00:00'\ntype: assets\nversion: 1.0.0\n"
+        )
+        assert bundle.read("bundle/databases/gsheets.yaml").decode() == "GSheets"
+
+
+@pytest.mark.parametrize("resource_type", list(ResourceType))
+def test_import_resources_asset_types(
+    mocker: MockerFixture,
+    resource_type: ResourceType,
+) -> None:
+    """
+    Test ``import_resources`` when a resource_type value is specified.
+    """
+    client = mocker.MagicMock()
+
+    contents = {"bundle/databases/gsheets.yaml": "GSheets"}
+    with freeze_time("2022-01-01T00:00:00Z"):
+        import_resources(
+            contents=contents,
+            client=client,
+            overwrite=False,
+            asset_type=resource_type,
+        )
+
+    call = client.import_zip.mock_calls[0]
+    assert call.kwargs == {"overwrite": False}
+
+    resource, buf = call.args
+    assert resource == resource_type.resource_name
+    with ZipFile(buf) as bundle:
+        assert bundle.namelist() == [
+            "bundle/databases/gsheets.yaml",
+            "bundle/metadata.yaml",
+        ]
+        assert bundle.read("bundle/metadata.yaml").decode() == (
+            "timestamp: '2022-01-01T00:00:00+00:00'\n"
+            f"type: {resource_type.metadata_type}\nversion: 1.0.0\n"
         )
         assert bundle.read("bundle/databases/gsheets.yaml").decode() == "GSheets"
 
@@ -290,7 +327,9 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         ),
     }
 
-    import_resources.assert_has_calls([mock.call(contents, client, False)])
+    import_resources.assert_has_calls(
+        [mock.call(contents, client, False, asset_type=None)],
+    )
     client.get_uuids.assert_not_called()
 
 
@@ -347,7 +386,9 @@ def test_native_params_as_str(mocker: MockerFixture, fs: FakeFilesystem) -> None
             },
         ),
     }
-    import_resources.assert_has_calls([mock.call(contents, client, False)])
+    import_resources.assert_has_calls(
+        [mock.call(contents, client, False, asset_type=None)],
+    )
     client.get_uuids.assert_not_called()
 
 
@@ -459,7 +500,9 @@ def test_native_load_env(
             },
         ),
     }
-    import_resources.assert_has_calls([mock.call(contents, client, False)])
+    import_resources.assert_has_calls(
+        [mock.call(contents, client, False, asset_type=None)],
+    )
     client.get_uuids.assert_not_called()
 
 
@@ -523,7 +566,9 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
-    import_resources.assert_has_calls([mock.call(contents, client, False)])
+    import_resources.assert_has_calls(
+        [mock.call(contents, client, False, asset_type=None)],
+    )
     client.get_uuids.assert_not_called()
 
 
@@ -662,7 +707,9 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
             },
         ),
     }
-    import_resources.assert_has_calls([mock.call(contents, client, False)])
+    import_resources.assert_has_calls(
+        [mock.call(contents, client, False, asset_type=None)],
+    )
     client.get_uuids.assert_not_called()
 
 
@@ -1154,5 +1201,149 @@ GROUP BY action""",
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
-    import_resources.assert_has_calls([mock.call(contents, client, False)])
+    import_resources.assert_has_calls(
+        [mock.call(contents, client, False, asset_type=None)],
+    )
     client.get_uuids.assert_not_called()
+
+
+@pytest.mark.parametrize("resource_type", list(ResourceType))
+def test_native_asset_types(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    resource_type: ResourceType,
+) -> None:
+    """
+    Test the ``native`` command while specifying an asset type.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "uuid1",
+    }
+    dataset_config = {"table_name": "test", "is_managed_externally": False}
+    chart_config = {
+        "slice_name": "test",
+        "viz_type": "big_number_total",
+        "params": {
+            "datasource": "1__table",
+            "viz_type": "big_number_total",
+            "slice_id": 1,
+            "metric": {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "column": None,
+                "aggregate": None,
+                "datasourceWarning": False,
+                "hasCustomLabel": True,
+                "label": "custom_calculation",
+                "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
+            },
+            "adhoc_filters": [],
+            "header_font_size": 0.4,
+            "subheader_font_size": 0.15,
+            "y_axis_format": "SMART_NUMBER",
+            "time_format": "smart_date",
+            "extra_form_data": {},
+            "dashboards": [],
+        },
+        "query_context": None,
+        "is_managed_externally": False,
+    }
+    dashboard_config = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {
+            "DASHBOARD_VERSION_KEY": "v2",
+            "CHART-BVI44PWH": {
+                "type": "CHART",
+                "meta": {
+                    "uuid": "3",
+                },
+            },
+        },
+        "metadata": {},
+        "uuid": "4",
+    }
+
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+    fs.create_file(
+        root / "datasets/gsheets/test.yaml",
+        contents=yaml.dump(dataset_config),
+    )
+    fs.create_file(
+        root / "charts/test_01.yaml",
+        contents=yaml.dump(chart_config),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard.yaml",
+        contents=yaml.dump(dashboard_config),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_databases.return_value = []
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--asset-type",
+            resource_type.resource_name,
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    contents = {
+        "bundle/charts/test_01.yaml": yaml.dump(chart_config),
+        "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+        "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+        "bundle/dashboards/dashboard.yaml": yaml.dump(dashboard_config),
+    }
+
+    import_resources.assert_has_calls(
+        [mock.call(contents, client, False, asset_type=resource_type)],
+    )
+    client.get_uuids.assert_not_called()
+
+
+def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``native`` command while specifying an invalid asset type.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--asset-type",
+            "datasource",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--asset-type'" in result.output
