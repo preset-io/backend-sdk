@@ -1,6 +1,7 @@
 """
 Tests for the native import command.
 """
+
 # pylint: disable=redefined-outer-name, invalid-name, too-many-lines
 
 import json
@@ -516,9 +517,9 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     assert result.exit_code == 0
     database_config["external_url"] = "https://repo.example.com/databases/gsheets.yaml"
-    dataset_config[
-        "external_url"
-    ] = "https://repo.example.com/datasets/gsheets/test.yaml"
+    dataset_config["external_url"] = (
+        "https://repo.example.com/datasets/gsheets/test.yaml"
+    )
     contents = {
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
@@ -817,6 +818,7 @@ def test_native_split(  # pylint: disable=too-many-locals
         },
         "uuid": "6",
     }
+
     dashboard_with_temporal_filter = {
         "dashboard_title": "Some dashboard",
         "is_managed_externally": False,
@@ -849,6 +851,45 @@ def test_native_split(  # pylint: disable=too-many-locals
         },
         "uuid": "6",
     }
+
+    dashboard_with_filter_divider_config = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {},
+        "metadata": {
+            "native_filter_configuration": [
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "some_column",
+                            "datasetUuid": "5",
+                        },
+                    ],
+                },
+                {"type": "DIVIDER", "targets": {}},
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "other_column",
+                            "datasetUuid": "5",
+                        },
+                    ],
+                },
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "blah",
+                            "datasetUuid": "2",
+                        },
+                    ],
+                },
+            ],
+        },
+        "uuid": "7",
+    }
     fs.create_file(
         root / "databases/gsheets.yaml",
         contents=yaml.dump(database_config),
@@ -879,6 +920,10 @@ def test_native_split(  # pylint: disable=too-many-locals
     )
     fs.create_file(
         root / "dashboards/dashboard_deleted_dataset.yaml",
+        contents=yaml.dump(dashboard_deleted_dataset),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard_with_filter_divider_config.yaml",
         contents=yaml.dump(dashboard_deleted_dataset),
     )
 
@@ -970,6 +1015,20 @@ def test_native_split(  # pylint: disable=too-many-locals
                 {
                     "bundle/dashboards/dashboard.yaml": yaml.dump(dashboard_config),
                     "bundle/charts/chart.yaml": yaml.dump(chart_config),
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/dashboards/dashboard_with_filter_divider_config.yaml": yaml.dump(
+                        dashboard_with_filter_divider_config,
+                    ),
+                    "bundle/datasets/gsheets/filter_test.yaml": yaml.dump(
+                        dataset_filter_config,
+                    ),
                     "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
                     "bundle/databases/gsheets.yaml": yaml.dump(database_config),
                 },

@@ -325,7 +325,7 @@ def get_dataset_filter_uuids(config: AssetConfig) -> Set[str]:
     """
     dataset_uuids = set()
     for filter_config in config["metadata"].get("native_filter_configuration", []):
-        for target in filter_config.get("targets", dict()):
+        for target in filter_config.get("targets", {}):
             if uuid := target.get("datasetUuid"):
                 if uuid not in dataset_uuids:
                     dataset_uuids.add(uuid)
@@ -378,6 +378,7 @@ def import_resources(
     """
     Import a bundle of assets.
     """
+
     contents["bundle/metadata.yaml"] = yaml.dump(
         dict(
             version="1.0.0",
