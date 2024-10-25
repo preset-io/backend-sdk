@@ -8,10 +8,11 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, Set, Tuple
+from typing import Any, Dict, Iterator, Optional, Set, Tuple
 from zipfile import ZipFile
 
 import backoff
@@ -41,12 +42,57 @@ PASSWORD_MASK = "X" * 10
 AssetConfig = Dict[str, Any]
 
 
-resource_types = {
-    "chart": "Slice",
-    "dashboard": "Dashboard",
-    "database": "Database",
-    "dataset": "SqlaTable",
-}
+class ResourceType(Enum):
+    """
+    ResourceType Enum. Used to identify asset type (and corresponding metadata).
+    """
+
+    def __new__(
+        cls,
+        resource_name: str,
+        metadata_type: Optional[str] = None,
+    ) -> "ResourceType":
+        """
+        ResourceType Constructor.
+        """
+        obj = object.__new__(cls)
+        obj._value_ = resource_name
+        obj._resource_name = resource_name  # type:ignore
+        obj._metadata_type = metadata_type  # type:ignore
+        return obj
+
+    @property
+    def resource_name(self) -> str:
+        """
+        Return the resource name for the asset type.
+        """
+        return self._resource_name  # type: ignore
+
+    @property
+    def metadata_type(self) -> str:
+        """
+        Return the metadata type for the asset type.
+        """
+        return self._metadata_type  # type: ignore
+
+    CHART = ("chart", "Slice")
+    DASHBOARD = ("dashboard", "Dashboard")
+    DATABASE = ("database", "Database")
+    DATASET = ("dataset", "SqlaTable")
+
+
+def normalize_to_enum(  # pylint: disable=unused-argument
+    ctx: click.core.Context,
+    param: str,
+    value: Optional[str],
+):
+    """
+    Normalize the ``--asset-type`` option value and return the
+    corresponding ResourceType Enum.
+    """
+    if value is None:
+        return None
+    return ResourceType(value.lower())
 
 
 def load_user_modules(root: Path) -> Dict[str, ModuleType]:
@@ -155,6 +201,15 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     default=False,
     help="Split imports into individual assets",
 )
+@click.option(
+    "--asset-type",
+    type=click.Choice([rt.resource_name for rt in ResourceType], case_sensitive=False),
+    callback=normalize_to_enum,
+    help=(
+        "Specify an asset type to import resources using the type's endpoint. "
+        "This way other asset types included get created but not overwritten."
+    ),
+)
 @click.pass_context
 def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
     ctx: click.core.Context,
@@ -166,6 +221,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     external_url_prefix: str = "",
     load_env: bool = False,
     split: bool = False,
+    asset_type: Optional[ResourceType] = None,
 ) -> None:
     """
     Sync exported DBs/datasets/charts/dashboards to Superset.
@@ -244,7 +300,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
         import_resources_individually(configs, client, overwrite)
     else:
         contents = {str(k): yaml.dump(v) for k, v in configs.items()}
-        import_resources(contents, client, overwrite)
+        import_resources(contents, client, overwrite, asset_type=asset_type)
 
 
 def import_resources_individually(
@@ -256,7 +312,7 @@ def import_resources_individually(
     Import contents individually.
 
     This will first import all the databases, then import each dataset (together with the
-    database info, since it's needed), then charts, on so on. It helps troubleshoot
+    database info, since it's needed), then charts, and so on. It helps troubleshoot
     problematic exports and large imports.
     """
     # store progress in case the import stops midway
@@ -374,15 +430,17 @@ def import_resources(
     contents: Dict[str, str],
     client: SupersetClient,
     overwrite: bool,
+    asset_type: Optional[ResourceType] = None,
 ) -> None:
     """
     Import a bundle of assets.
     """
-
+    metadata_type = asset_type.metadata_type if asset_type else "assets"
+    resource_name = asset_type.resource_name if asset_type else "assets"
     contents["bundle/metadata.yaml"] = yaml.dump(
         dict(
             version="1.0.0",
-            type="assets",
+            type=metadata_type,
             timestamp=datetime.now(tz=timezone.utc).isoformat(),
         ),
     )
@@ -394,7 +452,7 @@ def import_resources(
                 output.write(file_content.encode())
     buf.seek(0)
     try:
-        client.import_zip("assets", buf, overwrite=overwrite)
+        client.import_zip(resource_name, buf, overwrite=overwrite)
     except SupersetError as ex:
         click.echo(
             click.style(

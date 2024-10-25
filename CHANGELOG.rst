@@ -5,6 +5,13 @@ Changelog
 Next
 ====
 
+Version 0.2.21 - 2024-10-16
+===========================
+
+- It's now possible to set export commands to generate YAML files with Unix EOL (`#316 <https://github.com/preset-io/backend-sdk/pull/316>`_).
+- Calls to the Preset Manager API are now paginated (`#320 <https://github.com/preset-io/backend-sdk/pull/320>`_).
+- It's now possible to trigger an import that creates missing dependencies but don't overwrite them (`#321 <https://github.com/preset-io/backend-sdk/pull/322>`_).
+
 Version 0.2.20 - 2024-08-20
 ===========================
 
