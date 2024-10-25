@@ -865,7 +865,6 @@ def test_native_split(  # pylint: disable=too-many-locals
         },
         "uuid": "6",
     }
-
     dashboard_with_temporal_filter = {
         "dashboard_title": "Some dashboard",
         "is_managed_externally": False,
@@ -915,24 +914,6 @@ def test_native_split(  # pylint: disable=too-many-locals
                     ],
                 },
                 {"type": "DIVIDER", "targets": {}},
-                {
-                    "type": "NATIVE_FILTER",
-                    "targets": [
-                        {
-                            "column": "other_column",
-                            "datasetUuid": "5",
-                        },
-                    ],
-                },
-                {
-                    "type": "NATIVE_FILTER",
-                    "targets": [
-                        {
-                            "column": "blah",
-                            "datasetUuid": "2",
-                        },
-                    ],
-                },
             ],
         },
         "uuid": "7",
@@ -971,7 +952,7 @@ def test_native_split(  # pylint: disable=too-many-locals
     )
     fs.create_file(
         root / "dashboards/dashboard_with_filter_divider_config.yaml",
-        contents=yaml.dump(dashboard_deleted_dataset),
+        contents=yaml.dump(dashboard_with_filter_divider_config),
     )
 
     SupersetClient = mocker.patch(
@@ -1076,13 +1057,13 @@ def test_native_split(  # pylint: disable=too-many-locals
                     "bundle/datasets/gsheets/filter_test.yaml": yaml.dump(
                         dataset_filter_config,
                     ),
-                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
                     "bundle/databases/gsheets.yaml": yaml.dump(database_config),
                 },
                 client,
                 False,
             ),
         ],
+        any_order=True,
     )
 
 
