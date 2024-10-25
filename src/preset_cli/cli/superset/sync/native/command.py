@@ -230,7 +230,6 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
     root = Path(directory)
-
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
     # collecting existing database UUIDs so we know if we're creating or updating
@@ -382,7 +381,7 @@ def get_dataset_filter_uuids(config: AssetConfig) -> Set[str]:
     """
     dataset_uuids = set()
     for filter_config in config["metadata"].get("native_filter_configuration", []):
-        for target in filter_config["targets"]:
+        for target in filter_config.get("targets", {}):
             if uuid := target.get("datasetUuid"):
                 if uuid not in dataset_uuids:
                     dataset_uuids.add(uuid)

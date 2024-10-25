@@ -1,6 +1,7 @@
 """
 Tests for the native import command.
 """
+
 # pylint: disable=redefined-outer-name, invalid-name, too-many-lines
 
 import json
@@ -896,6 +897,27 @@ def test_native_split(  # pylint: disable=too-many-locals
         },
         "uuid": "6",
     }
+
+    dashboard_with_filter_divider_config = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {},
+        "metadata": {
+            "native_filter_configuration": [
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "some_column",
+                            "datasetUuid": "5",
+                        },
+                    ],
+                },
+                {"type": "DIVIDER", "targets": {}},
+            ],
+        },
+        "uuid": "7",
+    }
     fs.create_file(
         root / "databases/gsheets.yaml",
         contents=yaml.dump(database_config),
@@ -927,6 +949,10 @@ def test_native_split(  # pylint: disable=too-many-locals
     fs.create_file(
         root / "dashboards/dashboard_deleted_dataset.yaml",
         contents=yaml.dump(dashboard_deleted_dataset),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard_with_filter_divider_config.yaml",
+        contents=yaml.dump(dashboard_with_filter_divider_config),
     )
 
     SupersetClient = mocker.patch(
@@ -1023,7 +1049,21 @@ def test_native_split(  # pylint: disable=too-many-locals
                 client,
                 False,
             ),
+            mock.call(
+                {
+                    "bundle/dashboards/dashboard_with_filter_divider_config.yaml": yaml.dump(
+                        dashboard_with_filter_divider_config,
+                    ),
+                    "bundle/datasets/gsheets/filter_test.yaml": yaml.dump(
+                        dataset_filter_config,
+                    ),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
         ],
+        any_order=True,
     )
 
 
