@@ -1648,9 +1648,6 @@ def test_compute_columns_metadata_with_default_configs() -> None:
     assert result == expected
 
 
-# def test_compute_columns_metadata_with_default_configs_preserve_metadata() -> None:
-
-
 def test_compute_dataset_metadata_with_dbt_metadata() -> None:
     """
     Test the ``compute_dataset_metadata`` helper with metadata from dbt.
