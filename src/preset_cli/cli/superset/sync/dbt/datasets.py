@@ -273,7 +273,7 @@ def compute_columns_metadata(
             for key, value in dbt_metadata[name].items():
                 if reload_columns or merge_metadata or not column.get(key):
                     column[key] = value
-        elif column_defaults:
+        elif column_defaults and (reload_columns or merge_metadata):
             for key, value in column_defaults.items():
                 column[key] = value
 
