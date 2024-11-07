@@ -376,12 +376,14 @@ def test_sync_datasets_custom_certification(mocker: MockerFixture) -> None:
         metrics[model_id],
         True,
         False,
+        metric_defaults={},
     )
     compute_columns_metadata_mock.assert_called_with(
         models[0]["columns"],
         client.get_dataset()["columns"],
         True,
         False,
+        column_defaults={},
     )
     compute_columns_mock.assert_not_called()
     compute_dataset_metadata_mock.assert_called_with(
@@ -529,12 +531,14 @@ def test_sync_datasets_external_url_disallow_edits(mocker: MockerFixture) -> Non
         metrics[model_id],
         True,
         False,
+        metric_defaults={},
     )
     compute_columns_metadata_mock.assert_called_with(
         models[0]["columns"],
         client.get_dataset()["columns"],
         True,
         False,
+        column_defaults={},
     )
     compute_columns_mock.assert_not_called()
     compute_dataset_metadata_mock.assert_called_with(
@@ -603,12 +607,14 @@ def test_sync_datasets_preserve_metadata(mocker: MockerFixture) -> None:
         metrics[model_id],
         False,
         False,
+        metric_defaults={},
     )
     compute_columns_metadata_mock.assert_called_with(
         models[0]["columns"],
         client.get_dataset()["columns"],
         False,
         False,
+        column_defaults={},
     )
     compute_columns_mock.assert_called_with(
         get_or_create_dataset_mock()["columns"],
@@ -682,12 +688,14 @@ def test_sync_datasets_merge_metadata(mocker: MockerFixture) -> None:
         metrics[model_id],
         False,
         True,
+        metric_defaults={},
     )
     compute_columns_metadata_mock.assert_called_with(
         models[0]["columns"],
         client.get_dataset()["columns"],
         False,
         True,
+        column_defaults={},
     )
     compute_columns_mock.assert_called_with(
         get_or_create_dataset_mock()["columns"],
@@ -762,6 +770,7 @@ def test_sync_datasets_no_columns(mocker: MockerFixture) -> None:
         metrics[model_id],
         True,
         False,
+        metric_defaults={},
     )
     compute_columns_mock.assert_not_called()
     compute_dataset_metadata_mock.assert_called_with(
@@ -1132,6 +1141,214 @@ def test_compute_metrics_without_merge_and_reload_no_metrics() -> None:
     assert result == metrics["model.superset_examples.messages_channels"]
 
 
+def test_compute_metrics_with_default_configs() -> None:
+    """
+    Test the ``compute_metrics`` helper with ``default_configs`` and
+    ``reload_columns`` set to ``True`` and ``merge_metadata`` to `False`.
+
+    dbt metrics should be synced
+    Superset metrics should be discarded
+    """
+    dbt_metrics: Dict[str, List[SupersetMetricDefinition]] = {
+        "model.superset_examples.messages_channels": [
+            {
+                "description": "Description from dbt",
+                "expression": "COUNT(*)",
+                "extra": "{}",
+                "metric_name": "cnt",
+                "metric_type": "count",
+                "verbose_name": "",
+            },
+            {
+                "expression": "COUNT(*)",
+                "extra": "{}",
+                "metric_name": "cnt_new",
+                "metric_type": "count",
+                "verbose_name": "",
+            },
+        ],
+    }
+    superset_metric = [
+        {
+            "description": "Superset desc",
+            "expression": "SUM(price_each)",
+            "metric_name": "revenue",
+            "id": 2,
+            "verbose_name": "SUM from Superset",
+        },
+    ]
+
+    result = compute_metrics(
+        superset_metric,
+        dbt_metrics["model.superset_examples.messages_channels"],
+        True,
+        False,
+        metric_defaults={"description": "default desc"},
+    )
+    assert result == [
+        {
+            "description": "Description from dbt",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt",
+            "metric_type": "count",
+            "verbose_name": "",
+        },
+        {
+            "description": "default desc",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt_new",
+            "metric_type": "count",
+            "verbose_name": "",
+        },
+    ]
+
+
+def test_compute_metrics_with_default_configs_merge_metadata() -> None:
+    """
+    Test the ``compute_metrics`` helper with ``default_configs`` and
+    ``reload_columns`` set to ``False`` and ``merge_metadata`` to `True`.
+
+    dbt metrics are synced
+    Superset-only metadata is kept
+    """
+    dbt_metrics: Dict[str, List[SupersetMetricDefinition]] = {
+        "model.superset_examples.messages_channels": [
+            {
+                "description": "Description from dbt",
+                "expression": "COUNT(*)",
+                "extra": "{}",
+                "metric_name": "cnt",
+                "metric_type": "count",
+                "verbose_name": "",
+            },
+            {
+                "expression": "COUNT(*)",
+                "extra": "{}",
+                "metric_name": "cnt_new",
+                "metric_type": "count",
+                "verbose_name": "",
+            },
+        ],
+    }
+    superset_metric = [
+        {
+            "description": "Superset desc",
+            "expression": "SUM(price_each)",
+            "metric_name": "revenue",
+            "id": 2,
+            "verbose_name": "SUM from Superset",
+        },
+    ]
+
+    result = compute_metrics(
+        superset_metric,
+        dbt_metrics["model.superset_examples.messages_channels"],
+        False,
+        True,
+        metric_defaults={"description": "default desc"},
+    )
+
+    assert result == [
+        {
+            "description": "Description from dbt",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt",
+            "metric_type": "count",
+            "verbose_name": "",
+        },
+        {
+            "description": "default desc",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt_new",
+            "metric_type": "count",
+            "verbose_name": "",
+        },
+        {
+            "description": "default desc",
+            "expression": "SUM(price_each)",
+            "metric_name": "revenue",
+            "id": 2,
+            "verbose_name": "SUM from Superset",
+        },
+    ]
+
+
+def test_compute_metrics_with_default_configs_preserve_metadata() -> None:
+    """
+    Test the ``compute_metrics`` helper with default_configs and
+    both ``reload_columns`` and ``merge_metadata`` set to ``False``.
+
+    dbt metrics are synced
+    Superset-only metadata is kept
+    """
+    dbt_metrics: Dict[str, List[SupersetMetricDefinition]] = {
+        "model.superset_examples.messages_channels": [
+            {
+                "description": "Description from dbt",
+                "expression": "COUNT(*)",
+                "extra": "{}",
+                "metric_name": "cnt",
+                "metric_type": "count",
+                "verbose_name": "",
+            },
+            {
+                "expression": "COUNT(*)",
+                "extra": "{}",
+                "metric_name": "cnt_new",
+                "metric_type": "count",
+                "verbose_name": "",
+            },
+        ],
+    }
+    superset_metric = [
+        {
+            "description": "Superset desc",
+            "expression": "SUM(price_each)",
+            "metric_name": "revenue",
+            "id": 2,
+            "verbose_name": "SUM from Superset",
+        },
+    ]
+
+    result = compute_metrics(
+        superset_metric,
+        dbt_metrics["model.superset_examples.messages_channels"],
+        False,
+        False,
+        metric_defaults={"description": "default desc"},
+    )
+
+    assert result == [
+        {
+            "description": "Description from dbt",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt",
+            "metric_type": "count",
+            "verbose_name": "",
+        },
+        {
+            "description": "default desc",
+            "expression": "COUNT(*)",
+            "extra": "{}",
+            "metric_name": "cnt_new",
+            "metric_type": "count",
+            "verbose_name": "",
+        },
+        {
+            "description": "Superset desc",
+            "expression": "SUM(price_each)",
+            "metric_name": "revenue",
+            "id": 2,
+            "verbose_name": "SUM from Superset",
+        },
+    ]
+
+
 def test_compute_columns_no_new_columns(mocker: MockerFixture) -> None:
     """
     Test the ``compute_columns`` helper when no new columns are returned.
@@ -1323,6 +1540,111 @@ def test_compute_columns_metadata_dbt_column_meta() -> None:
     )
     expected = dataset_columns.copy()
     expected[1]["groupby"] = True
+    assert result == expected
+
+
+def test_compute_columns_metadata_with_default_configs() -> None:
+    """
+    Test the ``compute_columns_metadata`` helper with ``default_configs`` and
+    ``reload_columns`` set to ``True`` and ``merge_metadata`` to `False`.
+
+    dbt metrics should be synced
+
+    Running it with ``reload_columns`` set to ``False`` and ``merge_metadata``
+    to `True` should produce the same result, as we don't discard column metadata.
+    """
+    default_column_config = {"filterable": False, "description": "dbt desc"}
+    model_columns = [{"name": "id", "description": "Primary key"}]
+    dataset_columns = [
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-23T20:29:33.945074",
+            "column_name": "product_line",
+            "created_on": "2024-01-23T20:29:33.945070",
+            "description": "Description for Product Line",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "type_generic": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": None,
+        },
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-03T13:30:19.139128",
+            "column_name": "id",
+            "created_on": "2021-12-22T16:59:38.825689",
+            "description": "Description for ID",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": False,
+            "id": 2,
+            "is_active": None,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "type_generic": None,
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": None,
+        },
+    ]
+    expected = [
+        {
+            "advanced_data_type": None,
+            "column_name": "product_line",
+            "description": "dbt desc",
+            "expression": None,
+            "extra": "{}",
+            "filterable": False,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": None,
+        },
+        {
+            "advanced_data_type": None,
+            "column_name": "id",
+            "description": "Primary key",
+            "expression": None,
+            "extra": "{}",
+            "filterable": False,
+            "groupby": False,
+            "id": 2,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": "id",
+        },
+    ]
+
+    result = compute_columns_metadata(
+        model_columns,
+        dataset_columns,
+        True,
+        False,
+        column_defaults=default_column_config,
+    )
+    assert result == expected
+
+    result = compute_columns_metadata(
+        model_columns,
+        dataset_columns,
+        False,
+        True,
+        column_defaults=default_column_config,
+    )
     assert result == expected
 
 
