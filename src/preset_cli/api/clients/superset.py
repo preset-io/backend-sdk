@@ -701,11 +701,29 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         return self.get_resources("security/users", "id", **kwargs)
 
+    def get_report(self, report_id: int) -> Any:
+        """
+        Return a single report.
+        """
+        return self.get_resource("report", report_id)
+
     def get_reports(self, **kwargs: str) -> List[Any]:
         """
         Return reports, possibly filtered.
         """
         return self.get_resources("report", **kwargs)
+
+    def create_report(self, **kwargs: Any) -> Any:
+        """
+        Create a report.
+        """
+        return self.create_resource("report", **kwargs)
+
+    def update_report(self, report_id: int, **kwargs: Any) -> Any:
+        """
+        Update a report.
+        """
+        return self.update_resource("report", report_id, **kwargs)
 
     def export_zip(self, resource_name: str, ids: List[int]) -> BytesIO:
         """
