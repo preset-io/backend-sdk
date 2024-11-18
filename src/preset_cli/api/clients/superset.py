@@ -424,7 +424,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return resource
 
-    def get_resources(self, resource_name: str, **kwargs: Any) -> List[Any]:
+    def get_resources(self, resource_name: str, order_column: str = "changed_on_delta_humanized", **kwargs: Any) -> List[Any]:
         """
         Return one or more of a resource, possibly filtered.
         """
@@ -442,7 +442,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                         dict(col=col, opr=value.operator, value=value.value)
                         for col, value in operations.items()
                     ],
-                    "order_column": "changed_on_delta_humanized",
+                    "order_column": order_column,
                     "order_direction": "desc",
                     "page": page,
                     "page_size": MAX_PAGE_SIZE,
@@ -694,6 +694,36 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Update a dashboard.
         """
         return self.update_resource("dashboard", dashboard_id, **kwargs)
+
+    def get_users(self, **kwargs: str) -> List[Any]:
+        """
+        Return users, possibly filtered.
+        """
+        return self.get_resources("security/users", "id", **kwargs)
+
+    def get_report(self, report_id: int) -> Any:
+        """
+        Return a single report.
+        """
+        return self.get_resource("report", report_id)
+
+    def get_reports(self, **kwargs: str) -> List[Any]:
+        """
+        Return reports, possibly filtered.
+        """
+        return self.get_resources("report", **kwargs)
+
+    def create_report(self, **kwargs: Any) -> Any:
+        """
+        Create a report.
+        """
+        return self.create_resource("report", **kwargs)
+
+    def update_report(self, report_id: int, **kwargs: Any) -> Any:
+        """
+        Update a report.
+        """
+        return self.update_resource("report", report_id, **kwargs)
 
     def export_zip(self, resource_name: str, ids: List[int]) -> BytesIO:
         """
