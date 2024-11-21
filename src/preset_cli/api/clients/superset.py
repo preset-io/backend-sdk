@@ -671,6 +671,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         return self.get_resources("chart", **kwargs)
 
+    def update_chart(self, chart_id: int, **kwargs: Any) -> Any:
+        """
+        Update a chart.
+        """
+        return self.update_resource("chart", chart_id, **kwargs)
+
     def get_dashboard(self, dashboard_id: int) -> Any:
         """
         Return a single dashboard.
