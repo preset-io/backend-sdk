@@ -499,6 +499,19 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return resource
 
+    def delete_resource(
+        self,
+        resource_name: str,
+        resource_id: int
+    ):
+        """
+        Delete a resource.
+        """
+        url = self.baseurl / "api/v1" / resource_name / str(resource_id)
+
+        response = self.session.delete(url)
+        validate_response(response)
+
     def get_resource_endpoint_info(self, resource_name: str, **kwargs: Any) -> Any:
         """
         Get resource endpoint info (such as available columns) possibly filtered.
@@ -677,6 +690,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         return self.update_resource("chart", chart_id, **kwargs)
 
+    def delete_chart(self, chart_id):
+        """
+        delete a chart.
+        """
+        self.delete_resource("chart", chart_id)
+
     def get_dashboard(self, dashboard_id: int) -> Any:
         """
         Return a single dashboard.
@@ -700,6 +719,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Update a dashboard.
         """
         return self.update_resource("dashboard", dashboard_id, **kwargs)
+
+    def delete_dashboard(self, dashboard_id: int) -> Any:
+        """
+        Delete a dashboard.
+        """
+        self.delete_resource("dashboard", dashboard_id)
 
     def get_users(self, **kwargs: str) -> List[Any]:
         """
