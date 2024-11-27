@@ -1251,6 +1251,7 @@ def test_replace_metric_syntax() -> None:
             },
         ),
     }
+
     result = replace_metric_syntax(sql, ["revenue", "cost"], metrics)
     assert (
         result

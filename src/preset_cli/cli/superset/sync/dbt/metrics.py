@@ -300,8 +300,8 @@ def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
     )
 
     # replace aliases with their original expressions
-    for node, _, _ in metric_expression.walk():
-        if isinstance(node, Identifier) and node.sql() in aliases:
+    for node in metric_expression.find_all(Identifier):
+        if node.sql() in aliases:
             node.replace(parse_one(aliases[node.sql()]))
 
     # convert WHERE predicate to a CASE statement
@@ -310,13 +310,12 @@ def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
 
         # Remove DISTINCT from metric to avoid conficting with CASE
         distinct = False
-        for node, _, _ in metric_expression.this.walk():
-            if isinstance(node, Distinct):
-                distinct = True
-                node.replace(node.expressions[0])
+        for node in metric_expression.find_all(Distinct):
+            distinct = True
+            node.replace(node.expressions[0])
 
-        for node, _, _ in where_expression.walk():
-            if isinstance(node, Identifier) and node.sql() in aliases:
+        for node in where_expression.find_all(Identifier):
+            if node.sql() in aliases:
                 node.replace(parse_one(aliases[node.sql()]))
 
         case_expression = Case(
