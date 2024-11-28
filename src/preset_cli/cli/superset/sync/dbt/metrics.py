@@ -10,7 +10,6 @@ import json
 import logging
 import re
 from collections import defaultdict
-from copy import deepcopy
 
 from sqlglot.tokens import Token
 from typing import Dict, List, Optional, Set
