@@ -125,30 +125,28 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, OGMetricSchema]) 
 def replace_jinja_tokens(tokens: List[Token]) -> List[Token]:
     """
     Replaces Jinja-style `{{` and `}}` as block start/end.
-
     Args:
         tokens (List[Token]): List of tokens to process.
-
     Returns:
         List[Token]: List of tokens with Jinja blocks replaced.
     """
+    def merge_tokens(i: int, token_type: TokenType) -> Token:
+        token = tokens[i]
+        token.text += tokens[i + 1].text
+        token.token_type = token_type
+        return token
+
     merged_tokens = []
     i = 0
 
     while i < len(tokens):
         if i < len(tokens) - 1:
             if tokens[i].token_type == TokenType.L_BRACE and tokens[i + 1].token_type == TokenType.L_BRACE:
-                block_start = tokens[i]
-                block_start.text += tokens[i + 1].text
-                block_start.token_type = TokenType.BLOCK_START
-                merged_tokens.append(block_start)
+                merged_tokens.append(merge_tokens(i, TokenType.BLOCK_START))
                 i += 2
                 continue
             if tokens[i].token_type == TokenType.R_BRACE and tokens[i + 1].token_type == TokenType.R_BRACE:
-                block_end = tokens[i]
-                block_end.text += tokens[i + 1].text
-                block_end.token_type = TokenType.BLOCK_END
-                merged_tokens.append(block_end)
+                merged_tokens.append(merge_tokens(i, TokenType.BLOCK_END))
                 i += 2
                 continue
 
