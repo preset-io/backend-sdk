@@ -7,7 +7,9 @@ Tests for metrics.
 from typing import Dict
 
 import pytest
+import sqlglot
 from pytest_mock import MockerFixture
+from sqlglot import TokenType
 
 from preset_cli.api.clients.dbt import (
     MFMetricWithSQLSchema,
@@ -23,7 +25,7 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_metrics_for_model,
     get_models_from_sql,
     get_superset_metrics_per_model,
-    replace_metric_syntax,
+    replace_metric_syntax, replace_jinja_tokens,
 )
 
 
@@ -1257,3 +1259,18 @@ def test_replace_metric_syntax() -> None:
         result
         == "SUM({{ url_param['aggreagtor'] }}) - SUM({{ filter_values['test'] }})"
     )
+
+def test_replace_jinja_tokens():
+    sql = "SELECT {{ url_param }}"
+    dialect = sqlglot.Dialect.get_or_raise('postgres')
+    tokens = replace_jinja_tokens(dialect.tokenize(sql))
+    result = [(token.token_type, token.text) for token in tokens]
+
+    expected_tokens = [
+        (TokenType.SELECT, 'SELECT'),
+        (TokenType.BLOCK_START, '{{'),
+        (TokenType.VAR, 'url_param'),
+        (TokenType.BLOCK_END, '}}'),
+    ]
+
+    assert result == expected_tokens
