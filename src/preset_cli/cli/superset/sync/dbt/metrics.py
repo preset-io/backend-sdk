@@ -145,7 +145,7 @@ def replace_jinja_tokens(tokens: List[Token]) -> List[Token]:
                 merged_tokens.append(merge_tokens(i, TokenType.BLOCK_START))
                 i += 2
                 continue
-            if tokens[i].token_type == TokenType.R_BRACE and tokens[i + 1].token_type == TokenType.R_BRACE:
+            elif tokens[i].token_type == TokenType.R_BRACE and tokens[i + 1].token_type == TokenType.R_BRACE:
                 merged_tokens.append(merge_tokens(i, TokenType.BLOCK_END))
                 i += 2
                 continue
