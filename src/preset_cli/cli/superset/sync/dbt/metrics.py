@@ -10,12 +10,10 @@ import json
 import logging
 import re
 from collections import defaultdict
-
-from sqlglot.tokens import Token
 from typing import Dict, List, Optional, Set
 
 import sqlglot
-from sqlglot import Expression, ParseError, exp, parse_one, TokenType
+from sqlglot import Expression, ParseError, TokenType, exp, parse_one
 from sqlglot.expressions import (
     Alias,
     Case,
@@ -28,6 +26,7 @@ from sqlglot.expressions import (
     Where,
 )
 from sqlglot.optimizer import traverse_scope
+from sqlglot.tokens import Token
 
 from preset_cli.api.clients.dbt import (
     FilterSchema,
@@ -146,12 +145,22 @@ def replace_jinja_tokens(tokens: List[Token]) -> List[Token]:
 
     while i < len(tokens):
         if i < len(tokens) - 1:
-            if tokens[i].token_type == TokenType.L_BRACE and tokens[i + 1].token_type == TokenType.L_BRACE:
-                merged_tokens.append(merge_tokens(tokens[i], tokens[i + 1], TokenType.BLOCK_START))
+            if (
+                tokens[i].token_type == TokenType.L_BRACE
+                and tokens[i + 1].token_type == TokenType.L_BRACE
+            ):
+                merged_tokens.append(
+                    merge_tokens(tokens[i], tokens[i + 1], TokenType.BLOCK_START),
+                )
                 i += 2
                 continue
-            elif tokens[i].token_type == TokenType.R_BRACE and tokens[i + 1].token_type == TokenType.R_BRACE:
-                merged_tokens.append(merge_tokens(tokens[i], tokens[i + 1], TokenType.BLOCK_END))
+            elif (
+                tokens[i].token_type == TokenType.R_BRACE
+                and tokens[i + 1].token_type == TokenType.R_BRACE
+            ):
+                merged_tokens.append(
+                    merge_tokens(tokens[i], tokens[i + 1], TokenType.BLOCK_END),
+                )
                 i += 2
                 continue
 

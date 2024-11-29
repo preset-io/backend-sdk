@@ -17,10 +17,12 @@ def test_username_password_auth(requests_mock: Mocker) -> None:
     access_token = "ACCESS_TOKEN"
     requests_mock.get(
         "https://superset.example.org/api/v1/security/csrf_token/",
-        json={'result': csrf_token},
+        json={"result": csrf_token},
     )
-    requests_mock.post("https://superset.example.org/api/v1/security/login",
-                       json={'access_token': access_token})
+    requests_mock.post(
+        "https://superset.example.org/api/v1/security/login",
+        json={"access_token": access_token},
+    )
 
     auth = UsernamePasswordAuth(
         URL("https://superset.example.org/"),
@@ -39,10 +41,12 @@ def test_username_password_auth_no_csrf(requests_mock: Mocker) -> None:
     access_token = "ACCESS_TOKEN"
     requests_mock.get(
         "https://superset.example.org/api/v1/security/csrf_token/",
-        json={'result': None},
+        json={"result": None},
     )
-    requests_mock.post("https://superset.example.org/api/v1/security/login",
-                       json={'access_token': access_token})
+    requests_mock.post(
+        "https://superset.example.org/api/v1/security/login",
+        json={"access_token": access_token},
+    )
 
     auth = UsernamePasswordAuth(
         URL("https://superset.example.org/"),
@@ -51,6 +55,7 @@ def test_username_password_auth_no_csrf(requests_mock: Mocker) -> None:
     )
     # pylint: disable=use-implicit-booleaness-not-comparison
     assert auth.get_headers() == {}
+
 
 def test_jwt_auth_superset(mocker: MockerFixture) -> None:
     """

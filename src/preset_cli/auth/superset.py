@@ -28,7 +28,11 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         return {"X-CSRFToken": self.csrf_token} if self.csrf_token else {}
 
     def get_access_token(self):
-        body = {"username": self.username, "password": self.password, "provider": "ldap"}
+        body = {
+            "username": self.username,
+            "password": self.password,
+            "provider": "ldap",
+        }
         if "Referer" in self.session.headers:
             del self.session.headers["Referer"]
         response = self.session.post(self.baseurl / "api/v1/security/login", json=body)
@@ -49,7 +53,9 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
 
         if csrf_token:
             self.session.headers["X-CSRFToken"] = csrf_token
-            self.session.headers["Referer"] = str(self.baseurl / "api/v1/security/csrf_token/")
+            self.session.headers["Referer"] = str(
+                self.baseurl / "api/v1/security/csrf_token/",
+            )
             self.csrf_token = csrf_token
 
 

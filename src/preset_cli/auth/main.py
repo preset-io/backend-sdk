@@ -10,6 +10,7 @@ from urllib3.util import Retry
 
 _logger = logging.getLogger(__name__)
 
+
 class Auth:  # pylint: disable=too-few-public-methods
     """
     An authentication/authorization mechanism.
@@ -47,7 +48,7 @@ class Auth:  # pylint: disable=too-few-public-methods
         if r.status_code != 401:
             return r
 
-        _logger.info('Token expired. Re-authenticating...')
+        _logger.info("Token expired. Re-authenticating...")
 
         try:
             self.auth()

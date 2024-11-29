@@ -424,7 +424,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return resource
 
-    def get_resources(self, resource_name: str, order_column: str = "changed_on_delta_humanized", **kwargs: Any) -> List[Any]:
+    def get_resources(
+        self,
+        resource_name: str,
+        order_column: str = "changed_on_delta_humanized",
+        **kwargs: Any,
+    ) -> List[Any]:
         """
         Return one or more of a resource, possibly filtered.
         """
@@ -499,11 +504,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return resource
 
-    def delete_resource(
-        self,
-        resource_name: str,
-        resource_id: int
-    ):
+    def delete_resource(self, resource_name: str, resource_id: int):
         """
         Delete a resource.
         """
