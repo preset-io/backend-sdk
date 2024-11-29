@@ -40,7 +40,7 @@ rich==12.3.0
 six==1.16.0
 soupsieve==2.3.2.post1
 sqlalchemy==1.4.35
-sqlglot==20.7.1
+sqlglot==25.24.5
 tabulate==0.8.9
 typing-extensions==4.2.0
 urllib3==1.26.9
