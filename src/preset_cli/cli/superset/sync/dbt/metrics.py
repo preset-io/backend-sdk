@@ -52,7 +52,7 @@ DIALECT_MAP = {
 }
 
 
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals,too-many-branches
 def get_metric_expression(metric_name: str, metrics: Dict[str, OGMetricSchema]) -> str:
     """
     Return a SQL expression for a given dbt metric using sqlglot.
