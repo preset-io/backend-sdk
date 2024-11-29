@@ -154,7 +154,7 @@ def replace_jinja_tokens(tokens: List[Token]) -> List[Token]:
                 )
                 i += 2
                 continue
-            elif (
+            if (
                 tokens[i].token_type == TokenType.R_BRACE
                 and tokens[i + 1].token_type == TokenType.R_BRACE
             ):
