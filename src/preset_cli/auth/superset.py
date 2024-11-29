@@ -15,13 +15,14 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
     Auth to Superset via username/password.
     """
 
-    def __init__(self, baseurl: URL, username: str, password: Optional[str] = None):
+    def __init__(self, baseurl: URL, username: str, password: Optional[str] = None, provider: Optional[str] = None):
         super().__init__()
 
         self.csrf_token: Optional[str] = None
         self.baseurl = baseurl
         self.username = username
         self.password = password
+        self.provider = provider or "ldap"
         self.auth()
 
     def get_headers(self) -> Dict[str, str]:
@@ -34,7 +35,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         body = {
             "username": self.username,
             "password": self.password,
-            "provider": "ldap",
+            "provider": self.provider,
         }
         if "Referer" in self.session.headers:
             del self.session.headers["Referer"]
