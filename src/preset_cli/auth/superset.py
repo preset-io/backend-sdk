@@ -28,6 +28,9 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         return {"X-CSRFToken": self.csrf_token} if self.csrf_token else {}
 
     def get_access_token(self):
+        """
+        Get an access token from superset API: api/v1/security/login.
+        """
         body = {
             "username": self.username,
             "password": self.password,
@@ -40,6 +43,9 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         return response.json()["access_token"]
 
     def get_csrf_token(self):
+        """
+        Get a CSRF token from superset API: api/v1/security/csrf_token .
+        """
         response = self.session.get(self.baseurl / "api/v1/security/csrf_token/")
         response.raise_for_status()
         return response.json()["result"]

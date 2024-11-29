@@ -1263,6 +1263,9 @@ def test_replace_metric_syntax() -> None:
 
 
 def test_replace_jinja_tokens():
+    """
+    Test the ``replace_jinja_tokens`` method.
+    """
     sql = "SELECT {{ url_param }}"
     dialect = sqlglot.Dialect.get_or_raise("postgres")
     tokens = replace_jinja_tokens(dialect.tokenize(sql))
