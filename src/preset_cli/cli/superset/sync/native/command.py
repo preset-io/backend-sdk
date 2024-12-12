@@ -2,6 +2,8 @@
 A command to sync Superset exports into a Superset instance.
 """
 
+from __future__ import annotations
+
 import getpass
 import importlib.util
 import json
@@ -202,6 +204,13 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     help="Split imports into individual assets",
 )
 @click.option(
+    "--continue-on-error",
+    "-c",
+    is_flag=True,
+    default=False,
+    help="Continue the import if an asset fails to import. Should be used with --split",
+)
+@click.option(
     "--asset-type",
     type=click.Choice([rt.resource_name for rt in ResourceType], case_sensitive=False),
     callback=normalize_to_enum,
@@ -221,6 +230,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     external_url_prefix: str = "",
     load_env: bool = False,
     split: bool = False,
+    continue_on_error: bool = False,
     asset_type: Optional[ResourceType] = None,
 ) -> None:
     """
@@ -297,16 +307,17 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
             configs["bundle" / relative_path] = config
 
     if split:
-        import_resources_individually(configs, client, overwrite)
+        import_resources_individually(configs, client, overwrite, continue_on_error)
     else:
         contents = {str(k): yaml.dump(v) for k, v in configs.items()}
         import_resources(contents, client, overwrite, asset_type=asset_type)
 
 
-def import_resources_individually(
+def import_resources_individually(  # pylint: disable=too-many-locals
     configs: Dict[Path, AssetConfig],
     client: SupersetClient,
     overwrite: bool,
+    continue_on_error: bool = False,
 ) -> None:
     """
     Import contents individually.
@@ -314,42 +325,67 @@ def import_resources_individually(
     This will first import all the databases, then import each dataset (together with the
     database info, since it's needed), then charts, and so on. It helps troubleshoot
     problematic exports and large imports.
-    """
-    # store progress in case the import stops midway
-    checkpoint_path = Path("checkpoint.log")
-    if not checkpoint_path.exists():
-        checkpoint_path.touch()
 
-    with open(checkpoint_path, "r+", encoding="utf-8") as log:
-        imported = {Path(path.strip()) for path in log.readlines()}
-        asset_configs: Dict[Path, AssetConfig]
-        imports = [
-            ("databases", lambda config: []),
-            ("datasets", lambda config: [config["database_uuid"]]),
-            ("charts", lambda config: [config["dataset_uuid"]]),
-            ("dashboards", get_dashboard_related_uuids),
-        ]
-        related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
+    By default, the import logs all assets imported correctly to a checkpoint file so that
+    if one fails, a future import continues from where it's left. If ``continue_on_error``
+    is set to True, then only failures are logged to the file, and the import continues.
+    """
+    imports = [
+        ("databases", lambda config: []),
+        ("datasets", lambda config: [config["database_uuid"]]),
+        ("charts", lambda config: [config["dataset_uuid"]]),
+        ("dashboards", get_dashboard_related_uuids),
+    ]
+    asset_configs: Dict[Path, AssetConfig]
+    related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
+
+    file_path = Path("checkpoint.log" if not continue_on_error else "failures.log")
+    if not file_path.exists():
+        file_path.touch()
+
+    with open(file_path, "r+", encoding="utf-8") as log:
+        assets_to_skip = {Path(path.strip()) for path in log.readlines()}
+
         for resource_name, get_related_uuids in imports:
             for path, config in configs.items():
-                if path.parts[1] != resource_name:
+                if path.parts[1] != resource_name or path in assets_to_skip:
                     continue
 
                 asset_configs = {path: config}
-                for uuid in get_related_uuids(config):
-                    asset_configs.update(related_configs[uuid])
-
                 _logger.info("Importing %s", path.relative_to("bundle"))
-                contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                if path not in imported:
+
+                try:
+                    for uuid in get_related_uuids(config):
+                        asset_configs.update(related_configs[uuid])
+                    contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
                     import_resources(contents, client, overwrite)
-                    imported.add(path)
-                    log.write(str(path) + "\n")
-                    log.flush()
+                except Exception:  # pylint: disable=broad-except
+                    if not continue_on_error:
+                        raise
+
+                    add_path_to_log(log, path, assets_to_skip)
+                    continue
+
+                if not continue_on_error:
+                    add_path_to_log(log, path, assets_to_skip)
 
                 related_configs[config["uuid"]] = asset_configs
 
-    os.unlink(checkpoint_path)
+    if not continue_on_error:
+        os.unlink(file_path)
+
+
+def add_path_to_log(
+    log_file: Any,
+    log_entry: Path,
+    set_: Set[Path],
+) -> None:
+    """
+    Adds a log entry to the log file and a set.
+    """
+    set_.add(log_entry)
+    log_file.write(str(log_entry) + "\n")
+    log_file.flush()
 
 
 def get_dashboard_related_uuids(config: AssetConfig) -> Iterator[str]:
