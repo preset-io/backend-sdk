@@ -1417,6 +1417,36 @@ def test_import_resources_individually_continue(
         continue_on_error=True,
     )
 
+    with open("progress.log", encoding="utf-8") as log:
+        content = yaml.load(log, Loader=yaml.SafeLoader)
+
+    assert content == {
+        "assets": [
+            {
+                "path": "bundle/databases/gsheets.yaml",
+                "uuid": "uuid1",
+                "status": "SUCCESS",
+            },
+            {
+                "path": "bundle/databases/gsheets_two.yaml",
+                "uuid": "uuid2",
+                "status": "FAILED",
+            },
+            {
+                "path": "bundle/databases/psql.yaml",
+                "uuid": "uuid3",
+                "status": "SUCCESS",
+            },
+        ],
+    }
+
+    # retry should succeed and delete the log file
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        continue_on_error=True,
+    )
     import_resources.assert_has_calls(
         [
             mocker.call(
@@ -1446,62 +1476,10 @@ def test_import_resources_individually_continue(
                 client,
                 True,
             ),
-        ],
-    )
-
-    with open("progress.log", encoding="utf-8") as log:
-        content = yaml.load(log, Loader=yaml.SafeLoader)
-
-    assert content == {
-        "assets": [
-            {
-                "path": "bundle/databases/gsheets.yaml",
-                "uuid": "uuid1",
-                "status": "SUCCESS",
-            },
-            {
-                "path": "bundle/databases/gsheets_two.yaml",
-                "uuid": "uuid2",
-                "status": "FAILED",
-            },
-            {
-                "path": "bundle/databases/psql.yaml",
-                "uuid": "uuid3",
-                "status": "SUCCESS",
-            },
-        ],
-    }
-
-    # retry without the failed asset should succeed and delete the log file
-    import_resources.mock_reset()
-    configs = {
-        Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
-        Path("bundle/databases/psql.yaml"): {
-            "name": "my other database",
-            "uuid": "uuid3",
-        },
-    }
-    import_resources_individually(
-        configs,
-        client,
-        overwrite=True,
-        continue_on_error=True,
-    )
-    import_resources.assert_has_calls(
-        [
             mocker.call(
                 {
-                    "bundle/databases/gsheets.yaml": yaml.dump(
-                        {"name": "my database", "uuid": "uuid1"},
-                    ),
-                },
-                client,
-                True,
-            ),
-            mock.call(
-                {
-                    "bundle/databases/psql.yaml": yaml.dump(
-                        {"name": "my other database", "uuid": "uuid3"},
+                    "bundle/databases/gsheets_two.yaml": yaml.dump(
+                        {"name": "other", "uuid": "uuid2"},
                     ),
                 },
                 client,
