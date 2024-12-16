@@ -43,7 +43,7 @@ def test_dbt_client_get_accounts(requests_mock: Mocker) -> None:
     Test the ``get_accounts`` method.
     """
     requests_mock.get(
-        "https://cloud.getdbt.com/api/v2/accounts/",
+        "https://cloud.getdbt.com/api/v3/accounts/",
         json={
             "status": {
                 "code": 200,
@@ -152,7 +152,7 @@ def test_dbt_client_get_accounts(requests_mock: Mocker) -> None:
     ]
 
     requests_mock.get(
-        "https://cloud.getdbt.com/api/v2/accounts/",
+        "https://cloud.getdbt.com/api/v3/accounts/",
         status_code=400,
         json={"status": {"user_message": "A wild error appears!"}},
     )
@@ -166,7 +166,7 @@ def test_dbt_client_get_projects(requests_mock: Mocker) -> None:
     Test the ``get_projects`` method.
     """
     requests_mock.get(
-        "https://cloud.getdbt.com/api/v2/accounts/72449/projects/",
+        "https://cloud.getdbt.com/api/v3/accounts/72449/projects/",
         json={
             "status": {
                 "code": 200,
@@ -773,7 +773,7 @@ def test_dbt_client_get_projects(requests_mock: Mocker) -> None:
     ]
 
     requests_mock.get(
-        "https://cloud.getdbt.com/api/v2/accounts/72449/projects/",
+        "https://cloud.getdbt.com/api/v3/accounts/72449/projects/",
         status_code=400,
         json={"status": {"user_message": "A wild error appears!"}},
     )
