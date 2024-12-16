@@ -14,7 +14,7 @@ from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, Optional, Set, Tuple
 from zipfile import ZipFile
 
 import backoff
@@ -347,9 +347,11 @@ def import_resources_individually(  # pylint: disable=too-many-locals
         file_path.touch()
 
     with open(file_path, "r", encoding="utf-8") as log_file:
-        logs = yaml.load(log_file, Loader=yaml.SafeLoader) or []
+        logs = yaml.load(log_file, Loader=yaml.SafeLoader) or {}
 
-    assets_to_skip = {Path(log["path"]) for log in logs} if logs else set()
+    assets_to_skip = (
+        {Path(log["path"]) for log in logs.get("assets", [])} if logs else set()
+    )
 
     for resource_name, get_related_uuids in imports:
         for path, config in configs.items():
@@ -376,7 +378,9 @@ def import_resources_individually(  # pylint: disable=too-many-locals
 
             related_configs[config["uuid"]] = asset_configs
 
-    if not continue_on_error or not any(log.get("status") == "FAILED" for log in logs):
+    if not continue_on_error or not any(
+        log.get("status") == "FAILED" for log in logs.get("assets", [])
+    ):
         os.unlink(file_path)
     else:
         write_logs_to_file(logs, file_path)
@@ -385,7 +389,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
 def add_asset_to_log(
     asset_path: Path,
     asset_uuid: str,
-    logs: List[Dict[str, Any]],
+    logs: Dict[str, Any],
     set_: Set[Path],
     status: str,
 ) -> None:
@@ -397,11 +401,13 @@ def add_asset_to_log(
         "status": status,
         "uuid": asset_uuid,
     }
-    logs.append(log_entry)
+    if "assets" not in logs:
+        logs["assets"] = []
+    logs["assets"].append(log_entry)
     set_.add(asset_path)
 
 
-def write_logs_to_file(logs: List[Dict[str, Any]], file_path: Path) -> None:
+def write_logs_to_file(logs: Dict[str, Any], file_path: Path) -> None:
     """
     Writes logs list to .log file.
     """

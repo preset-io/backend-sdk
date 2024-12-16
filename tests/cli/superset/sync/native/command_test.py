@@ -1353,13 +1353,15 @@ def test_import_resources_individually_checkpoint(
     with open("progress.log", encoding="utf-8") as log:
         content = yaml.load(log, Loader=yaml.SafeLoader)
 
-    assert content == [
-        {
-            "path": "bundle/databases/gsheets.yaml",
-            "uuid": "uuid1",
-            "status": "SUCCESS",
-        },
-    ]
+    assert content == {
+        "assets": [
+            {
+                "path": "bundle/databases/gsheets.yaml",
+                "uuid": "uuid1",
+                "status": "SUCCESS",
+            },
+        ],
+    }
 
     # retry
     import_resources.mock_reset()
@@ -1451,23 +1453,25 @@ def test_import_resources_individually_continue(
     with open("progress.log", encoding="utf-8") as log:
         content = yaml.load(log, Loader=yaml.SafeLoader)
 
-    assert content == [
-        {
-            "path": "bundle/databases/gsheets.yaml",
-            "uuid": "uuid1",
-            "status": "SUCCESS",
-        },
-        {
-            "path": "bundle/databases/gsheets_two.yaml",
-            "uuid": "uuid2",
-            "status": "FAILED",
-        },
-        {
-            "path": "bundle/databases/psql.yaml",
-            "uuid": "uuid3",
-            "status": "SUCCESS",
-        },
-    ]
+    assert content == {
+        "assets": [
+            {
+                "path": "bundle/databases/gsheets.yaml",
+                "uuid": "uuid1",
+                "status": "SUCCESS",
+            },
+            {
+                "path": "bundle/databases/gsheets_two.yaml",
+                "uuid": "uuid2",
+                "status": "FAILED",
+            },
+            {
+                "path": "bundle/databases/psql.yaml",
+                "uuid": "uuid3",
+                "status": "SUCCESS",
+            },
+        ],
+    }
 
     # retry
     import_resources.mock_reset()
@@ -1732,29 +1736,48 @@ def test_add_asset_to_log() -> None:
     """
     Test the ``add_asset_to_log`` helper.
     """
-    logs = [
-        {
-            "path": "/path/to/root/first_path",
-            "status": "SUCCESS",
-            "uuid": "uuid1",
-        },
-    ]
+    logs = {
+        "assets": [
+            {
+                "path": "/path/to/root/first_path",
+                "status": "SUCCESS",
+                "uuid": "uuid1",
+            },
+        ],
+    }
     skip = {Path("/path/to/root/first_path")}
     add_asset_to_log(Path("/path/to/root/second_path"), "uuid2", logs, skip, "FAILED")
 
-    assert logs == [
-        {
-            "path": "/path/to/root/first_path",
-            "status": "SUCCESS",
-            "uuid": "uuid1",
-        },
-        {
-            "path": "/path/to/root/second_path",
-            "status": "FAILED",
-            "uuid": "uuid2",
-        },
-    ]
+    assert logs == {
+        "assets": [
+            {
+                "path": "/path/to/root/first_path",
+                "status": "SUCCESS",
+                "uuid": "uuid1",
+            },
+            {
+                "path": "/path/to/root/second_path",
+                "status": "FAILED",
+                "uuid": "uuid2",
+            },
+        ],
+    }
     assert skip == {Path("/path/to/root/first_path"), Path("/path/to/root/second_path")}
+
+    logs = {}
+    skip = set()
+    add_asset_to_log(Path("/path/to/root/third_path"), "uuid3", logs, skip, "SUCCESS")
+
+    assert logs == {
+        "assets": [
+            {
+                "path": "/path/to/root/third_path",
+                "status": "SUCCESS",
+                "uuid": "uuid3",
+            },
+        ],
+    }
+    assert skip == {Path("/path/to/root/third_path")}
 
 
 def test_write_logs_to_file(fs: FakeFilesystem) -> None:
@@ -1766,28 +1789,32 @@ def test_write_logs_to_file(fs: FakeFilesystem) -> None:
     fs.create_file(
         root / "progress.log",
         contents=yaml.dump(
-            [
-                {
-                    "path": "/path/to/root/first_path",
-                    "status": "SUCCESS",
-                    "uuid": "uuid1",
-                },
-            ],
+            {
+                "assets": [
+                    {
+                        "path": "/path/to/root/first_path",
+                        "status": "SUCCESS",
+                        "uuid": "uuid1",
+                    },
+                ],
+            },
         ),
     )
 
-    new_logs = [
-        {
-            "path": "/path/to/root/second_path",
-            "status": "SUCCESS",
-            "uuid": "uuid2",
-        },
-        {
-            "path": "/path/to/root/third_path",
-            "status": "SUCCESS",
-            "uuid": "uuid3",
-        },
-    ]
+    new_logs = {
+        "assets": [
+            {
+                "path": "/path/to/root/second_path",
+                "status": "SUCCESS",
+                "uuid": "uuid2",
+            },
+            {
+                "path": "/path/to/root/third_path",
+                "status": "SUCCESS",
+                "uuid": "uuid3",
+            },
+        ],
+    }
 
     write_logs_to_file(new_logs, root / "progress.log")
 
