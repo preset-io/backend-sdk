@@ -5,6 +5,7 @@ Tests for the native import command.
 # pylint: disable=redefined-outer-name, invalid-name, too-many-lines
 
 import json
+import os
 from pathlib import Path
 from typing import List
 from unittest import mock
@@ -23,13 +24,14 @@ from sqlalchemy.engine.url import URL
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     ResourceType,
-    add_path_to_log,
+    add_asset_to_log,
     import_resources,
     import_resources_individually,
     load_user_modules,
     prompt_for_passwords,
     raise_helper,
     verify_db_connectivity,
+    write_logs_to_file,
 )
 from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
 
@@ -1223,6 +1225,50 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
     )
 
 
+def test_native_continue_without_split(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``native`` command with split imports and the continue flag.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "1",
+    }
+
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+    import_resources_individually = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources_individually",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--continue-on-error",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    import_resources_individually.assert_called()
+
+
 def test_import_resources_individually_retries(
     mocker: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -1304,8 +1350,16 @@ def test_import_resources_individually_checkpoint(
         ],
     )
 
-    with open("checkpoint.log", encoding="utf-8") as log:
-        assert log.read() == "bundle/databases/gsheets.yaml\n"
+    with open("progress.log", encoding="utf-8") as log:
+        content = yaml.load(log, Loader=yaml.SafeLoader)
+
+    assert content == [
+        {
+            "path": "bundle/databases/gsheets.yaml",
+            "uuid": "uuid1",
+            "status": "SUCCESS",
+        },
+    ]
 
     # retry
     import_resources.mock_reset()
@@ -1324,7 +1378,7 @@ def test_import_resources_individually_checkpoint(
         ],
     )
 
-    assert not Path("checkpoint.log").exists()
+    assert not Path("progress.log").exists()
 
 
 def test_import_resources_individually_continue(
@@ -1354,7 +1408,7 @@ def test_import_resources_individually_continue(
         None,
     ]
 
-    assert not Path("failures.log").exists()
+    assert not Path("progress.log").exists()
     import_resources_individually(
         configs,
         client,
@@ -1394,11 +1448,37 @@ def test_import_resources_individually_continue(
         ],
     )
 
-    with open("failures.log", encoding="utf-8") as log:
-        assert log.read() == "bundle/databases/gsheets_two.yaml\n"
+    with open("progress.log", encoding="utf-8") as log:
+        content = yaml.load(log, Loader=yaml.SafeLoader)
+
+    assert content == [
+        {
+            "path": "bundle/databases/gsheets.yaml",
+            "uuid": "uuid1",
+            "status": "SUCCESS",
+        },
+        {
+            "path": "bundle/databases/gsheets_two.yaml",
+            "uuid": "uuid2",
+            "status": "FAILED",
+        },
+        {
+            "path": "bundle/databases/psql.yaml",
+            "uuid": "uuid3",
+            "status": "SUCCESS",
+        },
+    ]
 
     # retry
     import_resources.mock_reset()
+    configs = {
+        Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
+        Path("bundle/databases/psql.yaml"): {
+            "name": "my other database",
+            "uuid": "uuid3",
+        },
+    }
+    os.unlink("progress.log")
     import_resources_individually(
         configs,
         client,
@@ -1427,6 +1507,7 @@ def test_import_resources_individually_continue(
             ),
         ],
     )
+    assert not Path("progress.log").exists()
 
 
 def test_sync_native_jinja_templating_disabled(
@@ -1647,22 +1728,70 @@ def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) ->
     assert "Invalid value for '--asset-type'" in result.output
 
 
-def test_add_path_to_log(fs: FakeFilesystem) -> None:
+def test_add_asset_to_log() -> None:
     """
-    Test the ``add_path_to_log`` helper when providing a set.
+    Test the ``add_asset_to_log`` helper.
+    """
+    logs = [
+        {
+            "path": "/path/to/root/first_path",
+            "status": "SUCCESS",
+            "uuid": "uuid1",
+        },
+    ]
+    skip = {Path("/path/to/root/first_path")}
+    add_asset_to_log(Path("/path/to/root/second_path"), "uuid2", logs, skip, "FAILED")
+
+    assert logs == [
+        {
+            "path": "/path/to/root/first_path",
+            "status": "SUCCESS",
+            "uuid": "uuid1",
+        },
+        {
+            "path": "/path/to/root/second_path",
+            "status": "FAILED",
+            "uuid": "uuid2",
+        },
+    ]
+    assert skip == {Path("/path/to/root/first_path"), Path("/path/to/root/second_path")}
+
+
+def test_write_logs_to_file(fs: FakeFilesystem) -> None:
+    """
+    Test the ``write_logs_to_file`` helper.
     """
     root = Path("/path/to/root")
     fs.create_dir(root)
     fs.create_file(
-        root / "checkpoint.log",
-        contents="/path/to/root/first_path\n",
+        root / "progress.log",
+        contents=yaml.dump(
+            [
+                {
+                    "path": "/path/to/root/first_path",
+                    "status": "SUCCESS",
+                    "uuid": "uuid1",
+                },
+            ],
+        ),
     )
-    test_set = {root / "first_path"}
 
-    with open(root / "checkpoint.log", "r+", encoding="utf-8") as file:
-        assert file.read() == "/path/to/root/first_path\n"
-        add_path_to_log(file, root / "second_path", test_set)
+    new_logs = [
+        {
+            "path": "/path/to/root/second_path",
+            "status": "SUCCESS",
+            "uuid": "uuid2",
+        },
+        {
+            "path": "/path/to/root/third_path",
+            "status": "SUCCESS",
+            "uuid": "uuid3",
+        },
+    ]
 
-    with open(root / "checkpoint.log", encoding="utf-8") as file:
-        assert file.read() == ("/path/to/root/first_path\n/path/to/root/second_path\n")
-    assert test_set == {root / "first_path", root / "second_path"}
+    write_logs_to_file(new_logs, root / "progress.log")
+
+    with open(root / "progress.log", encoding="utf-8") as file:
+        content = yaml.load(file, Loader=yaml.SafeLoader)
+
+    assert content == new_logs

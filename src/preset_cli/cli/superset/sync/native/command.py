@@ -14,7 +14,7 @@ from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 from zipfile import ZipFile
 
 import backoff
@@ -208,7 +208,7 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     "-c",
     is_flag=True,
     default=False,
-    help="Continue the import if an asset fails to import. Should be used with --split",
+    help="Continue the import if an asset fails to import (imports assets individually)",
 )
 @click.option(
     "--asset-type",
@@ -241,6 +241,9 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     client = SupersetClient(url, auth)
     root = Path(directory)
     base_url = URL(external_url_prefix) if external_url_prefix else None
+
+    # The ``--continune-on-error`` flag should force the split option
+    split = split or continue_on_error
 
     # collecting existing database UUIDs so we know if we're creating or updating
     # newer versions expose the DB UUID in the API response,
@@ -339,53 +342,71 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     asset_configs: Dict[Path, AssetConfig]
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
 
-    file_path = Path("checkpoint.log" if not continue_on_error else "failures.log")
+    file_path = Path("progress.log")
     if not file_path.exists():
         file_path.touch()
 
-    with open(file_path, "r+", encoding="utf-8") as log:
-        assets_to_skip = {Path(path.strip()) for path in log.readlines()}
+    with open(file_path, "r", encoding="utf-8") as log_file:
+        logs = yaml.load(log_file, Loader=yaml.SafeLoader) or []
 
-        for resource_name, get_related_uuids in imports:
-            for path, config in configs.items():
-                if path.parts[1] != resource_name or path in assets_to_skip:
-                    continue
+    assets_to_skip = {Path(log["path"]) for log in logs} if logs else set()
 
-                asset_configs = {path: config}
-                _logger.info("Importing %s", path.relative_to("bundle"))
+    for resource_name, get_related_uuids in imports:
+        for path, config in configs.items():
+            if path.parts[1] != resource_name or path in assets_to_skip:
+                continue
 
-                try:
-                    for uuid in get_related_uuids(config):
-                        asset_configs.update(related_configs[uuid])
-                    contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                    import_resources(contents, client, overwrite)
-                except Exception:  # pylint: disable=broad-except
-                    if not continue_on_error:
-                        raise
+            asset_configs = {path: config}
+            _logger.info("Importing %s", path.relative_to("bundle"))
 
-                    add_path_to_log(log, path, assets_to_skip)
-                    continue
-
+            try:
+                for uuid in get_related_uuids(config):
+                    asset_configs.update(related_configs[uuid])
+                contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
+                import_resources(contents, client, overwrite)
+            except Exception:  # pylint: disable=broad-except
                 if not continue_on_error:
-                    add_path_to_log(log, path, assets_to_skip)
+                    write_logs_to_file(logs, file_path)
+                    raise
 
-                related_configs[config["uuid"]] = asset_configs
+                add_asset_to_log(path, config["uuid"], logs, assets_to_skip, "FAILED")
+                continue
 
-    if not continue_on_error:
+            add_asset_to_log(path, config["uuid"], logs, assets_to_skip, "SUCCESS")
+
+            related_configs[config["uuid"]] = asset_configs
+
+    if not continue_on_error or not any(log.get("status") == "FAILED" for log in logs):
         os.unlink(file_path)
+    else:
+        write_logs_to_file(logs, file_path)
 
 
-def add_path_to_log(
-    log_file: Any,
-    log_entry: Path,
+def add_asset_to_log(
+    asset_path: Path,
+    asset_uuid: str,
+    logs: List[Dict[str, Any]],
     set_: Set[Path],
+    status: str,
 ) -> None:
     """
-    Adds a log entry to the log file and a set.
+    Adds a log entry to the logs to skip future occurrences.
     """
-    set_.add(log_entry)
-    log_file.write(str(log_entry) + "\n")
-    log_file.flush()
+    log_entry = {
+        "path": str(asset_path),
+        "status": status,
+        "uuid": asset_uuid,
+    }
+    logs.append(log_entry)
+    set_.add(asset_path)
+
+
+def write_logs_to_file(logs: List[Dict[str, Any]], file_path: Path) -> None:
+    """
+    Writes logs list to .log file.
+    """
+    with open(file_path, "w", encoding="utf-8") as log_file:
+        yaml.dump(logs, log_file)
 
 
 def get_dashboard_related_uuids(config: AssetConfig) -> Iterator[str]:
