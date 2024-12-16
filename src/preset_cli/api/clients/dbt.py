@@ -423,7 +423,7 @@ class TriggerSchema(PostelSchema):
     github_webhook = fields.Boolean(required=True)
     git_provider_webhook = fields.Boolean()
     schedule = fields.Boolean(required=True)
-    custom_branch_only = fields.Boolean()
+    custom_branch_only = fields.Boolean(allow_none=True)
 
 
 class SettingsSchema(PostelSchema):
@@ -724,7 +724,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         """
         List all accounts.
         """
-        url = self.baseurl / "api/v2/accounts/"
+        url = self.baseurl / "api/v3/accounts/"
         _logger.debug("GET %s", url)
         response = self.session.get(url)
 
@@ -740,7 +740,7 @@ class DBTClient:  # pylint: disable=too-few-public-methods
         """
         List all projects.
         """
-        url = self.baseurl / "api/v2/accounts" / str(account_id) / "projects/"
+        url = self.baseurl / "api/v3/accounts" / str(account_id) / "projects/"
         _logger.debug("GET %s", url)
         response = self.session.get(url)
 
