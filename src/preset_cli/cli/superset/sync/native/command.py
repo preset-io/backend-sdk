@@ -349,9 +349,15 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     with open(file_path, "r", encoding="utf-8") as log_file:
         logs = yaml.load(log_file, Loader=yaml.SafeLoader) or {}
 
-    assets_to_skip = (
-        {Path(log["path"]) for log in logs.get("assets", [])} if logs else set()
-    )
+    # Remove FAILED logs to re-try them
+    if "assets" in logs:
+        logs["assets"] = [
+            asset for asset in logs["assets"] if asset["status"] != "FAILED"
+        ]
+    else:
+        logs["assets"] = []
+
+    assets_to_skip = {Path(log["path"]) for log in logs["assets"]} if logs else set()
 
     for resource_name, get_related_uuids in imports:
         for path, config in configs.items():
@@ -379,7 +385,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
             related_configs[config["uuid"]] = asset_configs
 
     if not continue_on_error or not any(
-        log.get("status") == "FAILED" for log in logs.get("assets", [])
+        log["status"] == "FAILED" for log in logs["assets"]
     ):
         os.unlink(file_path)
     else:

@@ -5,7 +5,6 @@ Tests for the native import command.
 # pylint: disable=redefined-outer-name, invalid-name, too-many-lines
 
 import json
-import os
 from pathlib import Path
 from typing import List
 from unittest import mock
@@ -1473,7 +1472,7 @@ def test_import_resources_individually_continue(
         ],
     }
 
-    # retry
+    # retry without the failed asset should succeed and delete the log file
     import_resources.mock_reset()
     configs = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
@@ -1482,7 +1481,6 @@ def test_import_resources_individually_continue(
             "uuid": "uuid3",
         },
     }
-    os.unlink("progress.log")
     import_resources_individually(
         configs,
         client,
