@@ -23,12 +23,14 @@ from sqlalchemy.engine.url import URL
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     ResourceType,
+    add_asset_to_log,
     import_resources,
     import_resources_individually,
     load_user_modules,
     prompt_for_passwords,
     raise_helper,
     verify_db_connectivity,
+    write_logs_to_file,
 )
 from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
 
@@ -1067,6 +1069,205 @@ def test_native_split(  # pylint: disable=too-many-locals
     )
 
 
+def test_native_split_continue(  # pylint: disable=too-many-locals
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``native`` command with split imports and the continue flag.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "1",
+    }
+    dataset_config = {
+        "table_name": "test",
+        "is_managed_externally": False,
+        "database_uuid": "1",
+        "uuid": "2",
+    }
+    chart_config = {
+        "dataset_uuid": "2",
+        "is_managed_externally": False,
+        "slice_name": "Some chart",
+        "uuid": "3",
+    }
+    dashboard_config = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {
+            "DASHBOARD_VERSION_KEY": "v2",
+            "CHART-BVI44PWH": {
+                "type": "CHART",
+                "meta": {
+                    "uuid": "3",
+                },
+            },
+        },
+        "metadata": {},
+        "uuid": "4",
+    }
+    dashboard_deleted_dataset = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {},
+        "metadata": {
+            "native_filter_configuration": [
+                {
+                    "type": "NATIVE_FILTER",
+                    "targets": [
+                        {
+                            "column": "some_column",
+                        },
+                    ],
+                },
+            ],
+        },
+        "uuid": "5",
+    }
+
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+    fs.create_file(
+        root / "datasets/gsheets/test.yaml",
+        contents=yaml.dump(dataset_config),
+    )
+    fs.create_file(
+        root / "charts/chart.yaml",
+        contents=yaml.dump(chart_config),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard.yaml",
+        contents=yaml.dump(dashboard_config),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard_deleted_dataset.yaml",
+        contents=yaml.dump(dashboard_deleted_dataset),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--split",
+            "--continue-on-error",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    import_resources.assert_has_calls(
+        [
+            mock.call(
+                {
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/charts/chart.yaml": yaml.dump(chart_config),
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/dashboards/dashboard_deleted_dataset.yaml": yaml.dump(
+                        dashboard_deleted_dataset,
+                    ),
+                },
+                client,
+                False,
+            ),
+            mock.call(
+                {
+                    "bundle/dashboards/dashboard.yaml": yaml.dump(dashboard_config),
+                    "bundle/charts/chart.yaml": yaml.dump(chart_config),
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
+                    "bundle/databases/gsheets.yaml": yaml.dump(database_config),
+                },
+                client,
+                False,
+            ),
+        ],
+        any_order=True,
+    )
+
+
+def test_native_continue_without_split(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``native`` command with split imports and the continue flag.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    database_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "1",
+    }
+
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(database_config),
+    )
+    import_resources_individually = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources_individually",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--continue-on-error",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    import_resources_individually.assert_called()
+
+
 def test_import_resources_individually_retries(
     mocker: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -1148,8 +1349,18 @@ def test_import_resources_individually_checkpoint(
         ],
     )
 
-    with open("checkpoint.log", encoding="utf-8") as log:
-        assert log.read() == "bundle/databases/gsheets.yaml\n"
+    with open("progress.log", encoding="utf-8") as log:
+        content = yaml.load(log, Loader=yaml.SafeLoader)
+
+    assert content == {
+        "assets": [
+            {
+                "path": "bundle/databases/gsheets.yaml",
+                "uuid": "uuid1",
+                "status": "SUCCESS",
+            },
+        ],
+    }
 
     # retry
     import_resources.mock_reset()
@@ -1168,7 +1379,115 @@ def test_import_resources_individually_checkpoint(
         ],
     )
 
-    assert not Path("checkpoint.log").exists()
+    assert not Path("progress.log").exists()
+
+
+def test_import_resources_individually_continue(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,  # pylint: disable=unused-argument
+) -> None:
+    """
+    Test the ``import_resources_individually`` flow with ``continue_on_error``.
+    """
+    client = mocker.MagicMock()
+    configs = {
+        Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
+        Path("bundle/databases/gsheets_two.yaml"): {"name": "other", "uuid": "uuid2"},
+        Path("bundle/databases/psql.yaml"): {
+            "name": "my other database",
+            "uuid": "uuid3",
+        },
+    }
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    import_resources.side_effect = [
+        None,
+        Exception("An error occurred!"),
+        None,
+        None,
+        None,
+    ]
+
+    assert not Path("progress.log").exists()
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        continue_on_error=True,
+    )
+
+    with open("progress.log", encoding="utf-8") as log:
+        content = yaml.load(log, Loader=yaml.SafeLoader)
+
+    assert content == {
+        "assets": [
+            {
+                "path": "bundle/databases/gsheets.yaml",
+                "uuid": "uuid1",
+                "status": "SUCCESS",
+            },
+            {
+                "path": "bundle/databases/gsheets_two.yaml",
+                "uuid": "uuid2",
+                "status": "FAILED",
+            },
+            {
+                "path": "bundle/databases/psql.yaml",
+                "uuid": "uuid3",
+                "status": "SUCCESS",
+            },
+        ],
+    }
+
+    # retry should succeed and delete the log file
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        continue_on_error=True,
+    )
+    import_resources.assert_has_calls(
+        [
+            mocker.call(
+                {
+                    "bundle/databases/gsheets.yaml": yaml.dump(
+                        {"name": "my database", "uuid": "uuid1"},
+                    ),
+                },
+                client,
+                True,
+            ),
+            mocker.call(
+                {
+                    "bundle/databases/gsheets_two.yaml": yaml.dump(
+                        {"name": "other", "uuid": "uuid2"},
+                    ),
+                },
+                client,
+                True,
+            ),
+            mocker.call(
+                {
+                    "bundle/databases/psql.yaml": yaml.dump(
+                        {"name": "my other database", "uuid": "uuid3"},
+                    ),
+                },
+                client,
+                True,
+            ),
+            mocker.call(
+                {
+                    "bundle/databases/gsheets_two.yaml": yaml.dump(
+                        {"name": "other", "uuid": "uuid2"},
+                    ),
+                },
+                client,
+                True,
+            ),
+        ],
+    )
+    assert not Path("progress.log").exists()
 
 
 def test_sync_native_jinja_templating_disabled(
@@ -1387,3 +1706,95 @@ def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) ->
 
     assert result.exit_code == 2
     assert "Invalid value for '--asset-type'" in result.output
+
+
+def test_add_asset_to_log() -> None:
+    """
+    Test the ``add_asset_to_log`` helper.
+    """
+    logs = {
+        "assets": [
+            {
+                "path": "/path/to/root/first_path",
+                "status": "SUCCESS",
+                "uuid": "uuid1",
+            },
+        ],
+    }
+    skip = {Path("/path/to/root/first_path")}
+    add_asset_to_log(Path("/path/to/root/second_path"), "uuid2", logs, skip, "FAILED")
+
+    assert logs == {
+        "assets": [
+            {
+                "path": "/path/to/root/first_path",
+                "status": "SUCCESS",
+                "uuid": "uuid1",
+            },
+            {
+                "path": "/path/to/root/second_path",
+                "status": "FAILED",
+                "uuid": "uuid2",
+            },
+        ],
+    }
+    assert skip == {Path("/path/to/root/first_path"), Path("/path/to/root/second_path")}
+
+    logs = {"assets": []}
+    skip = set()
+    add_asset_to_log(Path("/path/to/root/third_path"), "uuid3", logs, skip, "SUCCESS")
+
+    assert logs == {
+        "assets": [
+            {
+                "path": "/path/to/root/third_path",
+                "status": "SUCCESS",
+                "uuid": "uuid3",
+            },
+        ],
+    }
+    assert skip == {Path("/path/to/root/third_path")}
+
+
+def test_write_logs_to_file(fs: FakeFilesystem) -> None:
+    """
+    Test the ``write_logs_to_file`` helper.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    fs.create_file(
+        root / "progress.log",
+        contents=yaml.dump(
+            {
+                "assets": [
+                    {
+                        "path": "/path/to/root/first_path",
+                        "status": "SUCCESS",
+                        "uuid": "uuid1",
+                    },
+                ],
+            },
+        ),
+    )
+
+    new_logs = {
+        "assets": [
+            {
+                "path": "/path/to/root/second_path",
+                "status": "SUCCESS",
+                "uuid": "uuid2",
+            },
+            {
+                "path": "/path/to/root/third_path",
+                "status": "SUCCESS",
+                "uuid": "uuid3",
+            },
+        ],
+    }
+
+    write_logs_to_file(new_logs, root / "progress.log")
+
+    with open(root / "progress.log", encoding="utf-8") as file:
+        content = yaml.load(file, Loader=yaml.SafeLoader)
+
+    assert content == new_logs
