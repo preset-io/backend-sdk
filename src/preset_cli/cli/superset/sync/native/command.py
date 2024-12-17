@@ -242,7 +242,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     root = Path(directory)
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
-    # The ``--continune-on-error`` flag should force the split option
+    # The ``--continue-on-error`` flag should force the split option
     split = split or continue_on_error
 
     # collecting existing database UUIDs so we know if we're creating or updating
@@ -357,7 +357,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     else:
         logs["assets"] = []
 
-    assets_to_skip = {Path(log["path"]) for log in logs["assets"]} if logs else set()
+    assets_to_skip = {Path(log["path"]) for log in logs["assets"]}
 
     for resource_name, get_related_uuids in imports:
         for path, config in configs.items():
@@ -407,8 +407,6 @@ def add_asset_to_log(
         "status": status,
         "uuid": asset_uuid,
     }
-    if "assets" not in logs:
-        logs["assets"] = []
     logs["assets"].append(log_entry)
     set_.add(asset_path)
 
