@@ -1740,7 +1740,7 @@ def test_add_asset_to_log() -> None:
     }
     assert skip == {Path("/path/to/root/first_path"), Path("/path/to/root/second_path")}
 
-    logs = {}
+    logs = {"assets": []}
     skip = set()
     add_asset_to_log(Path("/path/to/root/third_path"), "uuid3", logs, skip, "SUCCESS")
 
