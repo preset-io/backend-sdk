@@ -23,14 +23,12 @@ from sqlalchemy.engine.url import URL
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     ResourceType,
-    add_asset_to_log,
     import_resources,
     import_resources_individually,
     load_user_modules,
     prompt_for_passwords,
     raise_helper,
     verify_db_connectivity,
-    write_logs_to_file,
 )
 from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
 
@@ -965,6 +963,7 @@ def test_native_split(  # pylint: disable=too-many-locals
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1159,6 +1158,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1310,6 +1310,7 @@ def test_import_resources_individually_checkpoint(
     Test checkpoint in ``import_resources_individually``.
     """
     client = mocker.MagicMock()
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     configs = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
         Path("bundle/databases/psql.yaml"): {
@@ -1390,6 +1391,7 @@ def test_import_resources_individually_continue(
     Test the ``import_resources_individually`` flow with ``continue_on_error``.
     """
     client = mocker.MagicMock()
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     configs = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
         Path("bundle/databases/gsheets_two.yaml"): {"name": "other", "uuid": "uuid2"},
@@ -1706,95 +1708,3 @@ def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) ->
 
     assert result.exit_code == 2
     assert "Invalid value for '--asset-type'" in result.output
-
-
-def test_add_asset_to_log() -> None:
-    """
-    Test the ``add_asset_to_log`` helper.
-    """
-    logs = {
-        "assets": [
-            {
-                "path": "/path/to/root/first_path",
-                "status": "SUCCESS",
-                "uuid": "uuid1",
-            },
-        ],
-    }
-    skip = {Path("/path/to/root/first_path")}
-    add_asset_to_log(Path("/path/to/root/second_path"), "uuid2", logs, skip, "FAILED")
-
-    assert logs == {
-        "assets": [
-            {
-                "path": "/path/to/root/first_path",
-                "status": "SUCCESS",
-                "uuid": "uuid1",
-            },
-            {
-                "path": "/path/to/root/second_path",
-                "status": "FAILED",
-                "uuid": "uuid2",
-            },
-        ],
-    }
-    assert skip == {Path("/path/to/root/first_path"), Path("/path/to/root/second_path")}
-
-    logs = {"assets": []}
-    skip = set()
-    add_asset_to_log(Path("/path/to/root/third_path"), "uuid3", logs, skip, "SUCCESS")
-
-    assert logs == {
-        "assets": [
-            {
-                "path": "/path/to/root/third_path",
-                "status": "SUCCESS",
-                "uuid": "uuid3",
-            },
-        ],
-    }
-    assert skip == {Path("/path/to/root/third_path")}
-
-
-def test_write_logs_to_file(fs: FakeFilesystem) -> None:
-    """
-    Test the ``write_logs_to_file`` helper.
-    """
-    root = Path("/path/to/root")
-    fs.create_dir(root)
-    fs.create_file(
-        root / "progress.log",
-        contents=yaml.dump(
-            {
-                "assets": [
-                    {
-                        "path": "/path/to/root/first_path",
-                        "status": "SUCCESS",
-                        "uuid": "uuid1",
-                    },
-                ],
-            },
-        ),
-    )
-
-    new_logs = {
-        "assets": [
-            {
-                "path": "/path/to/root/second_path",
-                "status": "SUCCESS",
-                "uuid": "uuid2",
-            },
-            {
-                "path": "/path/to/root/third_path",
-                "status": "SUCCESS",
-                "uuid": "uuid3",
-            },
-        ],
-    }
-
-    write_logs_to_file(new_logs, root / "progress.log")
-
-    with open(root / "progress.log", encoding="utf-8") as file:
-        content = yaml.load(file, Loader=yaml.SafeLoader)
-
-    assert content == new_logs

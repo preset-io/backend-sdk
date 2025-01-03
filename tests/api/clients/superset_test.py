@@ -3492,18 +3492,19 @@ def test_import_ownership(mocker: MockerFixture, requests_mock: Mocker) -> None:
     client = SupersetClient("https://superset.example.org/", auth)
     client.import_ownership(
         "dataset",
-        [
-            {
-                "name": "test_table",
-                "owners": ["admin@example.com", "adoe@example.com"],
-                "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
-            },
-            {
-                "name": "another_table",
-                "owners": ["admin@example.com", "adoe@example.com"],
-                "uuid": "1192072c-4bee-4535-b8ee-e9f5fc4eb6a2",
-            },
-        ],
+        {
+            "name": "test_table",
+            "owners": ["admin@example.com", "adoe@example.com"],
+            "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
+        },
+    )
+    client.import_ownership(
+        "dataset",
+        {
+            "name": "another_table",
+            "owners": ["admin@example.com", "adoe@example.com"],
+            "uuid": "1192072c-4bee-4535-b8ee-e9f5fc4eb6a2",
+        },
     )
 
     assert requests_mock.last_request.json() == {"owners": [1, 2]}
