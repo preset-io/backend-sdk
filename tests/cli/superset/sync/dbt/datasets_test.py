@@ -1981,7 +1981,7 @@ def test_compute_columns_metadata_with_calc_columns_preserve_metadata() -> None:
 def test_compute_columns_metadata_with_calc_columns_default_configs() -> None:
     """
     Test the ``compute_columns_metadata`` helper with calculated columns
-    set in dbt and sync set to merge metadata.
+    set in dbt and sync set to merge metadata with default column configs.
     """
     dbt_columns = [{"name": "id"}]
     dbt_calc_columns = [
