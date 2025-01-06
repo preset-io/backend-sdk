@@ -1788,75 +1788,6 @@ def test_dbt_core_preserve_metadata(
     )
 
 
-def test_dbt_core_preserve_columns(
-    mocker: MockerFixture,
-    fs: FakeFilesystem,
-) -> None:
-    """
-    Test the ``dbt-core`` command with ``--preserve-columns`` flag.
-    """
-    root = Path("/path/to/root")
-    fs.create_dir(root)
-    manifest = root / "default/target/manifest.json"
-    fs.create_file(manifest, contents=manifest_contents)
-    profiles = root / ".dbt/profiles.yml"
-    fs.create_file(profiles, contents=profiles_contents)
-
-    SupersetClient = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
-    )
-    client = SupersetClient()
-    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-    sync_database = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.sync_database",
-    )
-    sync_datasets = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
-        return_value=([], []),
-    )
-
-    runner = CliRunner()
-    result = runner.invoke(
-        superset_cli,
-        [
-            "https://superset.example.org/",
-            "sync",
-            "dbt-core",
-            str(manifest),
-            "--profiles",
-            str(profiles),
-            "--preserve-columns",
-            "--project",
-            "default",
-            "--target",
-            "dev",
-        ],
-        catch_exceptions=False,
-    )
-    assert result.exit_code == 0
-    sync_database.assert_called_with(
-        client,
-        profiles,
-        "default",
-        "default",
-        "dev",
-        False,
-        False,
-        "",
-    )
-
-    sync_datasets.assert_called_with(
-        client,
-        dbt_core_models,
-        superset_metrics,
-        sync_database(),
-        False,
-        "",
-        reload_columns=False,
-        merge_metadata=False,
-    )
-
-
 def test_dbt_core_merge_metadata(
     mocker: MockerFixture,
     fs: FakeFilesystem,
@@ -2372,10 +2303,7 @@ def test_dbt_core_preserve_and_merge(
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    assert (
-        "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``"
-        in result.output
-    )
+    assert "``--preserve-metadata`` and ``--merge-metadata``" in result.output
     assert "can't be combined. Please include only one to the command." in result.output
 
 
@@ -3139,62 +3067,6 @@ def test_dbt_cloud_preserve_metadata(mocker: MockerFixture) -> None:
     )
 
 
-def test_dbt_cloud_preserve_columns(mocker: MockerFixture) -> None:
-    """
-    Test the ``dbt-cloud`` command with the ``--preserve-columns`` flag.
-    """
-    SupersetClient = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
-    )
-    superset_client = SupersetClient()
-    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-    DBTClient = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
-    )
-    dbt_client = DBTClient()
-    sync_datasets = mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
-        return_value=([], []),
-    )
-    mocker.patch(
-        "preset_cli.cli.superset.sync.dbt.command.get_job",
-        return_value={"id": 123, "name": "My job", "environment_id": 456},
-    )
-
-    dbt_client.get_models.return_value = dbt_cloud_models
-    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
-    database = mocker.MagicMock()
-    superset_client.get_databases.return_value = [database]
-    superset_client.get_database.return_value = database
-
-    runner = CliRunner()
-    result = runner.invoke(
-        superset_cli,
-        [
-            "https://superset.example.org/",
-            "sync",
-            "dbt-cloud",
-            "XXX",
-            "1",
-            "2",
-            "123",
-            "--preserve-columns",
-        ],
-        catch_exceptions=False,
-    )
-    assert result.exit_code == 0
-    sync_datasets.assert_called_with(
-        superset_client,
-        dbt_cloud_models,
-        superset_metrics,
-        database,
-        False,
-        "",
-        reload_columns=False,
-        merge_metadata=False,
-    )
-
-
 def test_dbt_cloud_merge_metadata(mocker: MockerFixture) -> None:
     """
     Test the ``dbt-cloud`` command with the ``--merge-metadata`` flag.
@@ -3421,10 +3293,7 @@ def test_dbt_cloud_preserve_and_merge(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 1
-    assert (
-        "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``"
-        in result.output
-    )
+    assert "``--preserve-metadata`` and ``--merge-metadata``" in result.output
     assert "can't be combined. Please include only one to the command." in result.output
 
 
