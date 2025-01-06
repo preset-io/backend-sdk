@@ -28,6 +28,12 @@ from sqlalchemy.engine.url import make_url
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.cli.superset.lib import (
+    add_asset_to_log_dict,
+    clean_logs,
+    get_logs,
+    write_logs_to_file,
+)
 from preset_cli.exceptions import SupersetError
 from preset_cli.lib import dict_merge
 
@@ -342,12 +348,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     asset_configs: Dict[Path, AssetConfig]
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
 
-    file_path = Path("progress.log")
-    if not file_path.exists():
-        file_path.touch()
-
-    with open(file_path, "r", encoding="utf-8") as log_file:
-        logs = yaml.load(log_file, Loader=yaml.SafeLoader) or {}
+    logs = get_logs()
 
     # Remove FAILED logs to re-try them
     if "assets" in logs:
@@ -374,49 +375,36 @@ def import_resources_individually(  # pylint: disable=too-many-locals
                 import_resources(contents, client, overwrite)
             except Exception:  # pylint: disable=broad-except
                 if not continue_on_error:
-                    write_logs_to_file(logs, file_path)
+                    write_logs_to_file(logs)
                     raise
 
-                add_asset_to_log(path, config["uuid"], logs, assets_to_skip, "FAILED")
+                add_asset_to_log_dict(
+                    "assets",
+                    logs,
+                    "FAILED",
+                    config["uuid"],
+                    asset_path=path,
+                    set_=assets_to_skip,
+                )
                 continue
 
-            add_asset_to_log(path, config["uuid"], logs, assets_to_skip, "SUCCESS")
+            add_asset_to_log_dict(
+                "assets",
+                logs,
+                "SUCCESS",
+                config["uuid"],
+                asset_path=path,
+                set_=assets_to_skip,
+            )
 
             related_configs[config["uuid"]] = asset_configs
 
     if not continue_on_error or not any(
         log["status"] == "FAILED" for log in logs["assets"]
     ):
-        os.unlink(file_path)
+        clean_logs("assets", logs)
     else:
-        write_logs_to_file(logs, file_path)
-
-
-def add_asset_to_log(
-    asset_path: Path,
-    asset_uuid: str,
-    logs: Dict[str, Any],
-    set_: Set[Path],
-    status: str,
-) -> None:
-    """
-    Adds a log entry to the logs to skip future occurrences.
-    """
-    log_entry = {
-        "path": str(asset_path),
-        "status": status,
-        "uuid": asset_uuid,
-    }
-    logs["assets"].append(log_entry)
-    set_.add(asset_path)
-
-
-def write_logs_to_file(logs: Dict[str, Any], file_path: Path) -> None:
-    """
-    Writes logs list to .log file.
-    """
-    with open(file_path, "w", encoding="utf-8") as log_file:
-        yaml.dump(logs, log_file)
+        write_logs_to_file(logs)
 
 
 def get_dashboard_related_uuids(config: AssetConfig) -> Iterator[str]:

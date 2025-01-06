@@ -1180,7 +1180,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
     def import_ownership(
         self,
         resource_name: str,
-        ownership: List[Dict[str, Any]],
+        ownership: Dict[str, Any],
     ) -> None:
         """
         Import ownership on resources.
@@ -1188,11 +1188,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         user_ids = {user["email"]: user["id"] for user in self.export_users()}
         resource_ids = {str(v): k for k, v in self.get_uuids(resource_name).items()}
 
-        for item in ownership:
-            if item["uuid"] not in resource_ids:
-                continue
-            resource_id = resource_ids[item["uuid"]]
-            owner_ids = [user_ids[email] for email in item["owners"]]
+        if ownership["uuid"] in resource_ids:
+            resource_id = resource_ids[ownership["uuid"]]
+            owner_ids = [user_ids[email] for email in ownership["owners"]]
             self.update_resource(resource_name, resource_id, owners=owner_ids)
 
     def update_role(self, role_id: int, **kwargs: Any) -> None:
