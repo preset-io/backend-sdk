@@ -238,12 +238,13 @@ def compute_columns(
     return final_dataset_columns
 
 
-def compute_columns_metadata(
+def compute_columns_metadata(  # pylint: disable=too-many-branches, too-many-arguments  # noqa: C901
     dbt_columns: List[Any],
     dataset_columns: List[Any],
     reload_columns: bool,
     merge_metadata: bool,
-    column_defaults: Dict[str, Any] | None = None,
+    column_defaults: Dict[str, Any],
+    dbt_calc_columns: List[Dict[str, Any]],
 ) -> List[Any]:
     """
     Adds dbt metadata to dataset columns.
@@ -267,12 +268,34 @@ def compute_columns_metadata(
             dict_merge(final_column, dbt_metadata[column])
             dbt_metadata[column] = final_column
 
+    dbt_calc_columns_by_name = {c["column_name"]: c for c in dbt_calc_columns}
+
+    if column_defaults:
+        for column, definition in dbt_calc_columns_by_name.items():
+            final_column = copy.deepcopy(column_defaults)
+            dict_merge(final_column, definition)
+            dbt_calc_columns_by_name[column] = final_column
+    if reload_columns and dbt_calc_columns_by_name:
+        dataset_columns = [
+            column
+            for column in dataset_columns
+            if not column.get("expression")
+            or column["column_name"] in dbt_calc_columns_by_name
+        ]
+
     for column in dataset_columns:
         name = column["column_name"]
+        # regular column
         if name in dbt_metadata:
             for key, value in dbt_metadata[name].items():
                 if reload_columns or merge_metadata or not column.get(key):
                     column[key] = value
+        # calculated column
+        elif name in dbt_calc_columns_by_name:
+            for key, value in dbt_calc_columns_by_name[name].items():
+                if reload_columns or merge_metadata or not column.get(key):
+                    column[key] = value
+            del dbt_calc_columns_by_name[name]
         elif column_defaults and (reload_columns or merge_metadata):
             for key, value in column_defaults.items():
                 column[key] = value
@@ -284,6 +307,11 @@ def compute_columns_metadata(
         # https://github.com/preset-io/backend-sdk/issues/163
         if "is_active" in column and column["is_active"] is None:
             del column["is_active"]
+
+    # Add new calc columns to list
+    if dbt_calc_columns_by_name:
+        for definition in dbt_calc_columns_by_name.values():
+            dataset_columns.append(definition)
 
     return dataset_columns
 
@@ -384,6 +412,11 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
                 failed_datasets.append(model["unique_id"])
                 continue
 
+        # get calculated columns from model
+        calculated_columns = (
+            model.get("meta", {}).get("superset", {}).pop("calculated_columns", [])
+        )
+
         # compute update payload
         update = compute_dataset_metadata(
             model,
@@ -403,14 +436,16 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
             continue
 
         # update column metadata
-        if dbt_columns := model.get("columns"):
+        dbt_columns = model.get("columns")
+        if dbt_columns or calculated_columns:
             current_dataset_columns = client.get_dataset(dataset["id"])["columns"]
             dataset_columns = compute_columns_metadata(
                 dbt_columns,
                 current_dataset_columns,
                 reload_columns,
                 merge_metadata,
-                column_defaults=default_configs.get("columns", {}),
+                default_configs.get("columns", {}),
+                calculated_columns,
             )
             try:
                 client.update_dataset(

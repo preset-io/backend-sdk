@@ -383,7 +383,8 @@ def test_sync_datasets_custom_certification(mocker: MockerFixture) -> None:
         client.get_dataset()["columns"],
         True,
         False,
-        column_defaults={},
+        {},
+        [],
     )
     compute_columns_mock.assert_not_called()
     compute_dataset_metadata_mock.assert_called_with(
@@ -538,7 +539,8 @@ def test_sync_datasets_external_url_disallow_edits(mocker: MockerFixture) -> Non
         client.get_dataset()["columns"],
         True,
         False,
-        column_defaults={},
+        {},
+        [],
     )
     compute_columns_mock.assert_not_called()
     compute_dataset_metadata_mock.assert_called_with(
@@ -614,7 +616,8 @@ def test_sync_datasets_preserve_metadata(mocker: MockerFixture) -> None:
         client.get_dataset()["columns"],
         False,
         False,
-        column_defaults={},
+        {},
+        [],
     )
     compute_columns_mock.assert_called_with(
         get_or_create_dataset_mock()["columns"],
@@ -695,7 +698,8 @@ def test_sync_datasets_merge_metadata(mocker: MockerFixture) -> None:
         client.get_dataset()["columns"],
         False,
         True,
-        column_defaults={},
+        {},
+        [],
     )
     compute_columns_mock.assert_called_with(
         get_or_create_dataset_mock()["columns"],
@@ -1450,6 +1454,8 @@ def test_compute_columns_metadata_with_reload_no_merge() -> None:
         dataset_columns,
         True,
         False,
+        {},
+        [],
     )
 
     final = dataset_columns.copy()
@@ -1472,6 +1478,8 @@ def test_compute_columns_metadata_without_reload_with_merge() -> None:
         dataset_columns,
         False,
         True,
+        {},
+        [],
     )
 
     final = dataset_columns.copy()
@@ -1494,6 +1502,8 @@ def test_compute_columns_metadata_without_reload_and_merge() -> None:
         dataset_columns,
         False,
         False,
+        {},
+        [],
     )
     assert result == dataset_columns
 
@@ -1510,6 +1520,8 @@ def test_compute_columns_metadata_without_reload_and_merge_other() -> None:
         modified_columns,
         False,
         False,
+        {},
+        [],
     )
     modified_columns[1]["description"] = models[0]["columns"][0]["description"]
     assert result == modified_columns
@@ -1537,6 +1549,8 @@ def test_compute_columns_metadata_dbt_column_meta() -> None:
         dataset_columns,
         False,
         False,
+        {},
+        [],
     )
     expected = dataset_columns.copy()
     expected[1]["groupby"] = True
@@ -1634,7 +1648,8 @@ def test_compute_columns_metadata_with_default_configs() -> None:
         dataset_columns,
         True,
         False,
-        column_defaults=default_column_config,
+        default_column_config,
+        [],
     )
     assert result == expected
 
@@ -1643,9 +1658,422 @@ def test_compute_columns_metadata_with_default_configs() -> None:
         dataset_columns,
         False,
         True,
-        column_defaults=default_column_config,
+        default_column_config,
+        [],
     )
     assert result == expected
+
+
+def test_compute_columns_metadata_with_calc_columns() -> None:
+    """
+    Test the ``compute_columns_metadata`` helper with calculated columns
+    set in dbt.
+    """
+    dbt_columns = [{"name": "id", "description": "Primary key"}]
+    dbt_calc_columns = [
+        {
+            "column_name": "dbt_calc_column",
+            "expression": "id + 2",
+            "verbose_name": None,
+        },
+    ]
+    dataset_columns = [
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-23T20:29:33.945074",
+            "column_name": "calc_column",
+            "created_on": "2024-01-23T20:29:33.945070",
+            "description": None,
+            "expression": "id + 1",
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "type_generic": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": None,
+        },
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-03T13:30:19.139128",
+            "column_name": "id",
+            "created_on": "2021-12-22T16:59:38.825689",
+            "description": "Description for ID",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": False,
+            "id": 2,
+            "is_active": None,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "type_generic": None,
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": None,
+        },
+    ]
+
+    result = compute_columns_metadata(
+        dbt_columns,
+        dataset_columns,
+        True,
+        False,
+        {},
+        dbt_calc_columns,
+    )
+    assert result == [
+        {
+            "advanced_data_type": None,
+            "column_name": "id",
+            "description": "Primary key",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": False,
+            "id": 2,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": "id",
+        },
+        {
+            "column_name": "dbt_calc_column",
+            "expression": "id + 2",
+            "verbose_name": None,
+        },
+    ]
+
+
+def test_compute_columns_metadata_with_calc_columns_merge_metadata() -> None:
+    """
+    Test the ``compute_columns_metadata`` helper with calculated columns
+    set in dbt and sync set to merge metadata.
+    """
+    dbt_columns = [{"name": "id", "description": "Primary key"}]
+    dbt_calc_columns = [
+        {
+            "column_name": "calc_column",
+            "expression": "id + 2",
+            "verbose_name": None,
+        },
+    ]
+    dataset_columns = [
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-23T20:29:33.945074",
+            "column_name": "calc_column",
+            "created_on": "2024-01-23T20:29:33.945070",
+            "description": None,
+            "expression": "id + 1",
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "type_generic": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": "My verbose name",
+        },
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-23T20:29:33.945074",
+            "column_name": "other_calc_column",
+            "created_on": "2024-01-23T20:29:33.945070",
+            "description": None,
+            "expression": "id * 5",
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 2,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "type_generic": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": "My verbose name",
+        },
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-03T13:30:19.139128",
+            "column_name": "id",
+            "created_on": "2021-12-22T16:59:38.825689",
+            "description": "Description for ID",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": False,
+            "id": 3,
+            "is_active": None,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "type_generic": None,
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": None,
+        },
+    ]
+
+    result = compute_columns_metadata(
+        dbt_columns,
+        dataset_columns,
+        False,
+        True,
+        {},
+        dbt_calc_columns,
+    )
+    assert result == [
+        {
+            "advanced_data_type": None,
+            "column_name": "calc_column",
+            "description": None,
+            "expression": "id + 2",
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": None,
+        },
+        {
+            "advanced_data_type": None,
+            "column_name": "other_calc_column",
+            "description": None,
+            "expression": "id * 5",
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 2,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": "My verbose name",
+        },
+        {
+            "advanced_data_type": None,
+            "column_name": "id",
+            "description": "Primary key",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": False,
+            "id": 3,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": "id",
+        },
+    ]
+
+
+def test_compute_columns_metadata_with_calc_columns_preserve_metadata() -> None:
+    """
+    Test the ``compute_columns_metadata`` helper with calculated columns
+    set in dbt and sync set to preserve metadata.
+    """
+    dbt_calc_columns = [
+        {
+            "column_name": "calc_column",
+            "expression": "id + 2",
+            "verbose_name": None,
+        },
+    ]
+    dataset_columns = [
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-23T20:29:33.945074",
+            "column_name": "calc_column",
+            "created_on": "2024-01-23T20:29:33.945070",
+            "description": None,
+            "expression": "id + 1",
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "type_generic": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": "My verbose name",
+        },
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-03T13:30:19.139128",
+            "column_name": "id",
+            "created_on": "2021-12-22T16:59:38.825689",
+            "description": "Description for ID",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": False,
+            "id": 2,
+            "is_active": None,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "type_generic": None,
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": None,
+        },
+    ]
+
+    result = compute_columns_metadata(
+        [],
+        dataset_columns,
+        False,
+        False,
+        {},
+        dbt_calc_columns,
+    )
+    assert result == [
+        {
+            "advanced_data_type": None,
+            "column_name": "calc_column",
+            "description": None,
+            "expression": "id + 1",
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": "My verbose name",
+        },
+        {
+            "advanced_data_type": None,
+            "column_name": "id",
+            "description": "Description for ID",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": False,
+            "id": 2,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": None,
+        },
+    ]
+
+
+def test_compute_columns_metadata_with_calc_columns_default_configs() -> None:
+    """
+    Test the ``compute_columns_metadata`` helper with calculated columns
+    set in dbt and sync set to merge metadata with default column configs.
+    """
+    dbt_columns = [{"name": "id"}]
+    dbt_calc_columns = [
+        {
+            "column_name": "calc_column",
+            "expression": "id + 2",
+            "description": "dbt desc",
+        },
+    ]
+    default_column_config = {"description": "default dbt desc", "extra": None}
+    dataset_columns = [
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-23T20:29:33.945074",
+            "column_name": "calc_column",
+            "created_on": "2024-01-23T20:29:33.945070",
+            "description": None,
+            "expression": "id + 1",
+            "extra": "{}",
+            "filterable": True,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "type_generic": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": "My verbose name",
+        },
+        {
+            "advanced_data_type": None,
+            "changed_on": "2024-01-03T13:30:19.139128",
+            "column_name": "id",
+            "created_on": "2021-12-22T16:59:38.825689",
+            "description": "Description for ID",
+            "expression": None,
+            "extra": "{}",
+            "filterable": True,
+            "groupby": False,
+            "id": 2,
+            "is_active": None,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "type_generic": None,
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": None,
+        },
+    ]
+
+    result = compute_columns_metadata(
+        dbt_columns,
+        dataset_columns,
+        False,
+        True,
+        default_column_config,
+        dbt_calc_columns,
+    )
+    assert result == [
+        {
+            "advanced_data_type": None,
+            "column_name": "calc_column",
+            "description": "dbt desc",
+            "expression": "id + 2",
+            "extra": None,
+            "filterable": True,
+            "groupby": True,
+            "id": 1,
+            "is_active": True,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": None,
+            "uuid": "5b0dc14a-8c1a-4fcb-8791-3a955d8609d3",
+            "verbose_name": "My verbose name",
+        },
+        {
+            "advanced_data_type": None,
+            "column_name": "id",
+            "description": "default dbt desc",
+            "expression": None,
+            "extra": None,
+            "filterable": True,
+            "groupby": False,
+            "id": 2,
+            "is_dttm": False,
+            "python_date_format": None,
+            "type": "INTEGER",
+            "uuid": "a2952680-2671-4a97-b608-3483cf7f11d2",
+            "verbose_name": "id",
+        },
+    ]
 
 
 def test_compute_dataset_metadata_with_dbt_metadata() -> None:
