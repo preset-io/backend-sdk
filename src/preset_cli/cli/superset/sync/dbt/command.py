@@ -86,12 +86,6 @@ _logger = logging.getLogger(__name__)
     help="Do not sync models to datasets and only fetch exposures instead",
 )
 @click.option(
-    "--preserve-columns",
-    is_flag=True,
-    default=False,
-    help="Preserve column and metric configurations defined in Preset",
-)
-@click.option(
     "--preserve-metadata",
     is_flag=True,
     default=False,
@@ -124,7 +118,6 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     disallow_edits: bool = False,
     external_url_prefix: str = "",
     exposures_only: bool = False,
-    preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
     raise_failures: bool = False,
@@ -137,15 +130,14 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     client = SupersetClient(url, auth)
     deprecation_notice: bool = False
 
-    if (preserve_columns or preserve_metadata) and merge_metadata:
+    if preserve_metadata and merge_metadata:
         error_message = (
-            "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``\n"
+            "``--preserve-metadata`` and ``--merge-metadata``\n"
             "can't be combined. Please include only one to the command."
         )
         raise CLIError(error_message, 1)
 
-    reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
-    preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
+    reload_columns = not (preserve_metadata or merge_metadata)
 
     if profiles is None:
         profiles = os.path.expanduser("~/.dbt/profiles.yml")
@@ -507,12 +499,6 @@ def fetch_sl_metrics(
     help="Do not sync models to datasets and only fetch exposures instead",
 )
 @click.option(
-    "--preserve-columns",
-    is_flag=True,
-    default=False,
-    help="Preserve column and metric configurations defined in Preset",
-)
-@click.option(
     "--preserve-metadata",
     is_flag=True,
     default=False,
@@ -548,7 +534,6 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     disallow_edits: bool = False,
     external_url_prefix: str = "",
     exposures_only: bool = False,
-    preserve_columns: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
     access_url: Optional[str] = None,
@@ -564,15 +549,14 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     dbt_auth = TokenAuth(token)
     dbt_client = DBTClient(dbt_auth, access_url)
 
-    if (preserve_columns or preserve_metadata) and merge_metadata:
+    if preserve_metadata and merge_metadata:
         error_message = (
-            "``--preserve-columns`` / ``--preserve-metadata`` and ``--merge-metadata``\n"
+            "``--preserve-metadata`` and ``--merge-metadata``\n"
             "can't be combined. Please include only one to the command."
         )
         raise CLIError(error_message, 1)
 
-    reload_columns = not (preserve_columns or preserve_metadata or merge_metadata)
-    preserve_metadata = preserve_columns if preserve_columns else preserve_metadata
+    reload_columns = not (preserve_metadata or merge_metadata)
 
     try:
         job = get_job(dbt_client, account_id, project_id, job_id)
