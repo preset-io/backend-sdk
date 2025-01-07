@@ -5,6 +5,23 @@ Changelog
 Next
 ====
 
+Version 0.3.0 - 2025-01-07
+===========================
+
+**BREAKING CHANGES:**
+
+* The logfile that stores progress for non-atomic commands was re-named from ``checkpoint.log`` to ``progress.log``. Its structure is also different (it's now a YAML file including additional data for each asset depending on the command). Before upgrading the CLI, make sure you have completed any pending import that was logged in the old file.
+* The ``--preserve-columns`` flag for the dbt sync commands has been removed, as it was marked for deprecation in favor of ``--preserve-metadata``.
+
+---
+
+- Added support for importing a dashboard that contains a divider using the ``--split`` flag (`#321 <https://github.com/preset-io/backend-sdk/pull/321>`_).
+- It's now possible to define default values for metric and columns configurations in the dbt sync (`#325 <https://github.com/preset-io/backend-sdk/pull/325>`_).
+- The dbt Cloud sync now uses ``v3`` endpoints and supports ``None`` on the ``custom_branch_only`` field (`#330 <https://github.com/preset-io/backend-sdk/pull/330>`_).
+- Added a new ``--continue-on-error`` flag for the ``import-assets`` command so that a failure in one asset doesn't stop the import process (`#328 <https://github.com/preset-io/backend-sdk/pull/328>`_).
+- Added a new ``--continue-on-error`` flag for the ``import-ownership`` command so that a failure in one asset doesn't stop the import process. This command now also skips assets that failed to import (`#331 <https://github.com/preset-io/backend-sdk/pull/331>`_).
+- It's now possible to sync calculated columns from dbt (`#332 <https://github.com/preset-io/backend-sdk/pull/332>`_).
+
 Version 0.2.21 - 2024-10-16
 ===========================
 
