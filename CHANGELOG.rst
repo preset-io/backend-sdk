@@ -9,6 +9,7 @@ Version 0.3.0 - 2025-01-07
 ===========================
 
 **Breaking Changes**
+
 * The logfile that stores progress for non-atomic commands was re-named from ``checkpoint.log`` to ``progress.log``. Its structure is also different (it's now a YAML file including additional data for each asset depending on the command). Before upgrading the CLI, make sure you have completed any pending import that was logged in the old file.
 * The ``--preserve-columns`` flag for the dbt sync commands has been removed, as it was marked for deprecation in favor of ``--preserve-metadata``.
 
