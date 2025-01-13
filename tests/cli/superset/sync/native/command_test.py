@@ -1361,6 +1361,7 @@ def test_import_resources_individually_checkpoint(
                 "status": "SUCCESS",
             },
         ],
+        "ownership": [],
     }
 
     # retry
@@ -1440,6 +1441,7 @@ def test_import_resources_individually_continue(
                 "status": "SUCCESS",
             },
         ],
+        "ownership": [],
     }
 
     # retry should succeed and delete the log file
