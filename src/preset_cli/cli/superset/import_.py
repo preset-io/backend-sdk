@@ -86,8 +86,8 @@ def import_ownership(
     client = SupersetClient(baseurl=URL(ctx.obj["INSTANCE"]), auth=ctx.obj["AUTH"])
 
     log_file_path, logs = get_logs(LogType.OWNERSHIP)
-    assets_to_skip = {log["uuid"] for log in logs[LogType.OWNERSHIP.value]} | {
-        log["uuid"] for log in logs[LogType.ASSETS.value] if log["status"] == "FAILED"
+    assets_to_skip = {log["uuid"] for log in logs[LogType.OWNERSHIP]} | {
+        log["uuid"] for log in logs[LogType.ASSETS] if log["status"] == "FAILED"
     }
 
     with open(path, encoding="utf-8") as input_:
@@ -112,10 +112,10 @@ def import_ownership(
                             raise
                         asset_log["status"] = "FAILED"
 
-                    logs[LogType.OWNERSHIP.value].append(asset_log)
+                    logs[LogType.OWNERSHIP].append(asset_log)
                     write_logs_to_file(log_file, logs)
 
     if not continue_on_error or not any(
-        log["status"] == "FAILED" for log in logs[LogType.OWNERSHIP.value]
+        log["status"] == "FAILED" for log in logs[LogType.OWNERSHIP]
     ):
         clean_logs(LogType.OWNERSHIP, logs)

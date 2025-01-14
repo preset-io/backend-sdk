@@ -349,7 +349,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
 
     log_file_path, logs = get_logs(LogType.ASSETS)
-    assets_to_skip = {Path(log["path"]) for log in logs[LogType.ASSETS.value]}
+    assets_to_skip = {Path(log["path"]) for log in logs[LogType.ASSETS]}
 
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, get_related_uuids in imports:
@@ -376,12 +376,12 @@ def import_resources_individually(  # pylint: disable=too-many-locals
                     asset_log["status"] = "FAILED"
 
                 related_configs[config["uuid"]] = asset_configs
-                logs[LogType.ASSETS.value].append(asset_log)
+                logs[LogType.ASSETS].append(asset_log)
                 assets_to_skip.add(path)
                 write_logs_to_file(log_file, logs)
 
     if not continue_on_error or not any(
-        log["status"] == "FAILED" for log in logs[LogType.ASSETS.value]
+        log["status"] == "FAILED" for log in logs[LogType.ASSETS]
     ):
         clean_logs(LogType.ASSETS, logs)
 

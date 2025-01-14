@@ -96,7 +96,7 @@ def test_write_logs_to_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 "assets": [
                     {
                         "path": "/path/to/root/first_path",
-                        "status": "SUCCESS",
+                        "status": "FAILED",
                         "uuid": "uuid1",
                     },
                 ],
@@ -106,7 +106,7 @@ def test_write_logs_to_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", root / "progress.log")
 
     new_logs = {
-        "assets": [
+        LogType.ASSETS: [
             {
                 "path": "/path/to/root/second_path",
                 "status": "SUCCESS",
@@ -118,7 +118,7 @@ def test_write_logs_to_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 "uuid": "uuid3",
             },
         ],
-        "ownership": [
+        LogType.OWNERSHIP: [
             {
                 "status": "SUCCESS",
                 "uuid": "uuid4",
@@ -143,8 +143,24 @@ def test_clean_logs_delete_file(mocker: MockerFixture, fs: FakeFilesystem) -> No
     logs_path = root / "progress.log"
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", logs_path)
     fs.create_dir(root)
-    logs = {
-        "assets": [
+    fs.create_file(
+        root / "progress.log",
+        contents=yaml.dump(
+            {
+                "assets": [
+                    {
+                        "path": "/path/to/root/first_path",
+                        "status": "SUCCESS",
+                        "uuid": "uuid1",
+                    },
+                ],
+            },
+        ),
+    )
+    assert logs_path.exists()
+
+    current_logs = {
+        LogType.ASSETS: [
             {
                 "path": "/path/to/root/first_path",
                 "status": "SUCCESS",
@@ -152,13 +168,8 @@ def test_clean_logs_delete_file(mocker: MockerFixture, fs: FakeFilesystem) -> No
             },
         ],
     }
-    fs.create_file(
-        root / "progress.log",
-        contents=yaml.dump(logs),
-    )
-    assert logs_path.exists()
 
-    clean_logs(LogType.ASSETS, logs)
+    clean_logs(LogType.ASSETS, current_logs)
     assert not logs_path.exists()
 
 
@@ -170,28 +181,44 @@ def test_clean_logs_keep_file(mocker: MockerFixture, fs: FakeFilesystem) -> None
     logs_path = root / "progress.log"
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", logs_path)
     fs.create_dir(root)
-    logs = {
-        "assets": [
+    fs.create_file(
+        root / "progress.log",
+        contents=yaml.dump(
+            {
+                "assets": [
+                    {
+                        "path": "/path/to/root/first_path",
+                        "status": "SUCCESS",
+                        "uuid": "uuid1",
+                    },
+                ],
+                "ownership": [
+                    {
+                        "status": "SUCCESS",
+                        "uuid": "uuid2",
+                    },
+                ],
+            },
+        ),
+    )
+    assert logs_path.exists()
+
+    current_logs = {
+        LogType.ASSETS: [
             {
                 "path": "/path/to/root/first_path",
                 "status": "SUCCESS",
                 "uuid": "uuid1",
             },
         ],
-        "ownership": [
+        LogType.OWNERSHIP: [
             {
                 "status": "SUCCESS",
                 "uuid": "uuid2",
             },
         ],
     }
-    fs.create_file(
-        root / "progress.log",
-        contents=yaml.dump(logs),
-    )
-    assert logs_path.exists()
-
-    clean_logs(LogType.ASSETS, logs)
+    clean_logs(LogType.ASSETS, current_logs)
 
     with open(logs_path, encoding="utf-8") as log:
         content = yaml.load(log, Loader=yaml.SafeLoader)
