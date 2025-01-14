@@ -29,7 +29,7 @@ from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.cli.superset.lib import (
-    add_asset_to_log_dict,
+    LogType,
     clean_logs,
     get_logs,
     write_logs_to_file,
@@ -348,63 +348,42 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     asset_configs: Dict[Path, AssetConfig]
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
 
-    logs = get_logs()
+    log_file_path, logs = get_logs(LogType.ASSETS)
+    assets_to_skip = {Path(log["path"]) for log in logs[LogType.ASSETS]}
 
-    # Remove FAILED logs to re-try them
-    if "assets" in logs:
-        logs["assets"] = [
-            asset for asset in logs["assets"] if asset["status"] != "FAILED"
-        ]
-    else:
-        logs["assets"] = []
+    with open(log_file_path, "w", encoding="utf-8") as log_file:
+        for resource_name, get_related_uuids in imports:
+            for path, config in configs.items():
+                if path.parts[1] != resource_name or path in assets_to_skip:
+                    continue
 
-    assets_to_skip = {Path(log["path"]) for log in logs["assets"]}
+                asset_configs = {path: config}
+                _logger.info("Importing %s", path.relative_to("bundle"))
+                asset_log = {
+                    "uuid": config["uuid"],
+                    "path": str(path),
+                    "status": "SUCCESS",
+                }
 
-    for resource_name, get_related_uuids in imports:
-        for path, config in configs.items():
-            if path.parts[1] != resource_name or path in assets_to_skip:
-                continue
+                try:
+                    for uuid in get_related_uuids(config):
+                        asset_configs.update(related_configs[uuid])
+                    contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
+                    import_resources(contents, client, overwrite)
+                except Exception:  # pylint: disable=broad-except
+                    if not continue_on_error:
+                        raise
+                    asset_log["status"] = "FAILED"
 
-            asset_configs = {path: config}
-            _logger.info("Importing %s", path.relative_to("bundle"))
-
-            try:
-                for uuid in get_related_uuids(config):
-                    asset_configs.update(related_configs[uuid])
-                contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                import_resources(contents, client, overwrite)
-            except Exception:  # pylint: disable=broad-except
-                if not continue_on_error:
-                    write_logs_to_file(logs)
-                    raise
-
-                add_asset_to_log_dict(
-                    "assets",
-                    logs,
-                    "FAILED",
-                    config["uuid"],
-                    asset_path=path,
-                    set_=assets_to_skip,
-                )
-                continue
-
-            add_asset_to_log_dict(
-                "assets",
-                logs,
-                "SUCCESS",
-                config["uuid"],
-                asset_path=path,
-                set_=assets_to_skip,
-            )
-
-            related_configs[config["uuid"]] = asset_configs
+                related_configs[config["uuid"]] = asset_configs
+                logs[LogType.ASSETS].append(asset_log)
+                assets_to_skip.add(path)
+                write_logs_to_file(log_file, logs)
 
     if not continue_on_error or not any(
-        log["status"] == "FAILED" for log in logs["assets"]
+        log["status"] == "FAILED" for log in logs[LogType.ASSETS]
     ):
-        clean_logs("assets", logs)
-    else:
-        write_logs_to_file(logs)
+        clean_logs(LogType.ASSETS, logs)
 
 
 def get_dashboard_related_uuids(config: AssetConfig) -> Iterator[str]:

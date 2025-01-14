@@ -233,6 +233,7 @@ def test_import_ownership_failure(mocker: MockerFixture, fs: FakeFilesystem) -> 
         content = yaml.load(log, Loader=yaml.SafeLoader)
 
     assert content == {
+        "assets": [],
         "ownership": [
             {
                 "uuid": "uuid1",
@@ -289,6 +290,7 @@ def test_import_ownership_failure_continue(
         content = yaml.load(log, Loader=yaml.SafeLoader)
 
     assert content == {
+        "assets": [],
         "ownership": [
             {
                 "uuid": "uuid1",
@@ -302,7 +304,7 @@ def test_import_ownership_failure_continue(
     }
 
 
-def test_import_ownership_continue_no_errors(
+def test_import_ownership_continue_on_errors(
     mocker: MockerFixture,
     fs: FakeFilesystem,
 ) -> None:

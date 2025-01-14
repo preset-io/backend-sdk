@@ -2,17 +2,21 @@
 Commands to import RLS rules, ownership, and more.
 """
 
+import logging
+
 import click
 import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.cli.superset.lib import (
-    add_asset_to_log_dict,
+    LogType,
     clean_logs,
     get_logs,
     write_logs_to_file,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 @click.command()
@@ -79,57 +83,39 @@ def import_ownership(
     """
     Import resource ownership from a YAML file.
     """
-    auth = ctx.obj["AUTH"]
-    url = URL(ctx.obj["INSTANCE"])
-    client = SupersetClient(url, auth)
+    client = SupersetClient(baseurl=URL(ctx.obj["INSTANCE"]), auth=ctx.obj["AUTH"])
 
-    logs = get_logs()
-    failed_assets = (
-        {log["uuid"] for log in logs["assets"] if log["status"] == "FAILED"}
-        if logs.get("assets")
-        else set()
-    )
-
-    # Remove FAILED logs to re-try them
-    if "ownership" in logs:
-        logs["ownership"] = [
-            asset for asset in logs["ownership"] if asset["status"] != "FAILED"
-        ]
-    else:
-        logs["ownership"] = []
-
-    assets_to_skip = {log["uuid"] for log in logs["ownership"]} | failed_assets
+    log_file_path, logs = get_logs(LogType.OWNERSHIP)
+    assets_to_skip = {log["uuid"] for log in logs[LogType.OWNERSHIP]} | {
+        log["uuid"] for log in logs[LogType.ASSETS] if log["status"] == "FAILED"
+    }
 
     with open(path, encoding="utf-8") as input_:
         config = yaml.load(input_, Loader=yaml.SafeLoader)
+
+    with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, resources in config.items():
             for ownership in resources:
                 if ownership["uuid"] not in assets_to_skip:
+
+                    _logger.info(
+                        "Importing ownership for %s %s",
+                        resource_name,
+                        ownership["name"],
+                    )
+                    asset_log = {"uuid": ownership["uuid"], "status": "SUCCESS"}
+
                     try:
                         client.import_ownership(resource_name, ownership)
                     except Exception:  # pylint: disable=broad-except
                         if not continue_on_error:
-                            write_logs_to_file(logs)
                             raise
+                        asset_log["status"] = "FAILED"
 
-                        add_asset_to_log_dict(
-                            "ownership",
-                            logs,
-                            "FAILED",
-                            ownership["uuid"],
-                        )
-                        continue
-
-                    add_asset_to_log_dict(
-                        "ownership",
-                        logs,
-                        "SUCCESS",
-                        ownership["uuid"],
-                    )
+                    logs[LogType.OWNERSHIP].append(asset_log)
+                    write_logs_to_file(log_file, logs)
 
     if not continue_on_error or not any(
-        log["status"] == "FAILED" for log in logs["ownership"]
+        log["status"] == "FAILED" for log in logs[LogType.OWNERSHIP]
     ):
-        clean_logs("ownership", logs)
-    else:
-        write_logs_to_file(logs)
+        clean_logs(LogType.OWNERSHIP, logs)
