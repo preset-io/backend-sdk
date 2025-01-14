@@ -5,6 +5,11 @@ Changelog
 Next
 ====
 
+Version 0.3.1 - 2025-01-14
+===========================
+
+- Partial/aborted executions for non-atomic commands now also populate the ``progress.log`` file (`#335 <https://github.com/preset-io/backend-sdk/pull/335>`_).
+
 Version 0.3.0 - 2025-01-07
 ===========================
 
