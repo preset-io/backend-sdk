@@ -2,7 +2,7 @@
 Tests for the native import command.
 """
 
-# pylint: disable=redefined-outer-name, invalid-name, too-many-lines, , too-many-locals
+# pylint: disable=redefined-outer-name, invalid-name, too-many-lines, too-many-locals
 
 import json
 from pathlib import Path
