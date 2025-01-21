@@ -362,7 +362,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, get_related_uuids in imports:
             for path, config in configs.items():
-                if path.parts[1] != resource_name or path in assets_to_skip:
+                if path.parts[1] != resource_name:
                     continue
 
                 asset_configs = {path: config}
@@ -370,7 +370,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
                     asset_configs.update(related_configs[uuid])
                 related_configs[config["uuid"]] = asset_configs
 
-                if (
+                if path in assets_to_skip or (
                     asset_type != ResourceType.ASSET
                     and asset_type.resource_name not in resource_name
                 ):
