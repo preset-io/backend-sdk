@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.3.2 - 2025-01-22
+===========================
+
+- The ``--asset-type`` selector is now supported with the ``--split`` / ``--continue-on-error`` flags. (`#337 <https://github.com/preset-io/backend-sdk/pull/337>`_).
+- Fixed a bug affecing the logic to skip assets based on the ``progress.log`` file. (`#337 <https://github.com/preset-io/backend-sdk/pull/337>`_).
+
 Version 0.3.1 - 2025-01-14
 ===========================
 
