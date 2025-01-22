@@ -2,11 +2,11 @@
 Tests for the native import command.
 """
 
-# pylint: disable=redefined-outer-name, invalid-name, too-many-lines
+# pylint: disable=redefined-outer-name, invalid-name, too-many-lines, too-many-locals
 
 import json
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 from unittest import mock
 from zipfile import ZipFile
 
@@ -59,7 +59,7 @@ def test_import_resources(mocker: MockerFixture) -> None:
 
     contents = {"bundle/databases/gsheets.yaml": "GSheets"}
     with freeze_time("2022-01-01T00:00:00Z"):
-        import_resources(contents=contents, client=client, overwrite=False)
+        import_resources(contents, client, False, ResourceType.ASSET)
 
     call = client.import_zip.mock_calls[0]
     assert call.kwargs == {"overwrite": False}
@@ -90,12 +90,7 @@ def test_import_resources_asset_types(
 
     contents = {"bundle/databases/gsheets.yaml": "GSheets"}
     with freeze_time("2022-01-01T00:00:00Z"):
-        import_resources(
-            contents=contents,
-            client=client,
-            overwrite=False,
-            asset_type=resource_type,
-        )
+        import_resources(contents, client, False, resource_type)
 
     call = client.import_zip.mock_calls[0]
     assert call.kwargs == {"overwrite": False}
@@ -144,7 +139,7 @@ def test_import_resources_overwrite_needed(mocker: MockerFixture) -> None:
     client.import_zip.side_effect = SupersetError(errors)
 
     contents = {"bundle/databases/gsheets.yaml": "GSheets"}
-    import_resources(contents=contents, client=client, overwrite=False)
+    import_resources(contents, client, False, ResourceType.ASSET)
 
     assert click.style.called_with(
         "The following file(s) already exist. Pass ``--overwrite`` to replace them.\n"
@@ -180,7 +175,7 @@ def test_import_resources_error(mocker: MockerFixture) -> None:
 
     contents = {"bundle/databases/gsheets.yaml": "GSheets"}
     with pytest.raises(SupersetError) as excinfo:
-        import_resources(contents=contents, client=client, overwrite=False)
+        import_resources(contents, client, False, ResourceType.ASSET)
     assert excinfo.value.errors == errors
 
 
@@ -328,8 +323,11 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         ),
     }
 
-    import_resources.assert_has_calls(
-        [mock.call(contents, client, False, asset_type=None)],
+    import_resources.assert_called_once_with(
+        contents,
+        client,
+        False,
+        ResourceType.ASSET,
     )
     client.get_uuids.assert_not_called()
 
@@ -387,8 +385,11 @@ def test_native_params_as_str(mocker: MockerFixture, fs: FakeFilesystem) -> None
             },
         ),
     }
-    import_resources.assert_has_calls(
-        [mock.call(contents, client, False, asset_type=None)],
+    import_resources.assert_called_once_with(
+        contents,
+        client,
+        False,
+        ResourceType.ASSET,
     )
     client.get_uuids.assert_not_called()
 
@@ -501,8 +502,11 @@ def test_native_load_env(
             },
         ),
     }
-    import_resources.assert_has_calls(
-        [mock.call(contents, client, False, asset_type=None)],
+    import_resources.assert_called_once_with(
+        contents,
+        client,
+        False,
+        ResourceType.ASSET,
     )
     client.get_uuids.assert_not_called()
 
@@ -567,8 +571,11 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
-    import_resources.assert_has_calls(
-        [mock.call(contents, client, False, asset_type=None)],
+    import_resources.assert_called_once_with(
+        contents,
+        client,
+        False,
+        ResourceType.ASSET,
     )
     client.get_uuids.assert_not_called()
 
@@ -708,8 +715,11 @@ def test_template_in_environment(mocker: MockerFixture, fs: FakeFilesystem) -> N
             },
         ),
     }
-    import_resources.assert_has_calls(
-        [mock.call(contents, client, False, asset_type=None)],
+    import_resources.assert_called_once_with(
+        contents,
+        client,
+        False,
+        ResourceType.ASSET,
     )
     client.get_uuids.assert_not_called()
 
@@ -980,6 +990,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -990,6 +1001,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -998,6 +1010,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1007,6 +1020,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1016,6 +1030,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1025,6 +1040,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1039,6 +1055,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1049,6 +1066,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1062,6 +1080,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
         ],
         any_order=True,
@@ -1182,6 +1201,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1190,6 +1210,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1199,6 +1220,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1208,6 +1230,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
             mock.call(
                 {
@@ -1218,6 +1241,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
+                ResourceType.ASSET,
             ),
         ],
         any_order=True,
@@ -1288,7 +1312,7 @@ def test_import_resources_individually_retries(
     configs = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
     }
-    import_resources_individually(configs, client, overwrite=True)
+    import_resources_individually(configs, client, True, ResourceType.ASSET)
 
     client.import_zip.side_effect = [
         requests.exceptions.ConnectionError("Connection aborted."),
@@ -1298,7 +1322,7 @@ def test_import_resources_individually_retries(
         requests.exceptions.ConnectionError("Connection aborted."),
     ]
     with pytest.raises(Exception) as excinfo:
-        import_resources_individually(configs, client, overwrite=True)
+        import_resources_individually(configs, client, True, ResourceType.ASSET)
     assert str(excinfo.value) == "Connection aborted."
 
 
@@ -1324,7 +1348,7 @@ def test_import_resources_individually_checkpoint(
     import_resources.side_effect = [None, Exception("An error occurred!"), None]
 
     with pytest.raises(Exception) as excinfo:
-        import_resources_individually(configs, client, overwrite=True)
+        import_resources_individually(configs, client, True, ResourceType.ASSET)
     assert str(excinfo.value) == "An error occurred!"
 
     import_resources.assert_has_calls(
@@ -1337,6 +1361,7 @@ def test_import_resources_individually_checkpoint(
                 },
                 client,
                 True,
+                ResourceType.ASSET,
             ),
             mocker.call(
                 {
@@ -1346,6 +1371,7 @@ def test_import_resources_individually_checkpoint(
                 },
                 client,
                 True,
+                ResourceType.ASSET,
             ),
         ],
     )
@@ -1365,20 +1391,17 @@ def test_import_resources_individually_checkpoint(
     }
 
     # retry
-    import_resources.mock_reset()
-    import_resources_individually(configs, client, overwrite=True)
-    import_resources.assert_has_calls(
-        [
-            mock.call(
-                {
-                    "bundle/databases/psql.yaml": yaml.dump(
-                        {"name": "my other database", "uuid": "uuid2"},
-                    ),
-                },
-                client,
-                True,
+    import_resources.reset_mock()
+    import_resources_individually(configs, client, True, ResourceType.ASSET)
+    import_resources.assert_called_once_with(
+        {
+            "bundle/databases/psql.yaml": yaml.dump(
+                {"name": "my other database", "uuid": "uuid2"},
             ),
-        ],
+        },
+        client,
+        True,
+        ResourceType.ASSET,
     )
 
     assert not Path("progress.log").exists()
@@ -1416,7 +1439,8 @@ def test_import_resources_individually_continue(
     import_resources_individually(
         configs,
         client,
-        overwrite=True,
+        True,
+        ResourceType.ASSET,
         continue_on_error=True,
     )
 
@@ -1448,7 +1472,8 @@ def test_import_resources_individually_continue(
     import_resources_individually(
         configs,
         client,
-        overwrite=True,
+        True,
+        ResourceType.ASSET,
         continue_on_error=True,
     )
     import_resources.assert_has_calls(
@@ -1461,6 +1486,7 @@ def test_import_resources_individually_continue(
                 },
                 client,
                 True,
+                ResourceType.ASSET,
             ),
             mocker.call(
                 {
@@ -1470,6 +1496,7 @@ def test_import_resources_individually_continue(
                 },
                 client,
                 True,
+                ResourceType.ASSET,
             ),
             mocker.call(
                 {
@@ -1479,6 +1506,7 @@ def test_import_resources_individually_continue(
                 },
                 client,
                 True,
+                ResourceType.ASSET,
             ),
             mocker.call(
                 {
@@ -1488,6 +1516,7 @@ def test_import_resources_individually_continue(
                 },
                 client,
                 True,
+                ResourceType.ASSET,
             ),
         ],
     )
@@ -1564,8 +1593,11 @@ GROUP BY action""",
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
     }
-    import_resources.assert_has_calls(
-        [mock.call(contents, client, False, asset_type=None)],
+    import_resources.assert_called_once_with(
+        contents,
+        client,
+        False,
+        ResourceType.ASSET,
     )
     client.get_uuids.assert_not_called()
 
@@ -1680,10 +1712,269 @@ def test_native_asset_types(
         "bundle/dashboards/dashboard.yaml": yaml.dump(dashboard_config),
     }
 
+    import_resources.assert_called_once_with(contents, client, False, resource_type)
+    client.get_uuids.assert_not_called()
+
+
+@pytest.mark.parametrize("resource_type", list(ResourceType))
+def test_native_split_asset_types(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    resource_type: ResourceType,
+) -> None:
+    """
+    Test the ``native`` command while specifying an asset type and the `split` flag.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    first_db_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "uuid1",
+    }
+    first_dataset_config = {
+        "table_name": "test",
+        "is_managed_externally": False,
+        "uuid": "uuid2",
+        "database_uuid": "uuid1",
+    }
+    first_chart_config = {
+        "slice_name": "test",
+        "viz_type": "big_number_total",
+        "params": {
+            "datasource": "1__table",
+            "viz_type": "big_number_total",
+            "slice_id": 1,
+            "metric": {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "column": None,
+                "aggregate": None,
+                "datasourceWarning": False,
+                "hasCustomLabel": True,
+                "label": "custom_calculation",
+                "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
+            },
+            "adhoc_filters": [],
+            "header_font_size": 0.4,
+            "subheader_font_size": 0.15,
+            "y_axis_format": "SMART_NUMBER",
+            "time_format": "smart_date",
+            "extra_form_data": {},
+            "dashboards": [],
+        },
+        "query_context": None,
+        "is_managed_externally": False,
+        "uuid": "uuid3",
+        "dataset_uuid": "uuid2",
+    }
+    first_dash_config = {
+        "dashboard_title": "Some dashboard",
+        "is_managed_externally": False,
+        "position": {
+            "DASHBOARD_VERSION_KEY": "v2",
+            "CHART-BVI44PWH": {
+                "type": "CHART",
+                "meta": {
+                    "uuid": "uuid3",
+                },
+            },
+        },
+        "metadata": {},
+        "uuid": "4",
+    }
+
+    second_db_config = {
+        "database_name": "Other DB",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "uuid5",
+    }
+    second_dataset_config = {
+        "table_name": "test_new",
+        "is_managed_externally": False,
+        "uuid": "uuid6",
+        "database_uuid": "uuid5",
+    }
+    second_chart_config = {
+        "slice_name": "test other",
+        "viz_type": "big_number_total",
+        "params": {
+            "datasource": "6__table",
+            "viz_type": "big_number_total",
+            "slice_id": 7,
+            "metric": {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "column": None,
+                "aggregate": None,
+                "datasourceWarning": False,
+                "hasCustomLabel": True,
+                "label": "custom_calculation",
+                "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
+            },
+            "adhoc_filters": [],
+            "header_font_size": 0.4,
+            "subheader_font_size": 0.15,
+            "y_axis_format": "SMART_NUMBER",
+            "time_format": "smart_date",
+            "extra_form_data": {},
+            "dashboards": [],
+        },
+        "query_context": None,
+        "is_managed_externally": False,
+        "uuid": "uuid7",
+        "dataset_uuid": "uuid6",
+    }
+    second_dash_config = {
+        "dashboard_title": "other dashboard",
+        "is_managed_externally": False,
+        "position": {
+            "DASHBOARD_VERSION_KEY": "v2",
+            "CHART-BVI44PWH": {
+                "type": "CHART",
+                "meta": {
+                    "uuid": "uuid7",
+                },
+            },
+        },
+        "metadata": {},
+        "uuid": "uuid8",
+    }
+
+    fs.create_file(
+        root / "databases/gsheets.yaml",
+        contents=yaml.dump(first_db_config),
+    )
+    fs.create_file(
+        root / "databases/Other_DB.yaml",
+        contents=yaml.dump(second_db_config),
+    )
+    fs.create_file(
+        root / "datasets/gsheets/test.yaml",
+        contents=yaml.dump(first_dataset_config),
+    )
+    fs.create_file(
+        root / "datasets/Other_DB/test_new.yaml",
+        contents=yaml.dump(second_dataset_config),
+    )
+    fs.create_file(
+        root / "charts/test_01.yaml",
+        contents=yaml.dump(first_chart_config),
+    )
+    fs.create_file(
+        root / "charts/test_other_07.yaml",
+        contents=yaml.dump(second_chart_config),
+    )
+    fs.create_file(
+        root / "dashboards/dashboard.yaml",
+        contents=yaml.dump(first_dash_config),
+    )
+    fs.create_file(
+        root / "dashboards/other_dashboard.yaml",
+        contents=yaml.dump(second_dash_config),
+    )
+
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_databases.return_value = []
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--asset-type",
+            resource_type.resource_name,
+            "--split",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    expected_contents: List[Dict[str, str]] = []
+
+    if resource_type in {ResourceType.DATABASE, ResourceType.ASSET}:
+        expected_contents += [
+            {
+                "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
+            },
+            {
+                "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
+            },
+        ]
+    if resource_type in {ResourceType.DATASET, ResourceType.ASSET}:
+        expected_contents += [
+            {
+                "bundle/datasets/gsheets/test.yaml": yaml.dump(first_dataset_config),
+                "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
+            },
+            {
+                "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
+                    second_dataset_config,
+                ),
+                "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
+            },
+        ]
+    if resource_type in {ResourceType.CHART, ResourceType.ASSET}:
+        expected_contents += [
+            {
+                "bundle/charts/test_01.yaml": yaml.dump(first_chart_config),
+                "bundle/datasets/gsheets/test.yaml": yaml.dump(first_dataset_config),
+                "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
+            },
+            {
+                "bundle/charts/test_other_07.yaml": yaml.dump(second_chart_config),
+                "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
+                    second_dataset_config,
+                ),
+                "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
+            },
+        ]
+    if resource_type in {ResourceType.DASHBOARD, ResourceType.ASSET}:
+        expected_contents += [
+            {
+                "bundle/dashboards/dashboard.yaml": yaml.dump(first_dash_config),
+                "bundle/charts/test_01.yaml": yaml.dump(first_chart_config),
+                "bundle/datasets/gsheets/test.yaml": yaml.dump(first_dataset_config),
+                "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
+            },
+            {
+                "bundle/dashboards/other_dashboard.yaml": yaml.dump(second_dash_config),
+                "bundle/charts/test_other_07.yaml": yaml.dump(second_chart_config),
+                "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
+                    second_dataset_config,
+                ),
+                "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
+            },
+        ]
+
     import_resources.assert_has_calls(
-        [mock.call(contents, client, False, asset_type=resource_type)],
+        [
+            mock.call(
+                content,
+                client,
+                False,
+                resource_type,
+            )
+            for content in expected_contents
+        ],
+        any_order=True,
     )
     client.get_uuids.assert_not_called()
+    assert not Path("progress.log").exists()
 
 
 def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) -> None:

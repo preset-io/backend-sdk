@@ -14,7 +14,7 @@ from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, Set, Tuple
 from zipfile import ZipFile
 
 import backoff
@@ -58,7 +58,7 @@ class ResourceType(Enum):
     def __new__(
         cls,
         resource_name: str,
-        metadata_type: Optional[str] = None,
+        metadata_type: str | None = None,
     ) -> "ResourceType":
         """
         ResourceType Constructor.
@@ -83,6 +83,7 @@ class ResourceType(Enum):
         """
         return self._metadata_type  # type: ignore
 
+    ASSET = ("assets", "assets")
     CHART = ("chart", "Slice")
     DASHBOARD = ("dashboard", "Dashboard")
     DATABASE = ("database", "Database")
@@ -92,14 +93,14 @@ class ResourceType(Enum):
 def normalize_to_enum(  # pylint: disable=unused-argument
     ctx: click.core.Context,
     param: str,
-    value: Optional[str],
+    value: str | None,
 ):
     """
     Normalize the ``--asset-type`` option value and return the
     corresponding ResourceType Enum.
     """
     if value is None:
-        return None
+        return ResourceType.ASSET
     return ResourceType(value.lower())
 
 
@@ -230,6 +231,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     ctx: click.core.Context,
     directory: str,
     option: Tuple[str, ...],
+    asset_type: ResourceType,
     overwrite: bool = False,
     disable_jinja_templating: bool = False,
     disallow_edits: bool = True,  # pylint: disable=unused-argument
@@ -237,7 +239,6 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     load_env: bool = False,
     split: bool = False,
     continue_on_error: bool = False,
-    asset_type: Optional[ResourceType] = None,
 ) -> None:
     """
     Sync exported DBs/datasets/charts/dashboards to Superset.
@@ -316,16 +317,23 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
             configs["bundle" / relative_path] = config
 
     if split:
-        import_resources_individually(configs, client, overwrite, continue_on_error)
+        import_resources_individually(
+            configs,
+            client,
+            overwrite,
+            asset_type,
+            continue_on_error,
+        )
     else:
         contents = {str(k): yaml.dump(v) for k, v in configs.items()}
-        import_resources(contents, client, overwrite, asset_type=asset_type)
+        import_resources(contents, client, overwrite, asset_type)
 
 
 def import_resources_individually(  # pylint: disable=too-many-locals
     configs: Dict[Path, AssetConfig],
     client: SupersetClient,
     overwrite: bool,
+    asset_type: ResourceType,
     continue_on_error: bool = False,
 ) -> None:
     """
@@ -354,10 +362,20 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, get_related_uuids in imports:
             for path, config in configs.items():
-                if path.parts[1] != resource_name or path in assets_to_skip:
+                if path.parts[1] != resource_name:
                     continue
 
                 asset_configs = {path: config}
+                for uuid in get_related_uuids(config):
+                    asset_configs.update(related_configs[uuid])
+                related_configs[config["uuid"]] = asset_configs
+
+                if path in assets_to_skip or (
+                    asset_type != ResourceType.ASSET
+                    and asset_type.resource_name not in resource_name
+                ):
+                    continue
+
                 _logger.info("Importing %s", path.relative_to("bundle"))
                 asset_log = {
                     "uuid": config["uuid"],
@@ -366,16 +384,13 @@ def import_resources_individually(  # pylint: disable=too-many-locals
                 }
 
                 try:
-                    for uuid in get_related_uuids(config):
-                        asset_configs.update(related_configs[uuid])
                     contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                    import_resources(contents, client, overwrite)
+                    import_resources(contents, client, overwrite, asset_type)
                 except Exception:  # pylint: disable=broad-except
                     if not continue_on_error:
                         raise
                     asset_log["status"] = "FAILED"
 
-                related_configs[config["uuid"]] = asset_configs
                 logs[LogType.ASSETS].append(asset_log)
                 assets_to_skip.add(path)
                 write_logs_to_file(log_file, logs)
@@ -464,17 +479,15 @@ def import_resources(
     contents: Dict[str, str],
     client: SupersetClient,
     overwrite: bool,
-    asset_type: Optional[ResourceType] = None,
+    asset_type: ResourceType,
 ) -> None:
     """
     Import a bundle of assets.
     """
-    metadata_type = asset_type.metadata_type if asset_type else "assets"
-    resource_name = asset_type.resource_name if asset_type else "assets"
     contents["bundle/metadata.yaml"] = yaml.dump(
         dict(
             version="1.0.0",
-            type=metadata_type,
+            type=asset_type.metadata_type,
             timestamp=datetime.now(tz=timezone.utc).isoformat(),
         ),
     )
@@ -486,7 +499,7 @@ def import_resources(
                 output.write(file_content.encode())
     buf.seek(0)
     try:
-        client.import_zip(resource_name, buf, overwrite=overwrite)
+        client.import_zip(asset_type.resource_name, buf, overwrite=overwrite)
     except SupersetError as ex:
         click.echo(
             click.style(
