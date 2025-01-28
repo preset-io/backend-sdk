@@ -2,11 +2,13 @@
 A command to sync dbt models/metrics to Superset and charts/dashboards back as exposures.
 """
 
+from __future__ import annotations
+
 import logging
 import os.path
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import click
 import yaml
@@ -108,12 +110,12 @@ _logger = logging.getLogger(__name__)
 def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals ,too-many-statements # noqa: C901
     ctx: click.core.Context,
     file: str,
-    project: Optional[str],
-    target: Optional[str],
+    project: str | None,
+    target: str | None,
     select: Tuple[str, ...],
     exclude: Tuple[str, ...],
-    profiles: Optional[str] = None,
-    exposures: Optional[str] = None,
+    profiles: str | None = None,
+    exposures: str | None = None,
     import_db: bool = False,
     disallow_edits: bool = False,
     external_url_prefix: str = "",
@@ -303,7 +305,7 @@ def get_account_id(client: DBTClient) -> int:
         click.echo("Invalid choice")
 
 
-def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
+def get_project_id(client: DBTClient, account_id: int | None = None) -> int:
     """
     Prompt user for a project id.
     """
@@ -331,9 +333,9 @@ def get_project_id(client: DBTClient, account_id: Optional[int] = None) -> int:
 
 def get_job(
     client: DBTClient,
-    account_id: Optional[int] = None,
-    project_id: Optional[int] = None,
-    job_id: Optional[int] = None,
+    account_id: int | None = None,
+    project_id: int | None = None,
+    job_id: int | None = None,
 ) -> JobSchema:
     """
     Prompt users for a job ID.
@@ -375,7 +377,7 @@ def get_sl_metric(
     metric: Dict[str, Any],
     model_map: Dict[ModelKey, ModelSchema],
     dialect: MFSQLEngine,
-) -> Optional[MFMetricWithSQLSchema]:
+) -> MFMetricWithSQLSchema | None:
     """
     Compute a SL metric using the ``mf`` CLI.
     """
@@ -428,7 +430,7 @@ def fetch_sl_metrics(
     dbt_client: DBTClient,
     environment_id: int,
     model_map: Dict[ModelKey, ModelSchema],
-) -> Optional[List[MFMetricWithSQLSchema]]:
+) -> List[MFMetricWithSQLSchema] | None:
     """
     Fetch metrics from the semantic layer and return the ones we can map to models.
     """
@@ -520,6 +522,14 @@ def fetch_sl_metrics(
     default=False,
     help="End the execution with an error if a model fails to sync or a deprecated feature is used",
 )
+@click.option(
+    "--database-id",
+    help="The database ID to associate the synced models with",
+)
+@click.option(
+    "--database-name",
+    help="The DB connection name to associate the synced models with",
+)
 @click.pass_context
 @raise_cli_errors
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
@@ -527,17 +537,19 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     token: str,
     select: Tuple[str, ...],
     exclude: Tuple[str, ...],
-    exposures: Optional[str] = None,
-    account_id: Optional[int] = None,
-    project_id: Optional[int] = None,
-    job_id: Optional[int] = None,
+    exposures: str | None = None,
+    account_id: int | None = None,
+    project_id: int | None = None,
+    job_id: int | None = None,
     disallow_edits: bool = False,
     external_url_prefix: str = "",
     exposures_only: bool = False,
     preserve_metadata: bool = False,
     merge_metadata: bool = False,
-    access_url: Optional[str] = None,
+    access_url: str | None = None,
     raise_failures: bool = False,
+    database_id: int | None = None,
+    database_name: str | None = None,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
@@ -556,6 +568,13 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         )
         raise CLIError(error_message, 1)
 
+    if database_id and database_name:
+        error_message = (
+            "``--database-id`` and ``--database-name``\n"
+            "can't be combined. Please include only one in the command."
+        )
+        raise CLIError(error_message, 1)
+
     reload_columns = not (preserve_metadata or merge_metadata)
 
     try:
@@ -564,17 +583,19 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         error_message = f"Job {job_id} not available"
         raise CLIError(error_message, 2) from excinfo
 
-    # with dbt cloud the database must already exist
-    database_name = dbt_client.get_database_name(job["id"])
-    databases = superset_client.get_databases(database_name=database_name)
-    if not databases:
-        click.echo(f'No database named "{database_name}" was found')
-        return
-    if len(databases) > 1:
-        raise Exception("More than one database with the same name found")
+    if database_id is None:
+        database_name = database_name or dbt_client.get_database_name(job["id"])
+        databases = superset_client.get_databases(database_name=database_name)
+        if not databases:
+            click.echo(f'No database named "{database_name}" was found')
+            return
+        if len(databases) > 1:
+            raise Exception("More than one database with the same name found")
+
+        database_id = databases[0]["id"]
 
     # need to get the database by itself so the response has the SQLAlchemy URI
-    database = superset_client.get_database(databases[0]["id"])
+    database = superset_client.get_database(database_id)
 
     models = dbt_client.get_models(job["id"])
     models = apply_select(models, select, exclude)
