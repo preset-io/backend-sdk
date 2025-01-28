@@ -3658,6 +3658,115 @@ def test_dbt_cloud_specific_db_id(mocker: MockerFixture) -> None:
     dbt_client.get_database_name.assert_not_called()
 
 
+def test_dbt_cloud_specific_db_name(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command when passing a DB display name.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
+    )
+    database = mocker.MagicMock()
+    superset_client.get_databases.return_value = [database]
+    superset_client.get_database.return_value = database
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "1",
+            "2",
+            "123",
+            "--database-name",
+            "Data Warehouse",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    sync_datasets.assert_called_with(
+        superset_client,
+        dbt_cloud_models,
+        superset_metrics,
+        database,
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+
+    superset_client.get_databases.assert_called_once_with(
+        database_name="Data Warehouse",
+    )
+    dbt_client.get_database_name.assert_not_called()
+
+
+def test_dbt_cloud_with_database_name_and_id(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command with both the ``--database-id``
+    and ``--database-name`` flags.
+    """
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=(["working_dataset"], ["failed_dataset", "another_failure"]),
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.list_failed_models",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "1",
+            "2",
+            "123",
+            "--database-id",
+            "1",
+            "--database-name",
+            "Data Warehouse",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+    assert "``--database-id`` and ``--database-name``" in result.output
+    assert "can't be combined. Please include only one in the command." in result.output
+
+
 def test_dbt_core_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``--exposures-only`` option with dbt core.

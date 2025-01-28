@@ -526,6 +526,10 @@ def fetch_sl_metrics(
     "--database-id",
     help="The database ID to associate the synced models with",
 )
+@click.option(
+    "--database-name",
+    help="The DB connection name to associate the synced models with",
+)
 @click.pass_context
 @raise_cli_errors
 def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
@@ -545,6 +549,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
     access_url: str | None = None,
     raise_failures: bool = False,
     database_id: int | None = None,
+    database_name: str | None = None,
 ) -> None:
     """
     Sync models/metrics from dbt Cloud to Superset.
@@ -563,6 +568,13 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         )
         raise CLIError(error_message, 1)
 
+    if database_id and database_name:
+        error_message = (
+            "``--database-id`` and ``--database-name``\n"
+            "can't be combined. Please include only one in the command."
+        )
+        raise CLIError(error_message, 1)
+
     reload_columns = not (preserve_metadata or merge_metadata)
 
     try:
@@ -572,7 +584,7 @@ def dbt_cloud(  # pylint: disable=too-many-arguments, too-many-locals
         raise CLIError(error_message, 2) from excinfo
 
     if database_id is None:
-        database_name = dbt_client.get_database_name(job["id"])
+        database_name = database_name or dbt_client.get_database_name(job["id"])
         databases = superset_client.get_databases(database_name=database_name)
         if not databases:
             click.echo(f'No database named "{database_name}" was found')
