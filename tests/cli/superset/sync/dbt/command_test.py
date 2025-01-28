@@ -3599,6 +3599,65 @@ def test_dbt_cloud_multiple_databases(mocker: MockerFixture) -> None:
     assert str(excinfo.value) == "More than one database with the same name found"
 
 
+def test_dbt_cloud_specific_db_id(mocker: MockerFixture) -> None:
+    """
+    Test the ``dbt-cloud`` command when passing a DB ID.
+    """
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.SupersetClient",
+    )
+    superset_client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    sync_datasets = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.sync_datasets",
+        return_value=([], []),
+    )
+    database = mocker.MagicMock()
+    superset_client.get_database.return_value = database
+    DBTClient = mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.DBTClient",
+    )
+    dbt_client = DBTClient()
+    dbt_client.get_models.return_value = dbt_cloud_models
+    dbt_client.get_og_metrics.return_value = dbt_cloud_metrics
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.command.get_job",
+        return_value={"id": 123, "name": "My job", "environment_id": 456},
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dbt-cloud",
+            "XXX",
+            "1",
+            "2",
+            "123",
+            "--database-id",
+            "1",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    sync_datasets.assert_called_with(
+        superset_client,
+        dbt_cloud_models,
+        superset_metrics,
+        database,
+        False,
+        "",
+        reload_columns=True,
+        merge_metadata=False,
+    )
+
+    superset_client.get_databases.assert_not_called()
+    dbt_client.get_database_name.assert_not_called()
+
+
 def test_dbt_core_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``--exposures-only`` option with dbt core.
