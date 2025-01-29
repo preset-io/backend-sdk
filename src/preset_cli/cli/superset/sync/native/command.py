@@ -278,11 +278,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     if load_env:
         env["env"] = os.environ  # type: ignore
 
-    pwds = (
-        {kv.partition("=")[0]: kv.partition("=")[2] for kv in db_password}
-        if db_password
-        else {}
-    )
+    pwds = dict(kv.split("=", 1) for kv in db_password or [])
 
     # read all the YAML files
     configs: Dict[Path, AssetConfig] = {}
