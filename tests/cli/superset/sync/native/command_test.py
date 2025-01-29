@@ -2017,7 +2017,6 @@ def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) ->
 
 
 def test_native_with_db_passwords(mocker: MockerFixture, fs: FakeFilesystem) -> None:
-    # pylint: disable=line-too-long
     """
     Test the ``native`` command while passing db passwords in the command.
     """
