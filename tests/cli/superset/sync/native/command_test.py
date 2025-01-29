@@ -23,32 +23,45 @@ from sqlalchemy.engine.url import URL
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     ResourceType,
+    add_password_to_config,
     import_resources,
     import_resources_individually,
     load_user_modules,
-    prompt_for_passwords,
     raise_helper,
     verify_db_connectivity,
 )
 from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
 
 
-def test_prompt_for_passwords(mocker: MockerFixture) -> None:
+def test_add_password_to_config(mocker: MockerFixture) -> None:
     """
-    Test ``prompt_for_passwords``.
+    Test ``add_password_to_config``.
     """
     getpass = mocker.patch("preset_cli.cli.superset.sync.native.command.getpass")
 
-    config = {"sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/db"}
+    config = {
+        "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/db",
+        "uuid": "uuid1",
+    }
     path = Path("/path/to/root/databases/psql.yaml")
-    prompt_for_passwords(path, config)
+    add_password_to_config(path, config, {})
 
     getpass.getpass.assert_called_with(f"Please provide the password for {path}: ")
 
     config["password"] = "password123"
     getpass.reset_mock()
-    prompt_for_passwords(path, config)
+    add_password_to_config(path, config, {})
     getpass.getpass.assert_not_called()
+
+    getpass.reset_mock()
+    add_password_to_config(path, config, {"uuid1": "password321"})
+    getpass.getpass.assert_not_called()
+    # db_password takes precedence over config["password"]
+    assert config == {
+        "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/db",
+        "uuid": "uuid1",
+        "password": "password321",
+    }
 
 
 def test_import_resources(mocker: MockerFixture) -> None:
@@ -418,8 +431,8 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
     client.get_databases.return_value = []
     mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-    prompt_for_passwords = mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.prompt_for_passwords",
+    add_password_to_config = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.add_password_to_config",
     )
 
     runner = CliRunner()
@@ -430,9 +443,9 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    prompt_for_passwords.assert_called()
+    add_password_to_config.assert_called()
 
-    prompt_for_passwords.reset_mock()
+    add_password_to_config.reset_mock()
     client.get_databases.return_value = [
         {"uuid": "uuid1"},
     ]
@@ -442,7 +455,7 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    prompt_for_passwords.assert_not_called()
+    add_password_to_config.assert_not_called()
     client.get_uuids.assert_not_called()
 
 
@@ -610,8 +623,8 @@ def test_native_legacy_instance(mocker: MockerFixture, fs: FakeFilesystem) -> No
     client.get_uuids.return_value = {1: "uuid1"}
     mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
-    prompt_for_passwords = mocker.patch(
-        "preset_cli.cli.superset.sync.native.command.prompt_for_passwords",
+    add_password_to_config = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.add_password_to_config",
     )
 
     runner = CliRunner()
@@ -622,7 +635,7 @@ def test_native_legacy_instance(mocker: MockerFixture, fs: FakeFilesystem) -> No
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    prompt_for_passwords.assert_not_called()
+    add_password_to_config.assert_not_called()
 
 
 def test_load_user_modules(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -2001,3 +2014,172 @@ def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) ->
 
     assert result.exit_code == 2
     assert "Invalid value for '--asset-type'" in result.output
+
+
+def test_native_with_db_passwords(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    # pylint: disable=line-too-long
+    """
+    Test the ``native`` command while passing db passwords in the command.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    sqlalchemy_uri = {
+        "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/db",
+    }
+    unmasked_uri = {
+        "sqlalchemy_uri": "postgresql://user:unmasked@host:5432/db",
+    }
+
+    db_configs = {
+        "db_config_masked_no_password": {
+            "uuid": "uuid1",
+            **sqlalchemy_uri,
+        },
+        "other_db_config_masked_no_password": {
+            "uuid": "uuid2",
+            **sqlalchemy_uri,
+        },
+        "db_config_masked_with_password": {
+            "uuid": "uuid3",
+            "password": "directpwd!",
+            **sqlalchemy_uri,
+        },
+        "other_db_config_masked_with_password": {
+            "uuid": "uuid4",
+            "password": "directpwd!again",
+            **sqlalchemy_uri,
+        },
+        "db_config_unmasked": {
+            "uuid": "uuid5",
+            **unmasked_uri,
+        },
+        "other_db_config_unmasked": {
+            "uuid": "uuid6",
+            **unmasked_uri,
+        },
+        "db_config_unmasked_with_password": {
+            "uuid": "uuid7",
+            "password": "unmaskedpwd!",
+            **unmasked_uri,
+        },
+        "final_db_config_unmasked_with_password": {
+            "uuid": "uuid8",
+            "password": "unmaskedpwd!again",
+            **unmasked_uri,
+        },
+    }
+
+    for file_name, content in db_configs.items():
+        fs.create_file(
+            root / f"databases/{file_name}.yaml",
+            contents=yaml.dump(content),
+        )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_databases.return_value = []
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.sync.native.command.verify_db_connectivity")
+    getpass = mocker.patch("preset_cli.cli.superset.sync.native.command.getpass")
+    getpass.getpass.return_value = "pwd_from_prompt"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--db-password",
+            "uuid1=pwd_from_command=1",
+            "--db-password",
+            "uuid3=pwd_from_command=2",
+            "--db-password",
+            "uuid5=pwd_from_command=3",
+            "--db-password",
+            "uuid7=pwd_from_command=4",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    contents = {
+        "bundle/databases/db_config_masked_no_password.yaml": yaml.dump(
+            {
+                "uuid": "uuid1",
+                **sqlalchemy_uri,
+                "password": "pwd_from_command=1",
+                "is_managed_externally": False,
+            },
+        ),
+        "bundle/databases/other_db_config_masked_no_password.yaml": yaml.dump(
+            {
+                "uuid": "uuid2",
+                **sqlalchemy_uri,
+                "password": "pwd_from_prompt",
+                "is_managed_externally": False,
+            },
+        ),
+        "bundle/databases/db_config_masked_with_password.yaml": yaml.dump(
+            {
+                "uuid": "uuid3",
+                **sqlalchemy_uri,
+                "password": "pwd_from_command=2",
+                "is_managed_externally": False,
+            },
+        ),
+        "bundle/databases/other_db_config_masked_with_password.yaml": yaml.dump(
+            {
+                "uuid": "uuid4",
+                **sqlalchemy_uri,
+                "password": "directpwd!again",
+                "is_managed_externally": False,
+            },
+        ),
+        "bundle/databases/db_config_unmasked.yaml": yaml.dump(
+            {
+                "uuid": "uuid5",
+                **unmasked_uri,
+                "password": "pwd_from_command=3",
+                "is_managed_externally": False,
+            },
+        ),
+        "bundle/databases/other_db_config_unmasked.yaml": yaml.dump(
+            {
+                "uuid": "uuid6",
+                **unmasked_uri,
+                "is_managed_externally": False,
+            },
+        ),
+        "bundle/databases/db_config_unmasked_with_password.yaml": yaml.dump(
+            {
+                "uuid": "uuid7",
+                **unmasked_uri,
+                "password": "pwd_from_command=4",
+                "is_managed_externally": False,
+            },
+        ),
+        "bundle/databases/final_db_config_unmasked_with_password.yaml": yaml.dump(
+            {
+                "uuid": "uuid8",
+                **unmasked_uri,
+                "password": "unmaskedpwd!again",
+                "is_managed_externally": False,
+            },
+        ),
+    }
+
+    import_resources.assert_called_once_with(
+        contents,
+        client,
+        False,
+        ResourceType.ASSET,
+    )
+    getpass.getpass.assert_called_once_with(
+        "Please provide the password for databases/other_db_config_masked_no_password.yaml: ",
+    )

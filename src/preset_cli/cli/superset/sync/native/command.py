@@ -226,6 +226,11 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
         "This way other asset types included get created but not overwritten."
     ),
 )
+@click.option(
+    "--db-password",
+    multiple=True,
+    help="Password for DB connections being imported (eg, uuid1=my_db_password)",
+)
 @click.pass_context
 def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
     ctx: click.core.Context,
@@ -239,6 +244,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     load_env: bool = False,
     split: bool = False,
     continue_on_error: bool = False,
+    db_password: Tuple[str, ...] | None = None,
 ) -> None:
     """
     Sync exported DBs/datasets/charts/dashboards to Superset.
@@ -271,6 +277,12 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     env["raise"] = raise_helper  # type: ignore
     if load_env:
         env["env"] = os.environ  # type: ignore
+
+    pwds = (
+        {kv.partition("=")[0]: kv.partition("=")[2] for kv in db_password}
+        if db_password
+        else {}
+    )
 
     # read all the YAML files
     configs: Dict[Path, AssetConfig] = {}
@@ -306,7 +318,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
                 relative_path.parts[0] == "databases"
                 and config["uuid"] not in existing_databases
             ):
-                prompt_for_passwords(relative_path, config)
+                add_password_to_config(relative_path, config, pwds)
                 verify_db_connectivity(config)
             if relative_path.parts[0] == "datasets" and isinstance(
                 config.get("params"),
@@ -454,15 +466,23 @@ def verify_db_connectivity(config: Dict[str, Any]) -> None:
         _logger.debug(ex)
 
 
-def prompt_for_passwords(path: Path, config: Dict[str, Any]) -> None:
+def add_password_to_config(
+    path: Path,
+    config: Dict[str, Any],
+    pwds: Dict[str, Any],
+) -> None:
     """
-    Prompt user for masked passwords.
+    Add password passed in the command to the config.
 
-    Modify the config in place.
+    Prompt user for masked passwords for new connections if not provided. Modify
+    the config in place.
     """
     uri = config["sqlalchemy_uri"]
     password = make_url(uri).password
-    if password == PASSWORD_MASK and config.get("password") is None:
+
+    if config["uuid"] in pwds:
+        config["password"] = pwds[config["uuid"]]
+    elif password == PASSWORD_MASK and config.get("password") is None:
         config["password"] = getpass.getpass(
             f"Please provide the password for {path}: ",
         )
