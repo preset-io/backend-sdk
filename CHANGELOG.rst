@@ -5,11 +5,17 @@ Changelog
 Next
 ====
 
+Version 0.3.3 - 2025-01-29
+===========================
+
+- It's now possible to specify the DB connection (using either its ID or display name) that should be used for the dbt Cloud sync (`#339 <https://github.com/preset-io/backend-sdk/pull/339>`_).
+- It's now possible to pass DB passwords in the sync native/import-assets command using the ``--db-password`` argument (`#340 <https://github.com/preset-io/backend-sdk/pull/340>`_).
+
 Version 0.3.2 - 2025-01-22
 ===========================
 
-- The ``--asset-type`` selector is now supported with the ``--split`` / ``--continue-on-error`` flags. (`#337 <https://github.com/preset-io/backend-sdk/pull/337>`_).
-- Fixed a bug affecing the logic to skip assets based on the ``progress.log`` file. (`#337 <https://github.com/preset-io/backend-sdk/pull/337>`_).
+- The ``--asset-type`` selector is now supported with the ``--split`` / ``--continue-on-error`` flags (`#337 <https://github.com/preset-io/backend-sdk/pull/337>`_).
+- Fixed a bug affecing the logic to skip assets based on the ``progress.log`` file (`#337 <https://github.com/preset-io/backend-sdk/pull/337>`_).
 
 Version 0.3.1 - 2025-01-14
 ===========================
