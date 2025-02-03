@@ -6,7 +6,7 @@ Tests for the native import command.
 
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 from unittest import mock
 from zipfile import ZipFile
 
@@ -1534,6 +1534,87 @@ def test_import_resources_individually_continue(
         ],
     )
     assert not Path("progress.log").exists()
+
+
+def test_import_resources_individually_debug(mocker: MockerFixture) -> None:
+    """
+    Test the ``import_resources_individually`` method with logger set
+    to debug mode.
+    """
+    db_config: Dict[str, Any] = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "is_managed_externally": False,
+        "uuid": "uuid1",
+    }
+    dataset_config: Dict[str, Any] = {
+        "table_name": "test",
+        "is_managed_externally": False,
+        "uuid": "uuid2",
+        "database_uuid": "uuid1",
+    }
+    chart_config: Dict[str, Any] = {
+        "slice_name": "test",
+        "viz_type": "big_number_total",
+        "params": {
+            "datasource": "1__table",
+            "viz_type": "big_number_total",
+            "slice_id": 1,
+            "metric": {
+                "expressionType": "SQL",
+                "sqlExpression": "COUNT(*)",
+                "column": None,
+                "aggregate": None,
+                "datasourceWarning": False,
+                "hasCustomLabel": True,
+                "label": "custom_calculation",
+                "optionName": "metric_6aq7h4t8b3t_jbp2rak398o",
+            },
+            "adhoc_filters": [],
+            "header_font_size": 0.4,
+            "subheader_font_size": 0.15,
+            "y_axis_format": "SMART_NUMBER",
+            "time_format": "smart_date",
+            "extra_form_data": {},
+            "dashboards": [],
+        },
+        "query_context": None,
+        "is_managed_externally": False,
+        "uuid": "uuid3",
+        "dataset_uuid": "uuid2",
+    }
+
+    configs = {
+        Path("bundle/databases/gsheets.yaml"): db_config,
+        Path("bundle/datasets/gsheets/test.yaml"): dataset_config,
+        Path("bundle/charts/test_01.yaml"): chart_config,
+    }
+
+    _logger = mocker.patch("preset_cli.cli.superset.sync.native.command._logger")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    client = mocker.MagicMock()
+
+    import_resources_individually(
+        configs,
+        client,
+        True,
+        ResourceType.CHART,
+    )
+
+    _logger.debug.assert_has_calls(
+        [
+            mock.call("Processing %s for import", Path("databases/gsheets.yaml")),
+            mock.call("Processing %s for import", Path("datasets/gsheets/test.yaml")),
+            mock.call("Processing %s for import", Path("charts/test_01.yaml")),
+        ],
+    )
+    _logger.info.assert_called_once_with(
+        "Importing %s",
+        Path("charts/test_01.yaml"),
+    )
 
 
 def test_sync_native_jinja_templating_disabled(
