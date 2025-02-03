@@ -374,6 +374,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
                     continue
 
                 asset_configs = {path: config}
+                _logger.debug("Processing %s for import", path.relative_to("bundle"))
                 for uuid in get_related_uuids(config):
                     asset_configs.update(related_configs[uuid])
                 related_configs[config["uuid"]] = asset_configs
