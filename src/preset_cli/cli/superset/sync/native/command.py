@@ -375,24 +375,24 @@ def import_resources_individually(  # pylint: disable=too-many-locals
 
                 asset_configs = {path: config}
                 _logger.debug("Processing %s for import", path.relative_to("bundle"))
-                for uuid in get_related_uuids(config):
-                    asset_configs.update(related_configs[uuid])
-                related_configs[config["uuid"]] = asset_configs
-
-                if path in assets_to_skip or (
-                    asset_type != ResourceType.ASSET
-                    and asset_type.resource_name not in resource_name
-                ):
-                    continue
-
-                _logger.info("Importing %s", path.relative_to("bundle"))
                 asset_log = {
                     "uuid": config["uuid"],
                     "path": str(path),
                     "status": "SUCCESS",
                 }
-
                 try:
+                    for uuid in get_related_uuids(config):
+                        asset_configs.update(related_configs[uuid])
+                    related_configs[config["uuid"]] = asset_configs
+
+                    if path in assets_to_skip or (
+                        asset_type != ResourceType.ASSET
+                        and asset_type.resource_name not in resource_name
+                    ):
+                        continue
+
+                    _logger.info("Importing %s", path.relative_to("bundle"))
+
                     contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
                     import_resources(contents, client, overwrite, asset_type)
                 except Exception:  # pylint: disable=broad-except
