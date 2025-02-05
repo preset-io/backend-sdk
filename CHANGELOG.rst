@@ -5,6 +5,13 @@ Changelog
 Next
 ====
 
+Version 0.3.4 - 2025-02-05
+===========================
+
+- The sync native command with the ``--split`` and/or ``--continue-on-error`` flags now show more information with ``--loglevel=DEBBUG``  (`#342 <https://github.com/preset-io/backend-sdk/pull/342>`_).
+- The sync native command now always update the DB password when provided (`#343 <https://github.com/preset-io/backend-sdk/pull/343>`_).
+- The ``--continue-on-error`` flag for the sync native command now also handle issues with asset dependencies (`#343 <https://github.com/preset-io/backend-sdk/pull/343>`_).
+
 Version 0.3.3 - 2025-01-29
 ===========================
 
