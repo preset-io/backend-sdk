@@ -33,35 +33,90 @@ from preset_cli.cli.superset.sync.native.command import (
 from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
 
 
-def test_add_password_to_config(mocker: MockerFixture) -> None:
+def test_add_password_to_config_new_connection(mocker: MockerFixture) -> None:
     """
-    Test ``add_password_to_config``.
+    Test ``add_password_to_config`` for new connections.
     """
-    getpass = mocker.patch("preset_cli.cli.superset.sync.native.command.getpass")
+    getpass_mock = mocker.patch("preset_cli.cli.superset.sync.native.command.getpass")
+    mock_verify_conn = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.verify_db_connectivity",
+    )
 
+    # New connection, no pwd set -- should prompt
     config = {
         "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/db",
         "uuid": "uuid1",
     }
     path = Path("/path/to/root/databases/psql.yaml")
-    add_password_to_config(path, config, {})
+    add_password_to_config(path, config, {}, True)
 
-    getpass.getpass.assert_called_with(f"Please provide the password for {path}: ")
+    getpass_mock.getpass.assert_called_with(f"Please provide the password for {path}: ")
+    mock_verify_conn.assert_called_once_with(config)
 
+    # New connection, pwd set -- should not prompt
+    getpass_mock.reset_mock()
+    mock_verify_conn.reset_mock()
     config["password"] = "password123"
-    getpass.reset_mock()
-    add_password_to_config(path, config, {})
-    getpass.getpass.assert_not_called()
+    add_password_to_config(path, config, {}, True)
 
-    getpass.reset_mock()
-    add_password_to_config(path, config, {"uuid1": "password321"})
-    getpass.getpass.assert_not_called()
+    getpass_mock.getpass.assert_not_called()
+    mock_verify_conn.assert_called_once_with(config)
+
     # db_password takes precedence over config["password"]
+    getpass_mock.reset_mock()
+    mock_verify_conn.reset_mock()
+    add_password_to_config(path, config, {"uuid1": "password321"}, True)
+
     assert config == {
         "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/db",
         "uuid": "uuid1",
         "password": "password321",
     }
+    getpass_mock.getpass.assert_not_called()
+    mock_verify_conn.assert_called_once_with(config)
+
+
+def test_add_password_to_config_existing_connection(mocker: MockerFixture) -> None:
+    """
+    Test ``add_password_to_config`` for existing connections.
+    """
+    getpass_mock = mocker.patch("preset_cli.cli.superset.sync.native.command.getpass")
+    mock_verify_conn = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.verify_db_connectivity",
+    )
+
+    # Existing connection with no override
+    config = {
+        "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/db",
+        "uuid": "uuid1",
+    }
+    path = Path("/path/to/root/databases/psql.yaml")
+    add_password_to_config(path, config, {}, False)
+
+    getpass_mock.getpass.assert_not_called()
+    mock_verify_conn.assert_not_called()
+
+    # Existing connection with override
+    getpass_mock.reset_mock()
+    mock_verify_conn.reset_mock()
+    config["password"] = "password123"
+    add_password_to_config(path, config, {}, False)
+
+    getpass_mock.getpass.assert_not_called()
+    mock_verify_conn.assert_called_once_with(config)
+
+    # db_password takes precedence over config["password"]
+    getpass_mock.reset_mock()
+    mock_verify_conn.reset_mock()
+    add_password_to_config(path, config, {"uuid1": "password321"}, False)
+
+    assert config == {
+        "sqlalchemy_uri": "postgresql://user:XXXXXXXXXX@host:5432/db",
+        "uuid": "uuid1",
+        "password": "password321",
+    }
+    getpass_mock.getpass.assert_not_called()
+    mock_verify_conn.assert_called_once_with(config)
 
 
 def test_import_resources(mocker: MockerFixture) -> None:
@@ -443,7 +498,12 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    add_password_to_config.assert_called()
+    add_password_to_config.assert_called_once_with(
+        Path("databases/gsheets.yaml"),
+        database_config,
+        {},
+        True,
+    )
 
     add_password_to_config.reset_mock()
     client.get_databases.return_value = [
@@ -455,7 +515,12 @@ def test_native_password_prompt(mocker: MockerFixture, fs: FakeFilesystem) -> No
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    add_password_to_config.assert_not_called()
+    add_password_to_config.assert_called_once_with(
+        Path("databases/gsheets.yaml"),
+        database_config,
+        {},
+        False,
+    )
     client.get_uuids.assert_not_called()
 
 
@@ -635,7 +700,12 @@ def test_native_legacy_instance(mocker: MockerFixture, fs: FakeFilesystem) -> No
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    add_password_to_config.assert_not_called()
+    add_password_to_config.assert_called_once_with(
+        Path("databases/gsheets.yaml"),
+        database_config,
+        {},
+        False,
+    )
 
 
 def test_load_user_modules(mocker: MockerFixture, fs: FakeFilesystem) -> None:
