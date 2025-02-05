@@ -1230,6 +1230,27 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
         },
         "uuid": "5",
     }
+    dashboard_deleted_chart = {
+        "dashboard_title": "Dashboard with deleted chart",
+        "is_managed_externally": False,
+        "position": {
+            "DASHBOARD_VERSION_KEY": "v2",
+            "CHART-BVI44PWH": {
+                "type": "CHART",
+                "meta": {
+                    "uuid": "3",
+                },
+            },
+            "CHART-BLAH": {
+                "type": "CHART",
+                "meta": {
+                    "uuid": None,
+                },
+            },
+        },
+        "metadata": {},
+        "uuid": "6",
+    }
 
     fs.create_file(
         root / "databases/gsheets.yaml",
@@ -1251,6 +1272,10 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
         root / "dashboards/dashboard_deleted_dataset.yaml",
         contents=yaml.dump(dashboard_deleted_dataset),
     )
+    fs.create_file(
+        root / "dashboards/dashboard_deleted_chart.yaml",
+        contents=yaml.dump(dashboard_deleted_chart),
+    )
 
     SupersetClient = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.SupersetClient",
@@ -1261,6 +1286,8 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
     )
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+
+    assert not Path("progress.log").exists()
 
     runner = CliRunner()
     result = runner.invoke(
@@ -1329,6 +1356,43 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
         ],
         any_order=True,
     )
+
+    with open("progress.log", encoding="utf-8") as log:
+        content = yaml.load(log, Loader=yaml.SafeLoader)
+
+    assert content["ownership"] == []
+    assert content["assets"] == [
+        {
+            "path": "bundle/databases/gsheets.yaml",
+            "uuid": "1",
+            "status": "SUCCESS",
+        },
+        {
+            "path": "bundle/datasets/gsheets/test.yaml",
+            "uuid": "2",
+            "status": "SUCCESS",
+        },
+        {
+            "path": "bundle/charts/chart.yaml",
+            "uuid": "3",
+            "status": "SUCCESS",
+        },
+        {
+            "path": "bundle/dashboards/dashboard_deleted_chart.yaml",
+            "uuid": "6",
+            "status": "FAILED",
+        },
+        {
+            "path": "bundle/dashboards/dashboard_deleted_dataset.yaml",
+            "uuid": "5",
+            "status": "SUCCESS",
+        },
+        {
+            "path": "bundle/dashboards/dashboard.yaml",
+            "uuid": "4",
+            "status": "SUCCESS",
+        },
+    ]
 
 
 def test_native_continue_without_split(
