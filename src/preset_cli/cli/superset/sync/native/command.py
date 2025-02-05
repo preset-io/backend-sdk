@@ -310,12 +310,9 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
                 config["external_url"] = str(
                     base_url / str(relative_path),
                 )
-            if (
-                relative_path.parts[0] == "databases"
-                and config["uuid"] not in existing_databases
-            ):
-                add_password_to_config(relative_path, config, pwds)
-                verify_db_connectivity(config)
+            if relative_path.parts[0] == "databases":
+                new_conn = config["uuid"] not in existing_databases
+                add_password_to_config(relative_path, config, pwds, new_conn)
             if relative_path.parts[0] == "datasets" and isinstance(
                 config.get("params"),
                 str,
@@ -467,6 +464,7 @@ def add_password_to_config(
     path: Path,
     config: Dict[str, Any],
     pwds: Dict[str, Any],
+    new_conn: bool,
 ) -> None:
     """
     Add password passed in the command to the config.
@@ -479,10 +477,14 @@ def add_password_to_config(
 
     if config["uuid"] in pwds:
         config["password"] = pwds[config["uuid"]]
-    elif password == PASSWORD_MASK and config.get("password") is None:
+        verify_db_connectivity(config)
+    elif password != PASSWORD_MASK or config.get("password"):
+        verify_db_connectivity(config)
+    elif new_conn:
         config["password"] = getpass.getpass(
             f"Please provide the password for {path}: ",
         )
+        verify_db_connectivity(config)
 
 
 @backoff.on_exception(
