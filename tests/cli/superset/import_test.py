@@ -6,6 +6,7 @@ Tests for the import commands.
 
 from pathlib import Path
 from unittest import mock
+from uuid import UUID
 
 import pytest
 import yaml
@@ -81,6 +82,8 @@ def test_import_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     client = SupersetClient()
+    client.export_users.return_value = [{"id": 1, "email": "admin@example.com"}]
+    client.get_uuids.return_value = {1: UUID("e4e6a14b-c3e8-4fdf-a850-183ba6ce15e0")}
     ownership = {
         "dataset": [
             {
@@ -100,7 +103,12 @@ def test_import_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     assert result.exit_code == 0
 
-    client.import_ownership.assert_called_with("dataset", ownership["dataset"][0])
+    client.import_ownership.assert_called_once_with(
+        "dataset",
+        ownership["dataset"][0],
+        {"admin@example.com": 1},
+        {"e4e6a14b-c3e8-4fdf-a850-183ba6ce15e0": 1},
+    )
 
 
 def test_import_ownership_progress_log(
@@ -115,22 +123,22 @@ def test_import_ownership_progress_log(
             {
                 "path": "/path/to/root/first_path",
                 "status": "SUCCESS",
-                "uuid": "uuid1",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e6",
             },
             {
                 "path": "/path/to/root/second_path",
                 "status": "FAILED",
-                "uuid": "uuid2",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e7",
             },
         ],
         "ownership": [
             {
                 "status": "SUCCESS",
-                "uuid": "uuid3",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e8",
             },
             {
                 "status": "FAILED",
-                "uuid": "uuid4",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e9",
             },
         ],
     }
@@ -139,32 +147,54 @@ def test_import_ownership_progress_log(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "admin@example.com"},
+        {"id": 2, "email": "viewer@example.com"},
+    ]
+    users = {
+        "admin@example.com": 1,
+        "viewer@example.com": 2,
+    }
+    client.get_uuids.return_value = {
+        1: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e6"),
+        2: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e7"),
+        3: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e8"),
+        4: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e9"),
+        5: UUID("e4e6a14b-c3e8-4fdf-a850-183ba6ce15e0"),
+    }
+    uuids = {
+        "18ddf8ab-68f9-4c15-ba9f-c75921b019e6": 1,
+        "18ddf8ab-68f9-4c15-ba9f-c75921b019e7": 2,
+        "18ddf8ab-68f9-4c15-ba9f-c75921b019e8": 3,
+        "18ddf8ab-68f9-4c15-ba9f-c75921b019e9": 4,
+        "e4e6a14b-c3e8-4fdf-a850-183ba6ce15e0": 5,
+    }
     ownership = {
         "dataset": [
             {
                 "name": "test_table",
                 "owners": ["admin@example.com"],
-                "uuid": "uuid1",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e8",
             },
             {
                 "name": "other_table",
-                "owners": ["admin@example.com"],
-                "uuid": "uuid2",
+                "owners": ["viewer@example.com"],
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e9",
             },
             {
                 "name": "yet_another_table",
-                "owners": ["admin@example.com"],
-                "uuid": "uuid3",
+                "owners": ["admin@example.com", "viewer@example.com"],
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e7",
             },
             {
                 "name": "just_another_test_table",
-                "owners": ["admin@example.com"],
-                "uuid": "uuid4",
+                "owners": ["viewer@example.com", "admin@example.com"],
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e6",
             },
             {
                 "name": "last_table",
-                "owners": ["admin@example.com"],
-                "uuid": "uuid5",
+                "owners": ["viewer@example.com"],
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e0",
             },
         ],
     }
@@ -178,13 +208,15 @@ def test_import_ownership_progress_log(
     )
     assert result.exit_code == 0
 
-    # Should skip `uuid2` as its import failed. Should also skip `uuid3`
-    # because its ownership was sucessfully imported, but retry `uuid4`.
+    # Should skip `18ddf8ab-68f9-4c15-ba9f-c75921b019e7` as its import
+    # failed. Should also skip `18ddf8ab-68f9-4c15-ba9f-c75921b019e8`
+    # because its ownership was sucessfully imported, but retry
+    # `18ddf8ab-68f9-4c15-ba9f-c75921b019e9`.
     client.import_ownership.assert_has_calls(
         [
-            mock.call("dataset", ownership["dataset"][0]),
-            mock.call("dataset", ownership["dataset"][3]),
-            mock.call("dataset", ownership["dataset"][4]),
+            mock.call("dataset", ownership["dataset"][1], users, uuids),
+            mock.call("dataset", ownership["dataset"][3], users, uuids),
+            mock.call("dataset", ownership["dataset"][4], users, uuids),
         ],
     )
 
@@ -198,17 +230,22 @@ def test_import_ownership_failure(mocker: MockerFixture, fs: FakeFilesystem) -> 
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     client = SupersetClient()
+    client.export_users.return_value = [{"id": 1, "email": "admin@example.com"}]
+    client.get_uuids.return_value = {
+        1: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e6"),
+        2: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e7"),
+    }
     ownership = {
         "dataset": [
             {
                 "name": "test_table",
                 "owners": ["admin@example.com"],
-                "uuid": "uuid1",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e6",
             },
             {
                 "name": "test_table_two",
                 "owners": ["admin@example.com"],
-                "uuid": "uuid2",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e7",
             },
         ],
     }
@@ -236,7 +273,7 @@ def test_import_ownership_failure(mocker: MockerFixture, fs: FakeFilesystem) -> 
         "assets": [],
         "ownership": [
             {
-                "uuid": "uuid1",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e6",
                 "status": "SUCCESS",
             },
         ],
@@ -255,17 +292,22 @@ def test_import_ownership_failure_continue(
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     client = SupersetClient()
+    client.export_users.return_value = [{"id": 1, "email": "admin@example.com"}]
+    client.get_uuids.return_value = {
+        1: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e6"),
+        2: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e7"),
+    }
     ownership = {
         "dataset": [
             {
                 "name": "test_table",
                 "owners": ["admin@example.com"],
-                "uuid": "uuid1",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e6",
             },
             {
                 "name": "test_table_two",
                 "owners": ["admin@example.com"],
-                "uuid": "uuid2",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e7",
             },
         ],
     }
@@ -293,11 +335,11 @@ def test_import_ownership_failure_continue(
         "assets": [],
         "ownership": [
             {
-                "uuid": "uuid1",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e6",
                 "status": "FAILED",
             },
             {
-                "uuid": "uuid2",
+                "uuid": "18ddf8ab-68f9-4c15-ba9f-c75921b019e7",
                 "status": "SUCCESS",
             },
         ],
