@@ -75,7 +75,7 @@ def import_roles(ctx: click.core.Context, path: str) -> None:
     help="Continue the import if an asset fails to import ownership",
 )
 @click.pass_context
-def import_ownership(
+def import_ownership(  # pylint: disable=too-many-locals
     ctx: click.core.Context,
     path: str,
     continue_on_error: bool = False,
@@ -93,8 +93,12 @@ def import_ownership(
     with open(path, encoding="utf-8") as input_:
         config = yaml.load(input_, Loader=yaml.SafeLoader)
 
+    users = {user["email"]: user["id"] for user in client.export_users()}
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, resources in config.items():
+            resource_ids = {
+                str(v): k for k, v in client.get_uuids(resource_name).items()
+            }
             for ownership in resources:
                 if ownership["uuid"] not in assets_to_skip:
 
@@ -106,7 +110,12 @@ def import_ownership(
                     asset_log = {"uuid": ownership["uuid"], "status": "SUCCESS"}
 
                     try:
-                        client.import_ownership(resource_name, ownership)
+                        client.import_ownership(
+                            resource_name,
+                            ownership,
+                            users,
+                            resource_ids,
+                        )
                     except Exception:  # pylint: disable=broad-except
                         if not continue_on_error:
                             raise

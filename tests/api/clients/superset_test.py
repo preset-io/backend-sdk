@@ -3468,28 +3468,24 @@ def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
     )
 
 
-def test_import_ownership(mocker: MockerFixture, requests_mock: Mocker) -> None:
+def test_import_ownership(requests_mock: Mocker) -> None:
     """
     Test the ``import_ownership`` method.
     """
     requests_mock.put("https://superset.example.org/api/v1/dataset/1", json={})
-    mocker.patch.object(
-        SupersetClient,
-        "export_users",
-        return_value=[
-            {"id": 1, "email": "admin@example.com"},
-            {"id": 2, "email": "adoe@example.com"},
-        ],
-    )
-    mocker.patch.object(
-        SupersetClient,
-        "get_uuids",
-        return_value={
-            1: UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
-        },
-    )
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
+    users = {
+        "admin@example.com": 1,
+        "adoe@example.com": 2,
+        "other_admin@example.com": 3,
+        "other_adoe@example.com": 4,
+    }
+    uuids = {
+        "e0d20af0-cef9-4bdb-80b4-745827f441bf": 1,
+        "1192072c-4bee-4535-b8ee-e9f5fc4eb6a2": 2,
+    }
+
     client.import_ownership(
         "dataset",
         {
@@ -3497,17 +3493,45 @@ def test_import_ownership(mocker: MockerFixture, requests_mock: Mocker) -> None:
             "owners": ["admin@example.com", "adoe@example.com"],
             "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
         },
+        users,
+        uuids,
     )
+    assert requests_mock.last_request.json() == {"owners": [1, 2]}
+
+    requests_mock.put("https://superset.example.org/api/v1/dataset/2", json={})
     client.import_ownership(
         "dataset",
         {
             "name": "another_table",
-            "owners": ["admin@example.com", "adoe@example.com"],
+            "owners": ["other_admin@example.com", "other_adoe@example.com"],
             "uuid": "1192072c-4bee-4535-b8ee-e9f5fc4eb6a2",
         },
+        users,
+        uuids,
     )
+    assert requests_mock.last_request.json() == {"owners": [3, 4]}
 
-    assert requests_mock.last_request.json() == {"owners": [1, 2]}
+
+def test_import_ownership_raises() -> None:
+    """
+    Test the ``import_ownership`` method when the asset does not exist.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    users = {"admin@example.com": 1}
+    uuids = {"e0d20af0-cef9-4bdb-80b4-745827f441bg": 1}
+
+    with pytest.raises(Exception):
+        client.import_ownership(
+            "dataset",
+            {
+                "name": "test_table",
+                "owners": ["admin@example.com"],
+                "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
+            },
+            users,
+            uuids,
+        )
 
 
 def test_update_role(requests_mock: Mocker) -> None:

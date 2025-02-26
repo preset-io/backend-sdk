@@ -1181,17 +1181,20 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         self,
         resource_name: str,
         ownership: Dict[str, Any],
+        user_ids: Dict[str, int],
+        resource_ids: Dict[str, int],
     ) -> None:
         """
         Import ownership on resources.
         """
-        user_ids = {user["email"]: user["id"] for user in self.export_users()}
-        resource_ids = {str(v): k for k, v in self.get_uuids(resource_name).items()}
-
         if ownership["uuid"] in resource_ids:
             resource_id = resource_ids[ownership["uuid"]]
             owner_ids = [user_ids[email] for email in ownership["owners"]]
             self.update_resource(resource_name, resource_id, owners=owner_ids)
+        else:
+            raise Exception(
+                f"Resource {ownership['name']} not found in the target instance.",
+            )
 
     def update_role(self, role_id: int, **kwargs: Any) -> None:
         """
