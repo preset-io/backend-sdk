@@ -159,7 +159,7 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
     )
 
     auth = Auth()
-    client = PresetClient("https://api.app.preset.io/", auth)
+    client = PresetClient("https://ws.preset.io/", auth)
     assert list(client.export_users(URL("https://superset.example.org/"))) == [
         {
             "id": 1,
