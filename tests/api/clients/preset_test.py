@@ -136,13 +136,26 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
     )
 
     requests_mock.get(
-        "https://superset.example.org/roles/add",
-        text="""
-<select id="user">
-    <option value="1">Alice Doe</option>
-    <option value="2">Bob Doe</option>
-</select>
-    """,
+        "https://superset.example.org/api/v1/chart/related/owners?q=(page:0,page_size:100)",
+        json={
+            "count": 2,
+            "result": [
+                {
+                    "extra": {"active": True, "email": "adoe@example.com"},
+                    "text": "Alice Doe",
+                    "value": 1,
+                },
+                {
+                    "extra": {"active": True, "email": "bdoe@example.com"},
+                    "text": "Bob Doe",
+                    "value": 2,
+                },
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/chart/related/owners?q=(page:1,page_size:100)",
+        json={"count": 2, "result": []},
     )
 
     auth = Auth()

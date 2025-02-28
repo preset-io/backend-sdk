@@ -7,7 +7,7 @@ import logging
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional, Union
 
-from bs4 import BeautifulSoup
+import prison
 from yarl import URL
 
 from preset_cli import __version__
@@ -18,6 +18,7 @@ from preset_cli.typing import UserType
 _logger = logging.getLogger(__name__)
 
 MANAGER_MAX_PAGE_SIZE = 250
+SUPERSET_MAX_PAGE_SIZE = 100
 
 
 class Role(int, Enum):
@@ -170,22 +171,34 @@ class PresetClient:  # pylint: disable=too-few-public-methods
 
             page_number += 1
 
-        # TODO (betodealmeida): improve this
-        url = workspace_url / "roles/add"
-        _logger.debug("GET %s", url)
-        response = self.session.get(url)
-        soup = BeautifulSoup(response.text, features="html.parser")
-        select = soup.find("select", id="user")
-        ids = {
-            option.text: int(option.attrs["value"])
-            for option in select.find_all("option")
-        }
+        ids = {}
+        page = 0
+        while True:
+            query = prison.dumps(
+                {
+                    "page": page,
+                    "page_size": SUPERSET_MAX_PAGE_SIZE,
+                },
+            )
+            url = workspace_url / "api/v1/chart/related/owners" % {"q": query}
+            _logger.debug("GET %s", url)
+            response = self.session.get(url)
+
+            validate_response(response)
+            payload = response.json()
+            if not payload["result"]:
+                break
+
+            ids.update(
+                {user["extra"]["email"]: user["value"] for user in payload["result"]},
+            )
+
+            page += 1
 
         for team_member in workspace_membership:
             # pylint: disable=consider-using-f-string
-            full_name = "{first_name} {last_name}".format(**team_member)
-            if full_name in ids:
-                team_member["id"] = ids[full_name]
+            if team_member["email"] in ids:
+                team_member["id"] = ids[team_member["email"]]
                 yield team_member
 
     def import_users(self, teams: List[str], users: List[UserType]) -> None:
