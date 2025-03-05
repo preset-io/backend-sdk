@@ -99,6 +99,13 @@ def import_ownership(  # pylint: disable=too-many-locals
             resource_ids = {
                 str(v): k for k, v in client.get_uuids(resource_name).items()
             }
+            _logger.debug(
+                "Found %s %s in the Workspace",
+                len(resource_ids),
+                resource_name,
+            )
+            with open("resource_ids.yaml", "w", encoding="utf-8") as file:
+                yaml.dump(resource_ids, file, default_flow_style=False, sort_keys=False)
             for ownership in resources:
                 if ownership["uuid"] not in assets_to_skip:
 

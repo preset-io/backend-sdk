@@ -1192,6 +1192,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             owner_ids = [user_ids[email] for email in ownership["owners"]]
             self.update_resource(resource_name, resource_id, owners=owner_ids)
         else:
+            _logger.debug(
+                "UUID %s not found in resources list.",
+                ownership["uuid"],
+            )
             raise Exception(
                 f"Resource {ownership['name']} not found in the target instance.",
             )
