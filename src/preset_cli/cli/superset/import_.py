@@ -123,7 +123,13 @@ def import_ownership(  # pylint: disable=too-many-locals
                             users,
                             resource_ids,
                         )
-                    except Exception:  # pylint: disable=broad-except
+                    except Exception as exc:  # pylint: disable=broad-except
+                        _logger.debug(
+                            "Failed to import ownership for %s %s: %s",
+                            resource_name,
+                            ownership["name"],
+                            str(exc),
+                        )
                         if not continue_on_error:
                             raise
                         asset_log["status"] = "FAILED"
