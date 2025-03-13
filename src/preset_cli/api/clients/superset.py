@@ -1190,7 +1190,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         if ownership["uuid"] in resource_ids:
             resource_id = resource_ids[ownership["uuid"]]
-            owner_ids = [user_ids[email] for email in ownership["owners"]]
+            owner_ids = [user_ids[email.lower()] for email in ownership["owners"]]
             self.update_resource(resource_name, resource_id, owners=owner_ids)
         else:
             raise Exception(
