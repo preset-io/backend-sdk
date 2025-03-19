@@ -160,7 +160,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                     "role": [],  # TODO (betodealmeida)
                     "first_name": payload["user"]["first_name"],
                     "last_name": payload["user"]["last_name"],
-                    "email": payload["user"]["email"],
+                    "email": payload["user"]["email"].lower(),
                 }
                 for payload in payload["payload"]
             ]
@@ -190,7 +190,10 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                 break
 
             ids.update(
-                {user["extra"]["email"]: user["value"] for user in payload["result"]},
+                {
+                    user["extra"]["email"].lower(): user["value"]
+                    for user in payload["result"]
+                },
             )
 
             page += 1

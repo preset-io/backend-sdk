@@ -1188,15 +1188,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Import ownership on resources.
         """
-        if ownership["uuid"] in resource_ids:
-            resource_id = resource_ids[ownership["uuid"]]
-            owner_ids = [user_ids[email.lower()] for email in ownership["owners"]]
-            self.update_resource(resource_name, resource_id, owners=owner_ids)
-        else:
-            raise Exception(
-                f"Resource {ownership['name']} (UUID: {ownership['uuid']})"
-                " not found in the target instance",
-            )
+        resource_id = resource_ids[ownership["uuid"]]
+        owner_ids = [user_ids[email.lower()] for email in ownership["owners"]]
+        self.update_resource(resource_name, resource_id, owners=owner_ids)
 
     def update_role(self, role_id: int, **kwargs: Any) -> None:
         """

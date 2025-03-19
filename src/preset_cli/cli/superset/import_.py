@@ -93,19 +93,12 @@ def import_ownership(  # pylint: disable=too-many-locals
     with open(path, encoding="utf-8") as input_:
         config = yaml.load(input_, Loader=yaml.SafeLoader)
 
-    users = {user["email"].lower(): user["id"] for user in client.export_users()}
+    users = {user["email"]: user["id"] for user in client.export_users()}
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, resources in config.items():
             resource_ids = {
                 str(v): k for k, v in client.get_uuids(resource_name).items()
             }
-            _logger.debug(
-                "Found %s %s in the Workspace",
-                len(resource_ids),
-                resource_name,
-            )
-            with open("resource_ids.yaml", "w", encoding="utf-8") as file:
-                yaml.dump(resource_ids, file, default_flow_style=False, sort_keys=False)
             for ownership in resources:
                 if ownership["uuid"] not in assets_to_skip:
 
