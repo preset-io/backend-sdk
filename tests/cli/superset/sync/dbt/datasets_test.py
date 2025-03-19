@@ -1,6 +1,7 @@
 """
 Tests for ``preset_cli.cli.superset.sync.dbt.datasets``.
 """
+
 # pylint: disable=invalid-name, too-many-lines, redefined-outer-name
 
 import json
@@ -118,7 +119,7 @@ models: List[ModelSchema] = [
             "description": "",
             "meta": {},
             "name": "messages_channels",
-            "unique_id": "model.superset_examples.messages_channels",
+            "uniqueId": "model.superset_examples.messages_channels",
             "columns": [{"name": "id", "description": "Primary key"}],
         },
     ),
@@ -315,7 +316,7 @@ def test_sync_datasets_with_alias(mocker: MockerFixture) -> None:
                 "description": "",
                 "meta": {},
                 "name": "messages_channels",
-                "unique_id": "model.superset_examples.messages_channels",
+                "uniqueId": "model.superset_examples.messages_channels",
                 "columns": [{"name": "id", "description": "Primary key"}],
             },
         ),

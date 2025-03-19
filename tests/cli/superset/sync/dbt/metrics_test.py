@@ -484,37 +484,37 @@ def test_get_metric_models() -> None:
     metrics = [
         metric_schema.load(
             {
-                "unique_id": "metric.superset.a",
-                "depends_on": ["model.superset.table"],
+                "uniqueId": "metric.superset.a",
+                "dependsOn": ["model.superset.table"],
                 "name": "a",
             },
         ),
         metric_schema.load(
             {
-                "unique_id": "metric.superset.b",
-                "depends_on": ["model.superset.table"],
+                "uniqueId": "metric.superset.b",
+                "dependsOn": ["model.superset.table"],
                 "name": "b",
             },
         ),
         metric_schema.load(
             {
-                "unique_id": "metric.superset.c",
-                "depends_on": ["model.superset.other_table"],
+                "uniqueId": "metric.superset.c",
+                "dependsOn": ["model.superset.other_table"],
                 "name": "c",
             },
         ),
         metric_schema.load(
             {
-                "unique_id": "metric.superset.d",
-                "depends_on": ["metric.superset.a", "metric.superset.b"],
+                "uniqueId": "metric.superset.d",
+                "dependsOn": ["metric.superset.a", "metric.superset.b"],
                 "name": "d",
                 "calculation_method": "derived",
             },
         ),
         metric_schema.load(
             {
-                "unique_id": "metric.superset.e",
-                "depends_on": ["metric.superset.a", "metric.superset.c"],
+                "uniqueId": "metric.superset.e",
+                "dependsOn": ["metric.superset.a", "metric.superset.c"],
                 "name": "e",
                 "calculation_method": "derived",
             },
@@ -870,8 +870,8 @@ def test_get_superset_metrics_per_model() -> None:
         for obj in [
             {
                 "name": "sales",
-                "unique_id": "sales",
-                "depends_on": ["orders"],
+                "uniqueId": "sales",
+                "dependsOn": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
                 "label": "Sales",
@@ -879,15 +879,15 @@ def test_get_superset_metrics_per_model() -> None:
             },
             {
                 "name": "multi-model",
-                "unique_id": "multi-model",
-                "depends_on": ["a", "b"],
+                "uniqueId": "multi-model",
+                "dependsOn": ["a", "b"],
                 "calculation_method": "derived",
                 "meta": {},
             },
             {
                 "name": "a",
-                "unique_id": "a",
-                "depends_on": ["orders"],
+                "uniqueId": "a",
+                "dependsOn": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
                 "meta": {
@@ -898,8 +898,8 @@ def test_get_superset_metrics_per_model() -> None:
             },
             {
                 "name": "b",
-                "unique_id": "b",
-                "depends_on": ["customers"],
+                "uniqueId": "b",
+                "dependsOn": ["customers"],
                 "calculation_method": "sum",
                 "expression": "1",
                 "meta": {
@@ -911,8 +911,8 @@ def test_get_superset_metrics_per_model() -> None:
             {
                 "name": "to_be_updated",
                 "label": "Preset Label",
-                "unique_id": "to_be_updated",
-                "depends_on": ["customers"],
+                "uniqueId": "to_be_updated",
+                "dependsOn": ["customers"],
                 "calculation_method": "max",
                 "expression": "1",
                 "meta": {
@@ -1027,8 +1027,8 @@ def test_get_superset_metrics_per_model_og_derived(
         og_metric_schema.load(
             {
                 "name": "sales",
-                "unique_id": "sales",
-                "depends_on": ["orders"],
+                "uniqueId": "sales",
+                "dependsOn": ["orders"],
                 "calculation_method": "sum",
                 "expression": "1",
                 "meta": {},
@@ -1037,8 +1037,8 @@ def test_get_superset_metrics_per_model_og_derived(
         og_metric_schema.load(
             {
                 "name": "revenue",
-                "unique_id": "revenue",
-                "depends_on": ["orders"],
+                "uniqueId": "revenue",
+                "dependsOn": ["orders"],
                 "calculation_method": "sum",
                 "expression": "price_each",
                 "meta": {},
@@ -1047,8 +1047,8 @@ def test_get_superset_metrics_per_model_og_derived(
         og_metric_schema.load(
             {
                 "name": "derived_metric_missing_model_info",
-                "unique_id": "derived_metric_missing_model_info",
-                "depends_on": [],
+                "uniqueId": "derived_metric_missing_model_info",
+                "dependsOn": [],
                 "calculation_method": "derived",
                 "expression": "price_each * 1.2",
                 "meta": {},
@@ -1057,8 +1057,8 @@ def test_get_superset_metrics_per_model_og_derived(
         og_metric_schema.load(
             {
                 "name": "derived_metric_model_from_meta",
-                "unique_id": "derived_metric_model_from_meta",
-                "depends_on": [],
+                "uniqueId": "derived_metric_model_from_meta",
+                "dependsOn": [],
                 "calculation_method": "derived",
                 "expression": "(SUM(price_each)) * 1.2",
                 "meta": {"superset": {"model": "customers"}},
@@ -1067,8 +1067,8 @@ def test_get_superset_metrics_per_model_og_derived(
         og_metric_schema.load(
             {
                 "name": "derived_metric_with_jinja",
-                "unique_id": "derived_metric_with_jinja",
-                "depends_on": [],
+                "uniqueId": "derived_metric_with_jinja",
+                "dependsOn": [],
                 "calculation_method": "derived",
                 "expression": """
 SUM(
@@ -1083,8 +1083,8 @@ SUM(
         og_metric_schema.load(
             {
                 "name": "derived_metric_with_jinja_and_other_metric",
-                "unique_id": "derived_metric_with_jinja_and_other_metric",
-                "depends_on": ["sales"],
+                "uniqueId": "derived_metric_with_jinja_and_other_metric",
+                "dependsOn": ["sales"],
                 "dialect": "postgres",
                 "calculation_method": "derived",
                 "expression": """
@@ -1100,8 +1100,8 @@ SUM(
         og_metric_schema.load(
             {
                 "name": "derived_combining_other_derived_including_jinja",
-                "unique_id": "derived_combining_other_derived_including_jinja",
-                "depends_on": ["derived_metric_with_jinja_and_other_metric", "revenue"],
+                "uniqueId": "derived_combining_other_derived_including_jinja",
+                "dependsOn": ["derived_metric_with_jinja_and_other_metric", "revenue"],
                 "dialect": "postgres",
                 "calculation_method": "derived",
                 "expression": "derived_metric_with_jinja_and_other_metric / revenue",
@@ -1111,8 +1111,8 @@ SUM(
         og_metric_schema.load(
             {
                 "name": "simple_derived",
-                "unique_id": "simple_derived",
-                "depends_on": [],
+                "uniqueId": "simple_derived",
+                "dependsOn": [],
                 "dialect": "postgres",
                 "calculation_method": "derived",
                 "expression": "max(order_date)",
@@ -1122,8 +1122,8 @@ SUM(
         og_metric_schema.load(
             {
                 "name": "last_derived_example",
-                "unique_id": "last_derived_example",
-                "depends_on": ["simple_derived"],
+                "uniqueId": "last_derived_example",
+                "dependsOn": ["simple_derived"],
                 "dialect": "postgres",
                 "calculation_method": "derived",
                 "expression": "simple_derived - 1",
@@ -1234,9 +1234,9 @@ def test_replace_metric_syntax() -> None:
             {
                 "name": "revenue",
                 "unique_id": "revenue",
-                "depends_on": [],
+                "dependsOn": [],
                 "calculation_method": "derived",
-                "expression": "SUM({{ url_param['aggreagtor'] }})",
+                "expression": "SUM({{ url_param['aggregator'] }})",
                 "dialect": "postgres",
             },
         ),
@@ -1244,15 +1244,16 @@ def test_replace_metric_syntax() -> None:
             {
                 "name": "cost",
                 "unique_id": "cost",
-                "depends_on": [],
+                "dependsOn": [],
                 "calculation_method": "derived",
                 "expression": "SUM({{ filter_values['test'] }})",
                 "dialect": "postgres",
             },
         ),
     }
+    print(metrics)
     result = replace_metric_syntax(sql, ["revenue", "cost"], metrics)
     assert (
         result
-        == "SUM({{ url_param['aggreagtor'] }}) - SUM({{ filter_values['test'] }})"
+        == "SUM({{ url_param['aggregator'] }}) - SUM({{ filter_values['test'] }})"
     )

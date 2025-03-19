@@ -510,11 +510,9 @@ def get_og_metric_from_config(
     Return an og metric from the config, adhering to the dbt Cloud schema.
     """
     metric_schema = OGMetricSchema()
+
     if depends_on is not None:
-        metric_config["dependsOn"] = depends_on
-        metric_config.pop("depends_on", None)
-    else:
-        metric_config["dependsOn"] = metric_config.pop("depends_on")["nodes"]
+        metric_config["depends_on"] = depends_on
 
     if sql is not None:
         metric_config["expression"] = sql
@@ -522,7 +520,6 @@ def get_og_metric_from_config(
         metric_config.pop("type", None)
         metric_config.pop("sql", None)
 
-    metric_config["uniqueId"] = metric_config.pop("unique_id")
     metric_config["dialect"] = dialect
 
     return metric_schema.load(metric_config)

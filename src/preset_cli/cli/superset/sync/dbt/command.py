@@ -189,10 +189,8 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     models = []
     for config in configs["nodes"].values():
         if config["resource_type"] == "model":
-            # conform to the same schema that dbt Cloud uses for models
-            unique_id = config["uniqueId"] = config["unique_id"]
+            unique_id = config["unique_id"]
             config["children"] = configs["child_map"][unique_id]
-            config["columns"] = list(config["columns"].values())
             models.append(model_schema.load(config))
     models = apply_select(models, select, exclude)
     model_map = {ModelKey(model["schema"], model["name"]): model for model in models}
