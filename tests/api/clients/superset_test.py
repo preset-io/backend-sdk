@@ -3529,7 +3529,7 @@ def test_import_ownership(requests_mock: Mocker) -> None:
         "dataset",
         {
             "name": "another_table",
-            "owners": ["other_admin@example.com", "other_adoe@example.com"],
+            "owners": ["other_admin@example.com", "Other_Adoe@example.com"],
             "uuid": "1192072c-4bee-4535-b8ee-e9f5fc4eb6a2",
         },
         users,
