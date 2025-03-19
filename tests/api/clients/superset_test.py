@@ -1897,7 +1897,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                         "username": "bdoe",
                         "first_name": "Bob",
                         "last_name": "Doe",
-                        "email": "bdoe@example.com",
+                        "email": "BDoe@example.com",
                     },
                 },
             ],
@@ -1950,7 +1950,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                 {
                     "extra": {
                         "active": True,
-                        "email": "cdoe@example.com",
+                        "email": "CDoe@example.com",
                     },
                     "text": "Clarisse Doe",
                     "value": 3,

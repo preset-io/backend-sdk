@@ -153,6 +153,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             validate_response(response)
             payload = response.json()
 
+            # Teams with SAML SSO might have emails with uppercase characters
             team_members: List[UserType] = [
                 {
                     "id": 0,
@@ -189,6 +190,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             if not payload["result"]:
                 break
 
+            # Teams with SAML SSO might have emails with uppercase characters
             ids.update(
                 {
                     user["extra"]["email"].lower(): user["value"]
