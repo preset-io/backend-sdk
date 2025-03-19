@@ -323,7 +323,7 @@ class ConnectionSchema(PostelSchema):
 
     id = fields.Integer(allow_none=True)
     account_id = fields.Integer()
-    project_id = fields.Integer()
+    project_id = fields.Integer(allow_none=True)
     name = fields.String()
     type = PostelEnumField(ConnectionType)
     state = fields.Integer()
@@ -701,7 +701,6 @@ def get_custom_urls(access_url: Optional[str] = None) -> Dict[str, URL]:
 
 
 class DBTClient:  # pylint: disable=too-few-public-methods
-
     """
     A client for the dbt API.
     """
