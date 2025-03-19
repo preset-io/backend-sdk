@@ -1897,7 +1897,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                         "username": "bdoe",
                         "first_name": "Bob",
                         "last_name": "Doe",
-                        "email": "bdoe@example.com",
+                        "email": "BDoe@example.com",
                     },
                 },
             ],
@@ -1950,7 +1950,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                 {
                     "extra": {
                         "active": True,
-                        "email": "cdoe@example.com",
+                        "email": "CDoe@example.com",
                     },
                     "text": "Clarisse Doe",
                     "value": 3,
@@ -3529,7 +3529,7 @@ def test_import_ownership(requests_mock: Mocker) -> None:
         "dataset",
         {
             "name": "another_table",
-            "owners": ["other_admin@example.com", "other_adoe@example.com"],
+            "owners": ["other_admin@example.com", "Other_Adoe@example.com"],
             "uuid": "1192072c-4bee-4535-b8ee-e9f5fc4eb6a2",
         },
         users,

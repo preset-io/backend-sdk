@@ -492,6 +492,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         if query_args:
             url %= query_args
 
+        _logger.debug("PUT %s\n%s", url, json.dumps(kwargs, indent=4))
         response = self.session.put(url, json=kwargs)
         validate_response(response)
 
@@ -1189,7 +1190,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         if ownership["uuid"] in resource_ids:
             resource_id = resource_ids[ownership["uuid"]]
-            owner_ids = [user_ids[email] for email in ownership["owners"]]
+            owner_ids = [user_ids[email.lower()] for email in ownership["owners"]]
             self.update_resource(resource_name, resource_id, owners=owner_ids)
         else:
             raise Exception(
