@@ -5,32 +5,40 @@ Changelog
 Next
 ====
 
+Version 0.3.5 - 2025-03-21
+==========================
+
+- Reduce the amount of API calls executed by the import ownership (`#346 <https://github.com/preset-io/backend-sdk/pull/346>`_).
+- Fix for exporting users from Preset (`#347 <https://github.com/preset-io/backend-sdk/pull/347>`_).
+- Fix for importing ownership when emails have uppercase characters (`#348 <https://github.com/preset-io/backend-sdk/pull/348>`_).
+- Fix for dbt sync when connections have no project ID (`#349 <https://github.com/preset-io/backend-sdk/pull/349>`_).
+
 Version 0.3.4 - 2025-02-05
-===========================
+==========================
 
 - The sync native command with the ``--split`` and/or ``--continue-on-error`` flags now show more information with ``--loglevel=DEBBUG``  (`#342 <https://github.com/preset-io/backend-sdk/pull/342>`_).
 - The sync native command now always update the DB password when provided (`#343 <https://github.com/preset-io/backend-sdk/pull/343>`_).
 - The ``--continue-on-error`` flag for the sync native command now also handle issues with asset dependencies (`#344 <https://github.com/preset-io/backend-sdk/pull/344>`_).
 
 Version 0.3.3 - 2025-01-29
-===========================
+==========================
 
 - It's now possible to specify the DB connection (using either its ID or display name) that should be used for the dbt Cloud sync (`#339 <https://github.com/preset-io/backend-sdk/pull/339>`_).
 - It's now possible to pass DB passwords in the sync native/import-assets command using the ``--db-password`` argument (`#340 <https://github.com/preset-io/backend-sdk/pull/340>`_).
 
 Version 0.3.2 - 2025-01-22
-===========================
+==========================
 
 - The ``--asset-type`` selector is now supported with the ``--split`` / ``--continue-on-error`` flags (`#337 <https://github.com/preset-io/backend-sdk/pull/337>`_).
 - Fixed a bug affecing the logic to skip assets based on the ``progress.log`` file (`#337 <https://github.com/preset-io/backend-sdk/pull/337>`_).
 
 Version 0.3.1 - 2025-01-14
-===========================
+==========================
 
 - Partial/aborted executions for non-atomic commands now also populate the ``progress.log`` file (`#335 <https://github.com/preset-io/backend-sdk/pull/335>`_).
 
 Version 0.3.0 - 2025-01-07
-===========================
+==========================
 
 **BREAKING CHANGES:**
 
