@@ -1,6 +1,7 @@
 """
 Tests for the dbt import command.
 """
+
 # pylint: disable=invalid-name, too-many-lines, line-too-long
 
 import copy
@@ -16,7 +17,7 @@ from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
-from preset_cli.api.clients.dbt import MFSQLEngine
+from preset_cli.api.clients.dbt import MFSQLEngine, ModelSchema
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.dbt.command import (
     get_account_id,
@@ -30,6 +31,8 @@ with open(os.path.join(dirname, "manifest.json"), encoding="utf-8") as fp:
     manifest_contents = fp.read()
 with open(os.path.join(dirname, "manifest-metricflow.json"), encoding="utf-8") as fp:
     manifest_metricflow_contents = fp.read()
+
+model_schema = ModelSchema()
 
 
 profiles_contents = yaml.dump(
@@ -1407,7 +1410,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
 
     sync_datasets.assert_called_with(
         client,
-        dbt_core_models,
+        model_schema.load(dbt_core_models, many=True),
         superset_metrics,
         sync_database(),
         False,
@@ -1419,7 +1422,7 @@ def test_dbt_core(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client,
         exposures,
         sync_datasets()[0],
-        {("public", "messages_channels"): dbt_core_models[0]},
+        {("public", "messages_channels"): model_schema.load(dbt_core_models[0])},
     )
 
 
@@ -1772,7 +1775,7 @@ def test_dbt_core_preserve_metadata(
 
     sync_datasets.assert_called_with(
         client,
-        dbt_core_models,
+        model_schema.load(dbt_core_models, many=True),
         superset_metrics,
         sync_database(),
         False,
@@ -1784,7 +1787,7 @@ def test_dbt_core_preserve_metadata(
         client,
         exposures,
         sync_datasets()[0],
-        {("public", "messages_channels"): dbt_core_models[0]},
+        {("public", "messages_channels"): model_schema.load(dbt_core_models[0])},
     )
 
 
@@ -1854,7 +1857,7 @@ def test_dbt_core_merge_metadata(
 
     sync_datasets.assert_called_with(
         client,
-        dbt_core_models,
+        model_schema.load(dbt_core_models, many=True),
         superset_metrics,
         sync_database(),
         False,
@@ -1866,7 +1869,7 @@ def test_dbt_core_merge_metadata(
         client,
         exposures,
         sync_datasets()[0],
-        {("public", "messages_channels"): dbt_core_models[0]},
+        {("public", "messages_channels"): model_schema.load(dbt_core_models[0])},
     )
 
 
@@ -2020,7 +2023,7 @@ def test_dbt_core_raise_failures_flag_no_failures(
     )
     sync_datasets.assert_called_with(
         client,
-        dbt_core_models,
+        model_schema.load(dbt_core_models, many=True),
         superset_metrics,
         sync_database(),
         False,
@@ -2102,7 +2105,7 @@ def test_dbt_core_raise_failures_flag_deprecation_warning(
     )
     sync_datasets.assert_called_with(
         client,
-        dbt_core_models,
+        model_schema.load(dbt_core_models, many=True),
         superset_metrics,
         sync_database(),
         False,
@@ -2185,7 +2188,7 @@ def test_dbt_core_raise_failures_flag_with_failures(
     )
     sync_datasets.assert_called_with(
         client,
-        dbt_core_models,
+        model_schema.load(dbt_core_models, many=True),
         superset_metrics,
         sync_database(),
         False,
@@ -2256,7 +2259,7 @@ def test_dbt_core_raise_failures_flag_with_failures_and_deprecation(
     )
     sync_datasets.assert_called_with(
         client,
-        dbt_core_models,
+        model_schema.load(dbt_core_models, many=True),
         superset_metrics,
         sync_database(),
         False,
@@ -2534,7 +2537,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     ]
     sync_datasets.assert_called_with(
         client,
-        models,
+        model_schema.load(models, many=True),
         superset_metrics,
         sync_database(),
         False,
@@ -2546,7 +2549,7 @@ def test_dbt(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         client,
         exposures,
         sync_datasets()[0],
-        {("public", "messages_channels"): dbt_core_models[0]},
+        {("public", "messages_channels"): model_schema.load(dbt_core_models[0])},
     )
 
 
@@ -3822,13 +3825,14 @@ def test_dbt_core_exposures_only(mocker: MockerFixture, fs: FakeFilesystem) -> N
     assert result.exit_code == 0
     sync_database.assert_not_called()
     sync_datasets.assert_not_called()
+
     sync_exposures.assert_called_with(
         client,
         exposures,
         [
             {"schema": "public", "table_name": "messages_channels"},
         ],
-        {("public", "messages_channels"): dbt_core_models[0]},
+        {("public", "messages_channels"): model_schema.load(dbt_core_models[0])},
     )
 
 
