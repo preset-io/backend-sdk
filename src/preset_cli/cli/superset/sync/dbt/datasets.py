@@ -448,11 +448,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
                 calculated_columns,
             )
             try:
-                client.update_dataset(
-                    dataset["id"],
-                    override_columns=reload_columns,
-                    columns=dataset_columns,
-                )
+                client.update_dataset(dataset["id"], columns=dataset_columns)
             except SupersetError:
                 failed_datasets.append(model["unique_id"])
                 continue
