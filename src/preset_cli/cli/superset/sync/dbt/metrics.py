@@ -51,7 +51,13 @@ DIALECT_MAP = {
 }
 
 
-# pylint: disable=too-many-locals
+JINJAPATTERN = re.compile(
+    r"(\s*(?:\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}))+",
+    re.DOTALL,
+)
+
+
+# pylint: disable=too-many-locals, too-many-branches
 def get_metric_expression(metric_name: str, metrics: Dict[str, OGMetricSchema]) -> str:
     """
     Return a SQL expression for a given dbt metric using sqlglot.
@@ -93,6 +99,11 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, OGMetricSchema]) 
         if metric.get("skip_parsing"):
             return sql.strip()
 
+        # if the metric expression contains Jinja syntax, we can't parse it as SQL;
+        # instead we fallback to the regex method
+        if re.search(JINJAPATTERN, sql):
+            return replace_metric_syntax(sql, metric["depends_on"], metrics)
+
         try:
             expression = sqlglot.parse_one(sql, dialect=metric["dialect"])
             tokens = expression.find_all(exp.Column)
@@ -108,8 +119,7 @@ def get_metric_expression(metric_name: str, metrics: Dict[str, OGMetricSchema]) 
 
             return expression.sql(dialect=metric["dialect"])
         except ParseError:
-            sql = replace_metric_syntax(sql, metric["depends_on"], metrics)
-            return sql
+            return replace_metric_syntax(sql, metric["depends_on"], metrics)
 
     sorted_metric = dict(sorted(metric.items()))
     raise Exception(f"Unable to generate metric expression from: {sorted_metric}")
@@ -300,7 +310,7 @@ def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
     )
 
     # replace aliases with their original expressions
-    for node, _, _ in metric_expression.walk():
+    for node in metric_expression.walk():
         if isinstance(node, Identifier) and node.sql() in aliases:
             node.replace(parse_one(aliases[node.sql()]))
 
@@ -310,12 +320,12 @@ def convert_query_to_projection(sql: str, dialect: MFSQLEngine) -> str:
 
         # Remove DISTINCT from metric to avoid conficting with CASE
         distinct = False
-        for node, _, _ in metric_expression.this.walk():
+        for node in metric_expression.this.walk():
             if isinstance(node, Distinct):
                 distinct = True
                 node.replace(node.expressions[0])
 
-        for node, _, _ in where_expression.walk():
+        for node in where_expression.walk():
             if isinstance(node, Identifier) and node.sql() in aliases:
                 node.replace(parse_one(aliases[node.sql()]))
 
