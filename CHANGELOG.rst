@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.3.6 - 2025-05-29
+==========================
+
+- The ``sqlglot`` version used was bumped to address compatibility issues (`#351 <https://github.com/preset-io/backend-sdk/pull/351>`_).
+- The ``filterable`` and ``groupby`` column attributes can now be synced from dbt without the ``--merge-metadata`` flag (`#352 <https://github.com/preset-io/backend-sdk/pull/352>`_).
+
 Version 0.3.5 - 2025-03-21
 ==========================
 
