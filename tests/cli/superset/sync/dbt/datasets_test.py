@@ -167,11 +167,7 @@ def test_sync_datasets_new(mocker: MockerFixture) -> None:
                 override_columns=True,
                 **compute_dataset_metadata_mock(),
             ),
-            mock.call(
-                1,
-                override_columns=True,
-                columns=compute_columns_metadata_mock(),
-            ),
+            mock.call(1, columns=compute_columns_metadata_mock()),
         ],
     )
 
@@ -251,11 +247,7 @@ def test_sync_datasets_second_update_fails(mocker: MockerFixture) -> None:
                 override_columns=True,
                 **compute_dataset_metadata_mock(),
             ),
-            mock.call(
-                1,
-                override_columns=True,
-                columns=compute_columns_metadata_mock(),
-            ),
+            mock.call(1, columns=compute_columns_metadata_mock()),
         ],
     )
     assert working == []
@@ -405,11 +397,7 @@ def test_sync_datasets_custom_certification(mocker: MockerFixture) -> None:
                 override_columns=True,
                 **compute_dataset_metadata_mock(),
             ),
-            mock.call(
-                1,
-                override_columns=True,
-                columns=compute_columns_metadata_mock(),
-            ),
+            mock.call(1, columns=compute_columns_metadata_mock()),
         ],
     )
 
@@ -561,11 +549,7 @@ def test_sync_datasets_external_url_disallow_edits(mocker: MockerFixture) -> Non
                 override_columns=True,
                 **compute_dataset_metadata_mock(),
             ),
-            mock.call(
-                1,
-                override_columns=True,
-                columns=compute_columns_metadata_mock(),
-            ),
+            mock.call(1, columns=compute_columns_metadata_mock()),
         ],
     )
 
@@ -643,11 +627,7 @@ def test_sync_datasets_preserve_metadata(mocker: MockerFixture) -> None:
                 override_columns=False,
                 **compute_dataset_metadata_mock(),
             ),
-            mock.call(
-                1,
-                override_columns=False,
-                columns=compute_columns_metadata_mock(),
-            ),
+            mock.call(1, columns=compute_columns_metadata_mock()),
         ],
     )
 
@@ -725,11 +705,7 @@ def test_sync_datasets_merge_metadata(mocker: MockerFixture) -> None:
                 override_columns=False,
                 **compute_dataset_metadata_mock(),
             ),
-            mock.call(
-                1,
-                override_columns=False,
-                columns=compute_columns_metadata_mock(),
-            ),
+            mock.call(1, columns=compute_columns_metadata_mock()),
         ],
     )
 
