@@ -39,7 +39,7 @@ marshmallow==3.17.0
 mccabe==0.7.0
 multidict==6.0.2
 nodeenv==1.7.0
-numpy==1.23.1
+numpy==1.26.4
 packaging==21.3
 pandas==1.4.3
 pep517==0.13.0
