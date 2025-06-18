@@ -5,6 +5,7 @@ Commands for syncing metastores to and from Superset.
 import click
 
 from preset_cli.cli.superset.sync.dbt.command import dbt_cloud, dbt_core
+from preset_cli.cli.superset.sync.dj.command import dj
 from preset_cli.cli.superset.sync.native.command import native
 
 
@@ -16,6 +17,7 @@ def sync() -> None:
 
 
 sync.add_command(native)
+sync.add_command(dj)
 sync.add_command(dbt_cloud, name="dbt-cloud")
 sync.add_command(dbt_core, name="dbt-core")
 # for backwards compatibility
