@@ -231,7 +231,6 @@ class OwnershipType(TypedDict):
 
 
 class SupersetClient:  # pylint: disable=too-many-public-methods
-
     """
     A client for running queries against Superset.
     """
@@ -360,9 +359,11 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         # and order bys
         processed_orderbys = [
-            (orderby, not order_desc)
-            if orderby in metric_names
-            else (convert_to_adhoc_metric(orderby), not order_desc)
+            (
+                (orderby, not order_desc)
+                if orderby in metric_names
+                else (convert_to_adhoc_metric(orderby), not order_desc)
+            )
             for orderby in (order_by or [])
         ]
 
