@@ -3,7 +3,7 @@ Helper functions for DJ sync.
 """
 
 import json
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 from datajunction import DJClient
@@ -19,7 +19,7 @@ def sync_cube(  # pylint: disable=too-many-arguments
     dj_client: DJClient,
     superset_client: SupersetClient,
     cube: str,
-    base_url: URL | None,
+    base_url: Optional[URL],
 ) -> None:
     """
     Sync a DJ cube to a Superset virtual dataset.
