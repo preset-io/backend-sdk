@@ -8,19 +8,24 @@ References:
     - https://github.com/dbt-labs/dbt-cloud-openapi-spec/blob/master/openapi-v3.yaml
 """
 
-# pylint: disable=invalid-name, too-few-public-methods
-
 import logging
 import re
-from enum import Enum
-from typing import Any, Dict, List, Optional, Type
+from typing import Dict, List, Optional
 
-from marshmallow import INCLUDE, Schema, fields, pre_load
 from python_graphql_client import GraphqlClient
 from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.auth.main import Auth
+from preset_cli.cli.superset.sync.dbt.schemas import (
+    AccountSchema,
+    JobSchema,
+    MFMetricSchema,
+    MFSQLEngine,
+    ModelSchema,
+    OGMetricSchema,
+    ProjectSchema,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -29,212 +34,6 @@ METADATA_GRAPHQL_ENDPOINT = URL("https://metadata.cloud.getdbt.com/graphql")
 SEMANTIC_LAYER_GRAPHQL_ENDPOINT = URL(
     "https://semantic-layer.cloud.getdbt.com/api/graphql",
 )
-
-
-class PostelSchema(Schema):
-    """
-    Be liberal in what you accept, and conservative in what you send.
-
-    A schema that allows unknown fields. This way if the API returns new fields that
-    the client is not expecting no errors will be thrown when validating the payload.
-    """
-
-    class Meta:
-        """
-        Ignore unknown and unnecessary fields.
-        """
-
-        unknown = INCLUDE
-
-
-def PostelEnumField(enum: Type[Enum], *args: Any, **kwargs: Any) -> fields.Field:
-    """
-    Lenient replacement for ``EnumField``.
-
-    This allows us to keep track of the enums expected in a field, while still
-    accepting any unexpected new values that are introduced.
-    """
-    if issubclass(enum, str):
-        return fields.String(*args, **kwargs)
-
-    if issubclass(enum, int):
-        return fields.Integer(*args, **kwargs)
-
-    return fields.Raw(*args, **kwargs)
-
-
-class AccountSchema(PostelSchema):
-    """
-    Schema for a dbt account.
-    """
-
-    id = fields.Integer()
-    name = fields.String()
-
-
-class ProjectSchema(PostelSchema):
-    """
-    Schema for a dbt project.
-    """
-
-    id = fields.Integer(allow_none=True)
-    name = fields.String()
-
-
-class JobSchema(PostelSchema):
-    """
-    Schema for a dbt job.
-    """
-
-    id = fields.Integer(allow_none=True)
-    name = fields.String()
-
-
-class ModelSchema(PostelSchema):
-    """
-    Schema for a model.
-    """
-
-    depends_on = fields.List(fields.String())
-    children = fields.List(fields.String())
-    database = fields.String()
-    schema = fields.String()
-    description = fields.String()
-    meta = fields.Raw()
-    name = fields.String()
-    alias = fields.String(allow_none=True)
-    unique_id = fields.String()
-    tags = fields.List(fields.String())
-    columns = fields.Raw(allow_none=True)
-    config = fields.Dict(fields.String(), fields.Raw(allow_none=True))
-
-    @pre_load
-    def rename_fields(  # pylint: disable=unused-argument
-        self,
-        data: Dict[str, Any],
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """
-        Handle keys that can have camelCase or snake_case and Core/Cloud differences.
-        """
-        if "uniqueId" in data:
-            data["unique_id"] = data.pop("uniqueId")
-
-        if "childrenL1" in data:
-            data["children"] = data.pop("childrenL1")
-
-        if isinstance(columns := data.get("columns"), dict):
-            data["columns"] = list(columns.values())
-
-        if "dependsOn" in data:
-            data["depends_on"] = data.pop("dependsOn")
-        depends_on = data.get("depends_on", [])
-
-        if isinstance(depends_on, dict):
-            data["depends_on"] = depends_on["nodes"]
-
-        return data
-
-
-class FilterSchema(PostelSchema):
-    """
-    Schema for a metric filter.
-    """
-
-    field = fields.String()
-    operator = fields.String()
-    value = fields.String()
-
-
-class MetricSchema(PostelSchema):
-    """
-    Base schema for a dbt metric.
-    """
-
-    name = fields.String()
-    label = fields.String()
-    description = fields.String()
-    meta = fields.Raw()
-
-
-class OGMetricSchema(MetricSchema):
-    """
-    Schema for an OG metric.
-    """
-
-    depends_on = fields.List(fields.String())
-    filters = fields.List(fields.Nested(FilterSchema))
-    sql = fields.String()
-    type = fields.String()
-    unique_id = fields.String()
-    # dbt >= 1.3
-    calculation_method = fields.String()
-    expression = fields.String()
-    dialect = fields.String()
-    skip_parsing = fields.Boolean(allow_none=True)
-
-    @pre_load
-    def rename_fields(  # pylint: disable=unused-argument
-        self,
-        data: Dict[str, Any],
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
-        """
-        Handle keys that can have camelCase or snake_case and Core/Cloud differences.
-        """
-        if "uniqueId" in data:
-            data["unique_id"] = data.pop("uniqueId")
-
-        if "dependsOn" in data:
-            data["depends_on"] = data.pop("dependsOn")
-        depends_on = data.get("depends_on", [])
-
-        if isinstance(depends_on, dict):
-            data["depends_on"] = depends_on["nodes"]
-
-        return data
-
-
-class MFMetricType(str, Enum):
-    """
-    Type of the MetricFlow metric.
-    """
-
-    SIMPLE = "SIMPLE"
-    RATIO = "RATIO"
-    CUMULATIVE = "CUMULATIVE"
-    DERIVED = "DERIVED"
-
-
-class MFMetricSchema(MetricSchema):
-    """
-    Schema for a MetricFlow metric.
-    """
-
-    type = PostelEnumField(MFMetricType)
-
-
-class MFSQLEngine(str, Enum):
-    """
-    Databases supported by MetricFlow.
-    """
-
-    BIGQUERY = "BIGQUERY"
-    DUCKDB = "DUCKDB"
-    REDSHIFT = "REDSHIFT"
-    POSTGRES = "POSTGRES"
-    SNOWFLAKE = "SNOWFLAKE"
-    DATABRICKS = "DATABRICKS"
-
-
-class MFMetricWithSQLSchema(MFMetricSchema):
-    """
-    MetricFlow metric with dialect and SQL, as well as model.
-    """
-
-    sql = fields.String()
-    dialect = PostelEnumField(MFSQLEngine)
-    model = fields.String()
 
 
 def get_custom_urls(access_url: Optional[str] = None) -> Dict[str, URL]:
@@ -454,6 +253,9 @@ class DBTClient:  # pylint: disable=too-few-public-methods
                     description
                     type
                     label
+                    config {
+                        meta
+                    }
                 }
             }
         """

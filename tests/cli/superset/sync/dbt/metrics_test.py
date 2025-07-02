@@ -9,11 +9,6 @@ from typing import Dict
 import pytest
 from pytest_mock import MockerFixture
 
-from preset_cli.api.clients.dbt import (
-    MFMetricWithSQLSchema,
-    MFSQLEngine,
-    OGMetricSchema,
-)
 from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
 from preset_cli.cli.superset.sync.dbt.metrics import (
     convert_metric_flow_to_superset,
@@ -24,6 +19,11 @@ from preset_cli.cli.superset.sync.dbt.metrics import (
     get_models_from_sql,
     get_superset_metrics_per_model,
     replace_metric_syntax,
+)
+from preset_cli.cli.superset.sync.dbt.schemas import (
+    MFMetricWithSQLSchema,
+    MFSQLEngine,
+    OGMetricSchema,
 )
 
 
@@ -107,7 +107,7 @@ def test_get_metric_expression() -> None:
         get_metric_expression("four", metrics)
     assert str(excinfo.value) == (
         "Unable to generate metric expression from: "
-        "{'dialect': 'postgres', 'sql': 'user_id', 'type': 'hllsketch'}"
+        "{'dialect': 'postgres', 'meta': {}, 'sql': 'user_id', 'superset_meta': {}, 'type': 'hllsketch'}"
     )
 
     with pytest.raises(Exception) as excinfo:

@@ -9,8 +9,8 @@ from typing import Any, Dict, List, NamedTuple, Optional
 
 import yaml
 
-from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.cli.superset.sync.dbt.schemas import ModelSchema
 
 # XXX: DashboardResponseType and DatasetResponseType
 

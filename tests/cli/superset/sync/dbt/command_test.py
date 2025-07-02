@@ -17,12 +17,17 @@ from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
-from preset_cli.api.clients.dbt import MFSQLEngine, ModelSchema
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.dbt.command import (
     get_account_id,
     get_job,
     get_project_id,
+)
+from preset_cli.cli.superset.sync.dbt.schemas import (
+    MFMetricSchema,
+    MFSQLEngine,
+    ModelSchema,
+    OGMetricSchema,
 )
 from preset_cli.exceptions import CLIError, DatabaseNotFoundError
 
@@ -33,6 +38,8 @@ with open(os.path.join(dirname, "manifest-metricflow.json"), encoding="utf-8") a
     manifest_metricflow_contents = fp.read()
 
 model_schema = ModelSchema()
+mf_metric_schema = MFMetricSchema()
+og_metric_schema = OGMetricSchema()
 
 
 profiles_contents = yaml.dump(
@@ -168,39 +175,59 @@ dbt_cloud_models = [
 ]
 
 dbt_cloud_metrics = [
-    {
-        "depends_on": ["model.superset_examples.messages_channels"],
-        "description": "",
-        "filters": [],
-        "label": "",
-        "meta": {},
-        "name": "cnt",
-        "sql": "*",
-        "type": "count",
-        "unique_id": "metric.superset_examples.cnt",
-    },
-    {
-        "depends_on": ["a", "b"],
-        "description": "",
-        "filters": [],
-        "label": "",
-        "meta": {},
-        "name": "multiple parents",
-        "sql": "*",
-        "type": "count",
-        "unique_id": "c",
-    },
+    og_metric_schema.load(
+        {
+            "depends_on": ["model.superset_examples.messages_channels"],
+            "description": "",
+            "filters": [],
+            "label": "",
+            "meta": {},
+            "name": "cnt",
+            "sql": "*",
+            "type": "count",
+            "unique_id": "metric.superset_examples.cnt",
+        },
+    ),
+    og_metric_schema.load(
+        {
+            "depends_on": ["a", "b"],
+            "description": "",
+            "filters": [],
+            "label": "",
+            "meta": {},
+            "name": "multiple parents",
+            "sql": "*",
+            "type": "count",
+            "unique_id": "c",
+        },
+    ),
 ]
 
 dbt_metricflow_metrics = [
-    {"name": "a", "type": "Simple", "description": "The simplest metric", "label": "A"},
-    {
-        "name": "b",
-        "type": "derived",
-        "description": "Too complex for Superset",
-        "label": "B",
-    },
-    {"name": "c", "type": "derived", "description": "Multiple models", "label": "C"},
+    mf_metric_schema.load(
+        {
+            "name": "a",
+            "type": "Simple",
+            "description": "The simplest metric",
+            "label": "A",
+        },
+    ),
+    mf_metric_schema.load(
+        {
+            "name": "b",
+            "type": "derived",
+            "description": "Too complex for Superset",
+            "label": "B",
+        },
+    ),
+    mf_metric_schema.load(
+        {
+            "name": "c",
+            "type": "derived",
+            "description": "Multiple models",
+            "label": "C",
+        },
+    ),
 ]
 
 

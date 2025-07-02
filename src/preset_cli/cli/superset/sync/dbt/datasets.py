@@ -14,10 +14,10 @@ from sqlalchemy.engine.url import URL as SQLAlchemyURL
 from sqlalchemy.engine.url import make_url
 from yarl import URL
 
-from preset_cli.api.clients.dbt import ModelSchema
 from preset_cli.api.clients.superset import SupersetClient, SupersetMetricDefinition
 from preset_cli.api.operators import OneToMany
 from preset_cli.cli.superset.sync.dbt.lib import create_engine_with_check
+from preset_cli.cli.superset.sync.dbt.schemas import ColumnSchema, ModelSchema
 from preset_cli.exceptions import CLIError, SupersetError
 from preset_cli.lib import dict_merge, raise_cli_errors
 
@@ -239,7 +239,7 @@ def compute_columns(
 
 
 def compute_columns_metadata(  # pylint: disable=too-many-branches, too-many-arguments  # noqa: C901
-    dbt_columns: List[Any],
+    dbt_columns: List[ColumnSchema],
     dataset_columns: List[Any],
     reload_columns: bool,
     merge_metadata: bool,
@@ -253,20 +253,12 @@ def compute_columns_metadata(  # pylint: disable=too-many-branches, too-many-arg
     merge_metadata: dbt data synced & Superset-only metadata preserved
     if both are false: Superset metadata preserved & dbt-only metadata synced
     """
-    dbt_metadata = {
-        column["name"]: {
-            key: column[key] for key in ("description", "meta") if key in column
-        }
-        for column in dbt_columns
-    }
-    for column, definition in dbt_metadata.items():
-        dbt_metadata[column]["verbose_name"] = column
-        for key, value in definition.pop("meta", {}).get("superset", {}).items():
-            dbt_metadata[column][key] = value
+    dbt_metadata: Dict[str, Dict[str, Any]] = {c["name"]: c for c in dbt_columns}
+    for column_name, definition in dbt_metadata.items():
         if column_defaults:
             final_column = copy.deepcopy(column_defaults)
-            dict_merge(final_column, dbt_metadata[column])
-            dbt_metadata[column] = final_column
+            dict_merge(final_column, dbt_metadata[column_name])
+            dbt_metadata[column_name] = final_column
 
     dbt_calc_columns_by_name = {c["column_name"]: c for c in dbt_calc_columns}
 
@@ -317,7 +309,7 @@ def compute_columns_metadata(  # pylint: disable=too-many-branches, too-many-arg
 
 
 def compute_dataset_metadata(  # pylint: disable=too-many-arguments
-    model: Dict[str, Any],
+    model: ModelSchema,
     certification: Optional[Dict[str, Any]],
     disallow_edits: bool,
     final_dataset_metrics: List[Any],
@@ -328,12 +320,14 @@ def compute_dataset_metadata(  # pylint: disable=too-many-arguments
     Returns the dataset metadata based on the model information
     """
     # load Superset-specific metadata from dbt model definition (model.meta.superset)
-    model_kwargs = model.get("meta", {}).pop("superset", {})
-    certification_details = get_certification_info(model_kwargs, certification)
+    certification_details = get_certification_info(
+        model["superset_meta"],
+        certification,
+    )
     extra = {
         "unique_id": model["unique_id"],
         "depends_on": "ref('{name}')".format(**model),
-        **model_kwargs.pop(
+        **model["superset_meta"].pop(
             "extra",
             {},
         ),
@@ -347,7 +341,8 @@ def compute_dataset_metadata(  # pylint: disable=too-many-arguments
         "extra": json.dumps(extra),
         "is_managed_externally": disallow_edits,
         "metrics": final_dataset_metrics,
-        **model_kwargs,  # include additional model metadata defined in model.meta.superset
+        # include additional model metadata defined in model.meta.superset
+        **model["superset_meta"],
     }
     if base_url:
         fragment = "!/model/{unique_id}".format(**model)
@@ -384,9 +379,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
             failed_datasets.append(model["unique_id"])
             continue
 
-        default_configs = (
-            model.get("meta", {}).get("superset", {}).pop("default_configs", {})
-        )
+        default_configs = model["superset_meta"].pop("default_configs", {})
 
         # compute metrics
         final_dataset_metrics = compute_metrics(
@@ -413,9 +406,7 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
                 continue
 
         # get calculated columns from model
-        calculated_columns = (
-            model.get("meta", {}).get("superset", {}).pop("calculated_columns", [])
-        )
+        calculated_columns = model["superset_meta"].pop("calculated_columns", [])
 
         # compute update payload
         update = compute_dataset_metadata(

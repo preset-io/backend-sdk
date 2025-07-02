@@ -14,13 +14,7 @@ import click
 import yaml
 from yarl import URL
 
-from preset_cli.api.clients.dbt import (
-    DBTClient,
-    JobSchema,
-    MFMetricWithSQLSchema,
-    MFSQLEngine,
-    ModelSchema,
-)
+from preset_cli.api.clients.dbt import DBTClient
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.token import TokenAuth
 from preset_cli.cli.superset.sync.dbt.databases import sync_database
@@ -35,6 +29,13 @@ from preset_cli.cli.superset.sync.dbt.lib import (
 from preset_cli.cli.superset.sync.dbt.metrics import (
     get_models_from_sql,
     get_superset_metrics_per_model,
+)
+from preset_cli.cli.superset.sync.dbt.schemas import (
+    JobSchema,
+    MetricSchema,
+    MFMetricWithSQLSchema,
+    MFSQLEngine,
+    ModelSchema,
 )
 from preset_cli.exceptions import CLIError, DatabaseNotFoundError
 from preset_cli.lib import raise_cli_errors
@@ -206,15 +207,12 @@ def dbt_core(  # pylint: disable=too-many-arguments, too-many-branches, too-many
     else:
         og_metrics = []
         sl_metrics = []
+        metric_base_schema = MetricSchema()
         for config in configs["metrics"].values():
-            # dbt is shifting from `metric.meta` to `metric.config.meta`
-            config["meta"] = config.get("meta") or config.get("config", {}).get(
-                "meta",
-                {},
-            )
+            config = metric_base_schema.load(config)
             # First validate if metadata is already available
-            if config["meta"].get("superset", {}).get("model") and (
-                sql := config["meta"].get("superset", {}).pop("expression")
+            if config["superset_meta"].get("model") and (
+                sql := config["superset_meta"].pop("expression")
             ):
                 metric = get_og_metric_from_config(
                     config,
@@ -420,6 +418,7 @@ def get_sl_metric(
             "dialect": dialect.value,
             "model": model["unique_id"],
             "meta": metric["meta"],
+            "superset_meta": metric["superset_meta"],
         },
     )
 
@@ -455,7 +454,8 @@ def fetch_sl_metrics(
                     "sql": sql,
                     "dialect": dialect.value,
                     "model": model["unique_id"],
-                    # TODO (Vitor-Avila): Pull meta from ``config.meta`` (supported in versionless)
+                    "meta": metric["meta"],
+                    "superset_meta": metric["superset_meta"],
                 },
             ),
         )

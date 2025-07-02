@@ -12,13 +12,9 @@ from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
 from yarl import URL
 
-from preset_cli.api.clients.dbt import (
-    DBTClient,
-    ModelSchema,
-    PostelEnumField,
-    get_custom_urls,
-)
+from preset_cli.api.clients.dbt import DBTClient, get_custom_urls
 from preset_cli.auth.main import Auth
+from preset_cli.cli.superset.sync.dbt.schemas import ModelSchema, PostelEnumField
 
 
 def test_postel_enum_field() -> None:
@@ -888,7 +884,8 @@ def test_dbt_client_get_models(mocker: MockerFixture) -> None:
             "schema": "dbt_beto",
             "unique_id": "model.jaffle_shop.customers",
             "description": "One record per customer",
-            "meta": {"superset": {"cache_timeout": 600}},
+            "meta": {},
+            "superset_meta": {"cache_timeout": 600},
             "database": "dbt-tutorial-347100",
             "name": "customers",
         },
@@ -897,6 +894,7 @@ def test_dbt_client_get_models(mocker: MockerFixture) -> None:
             "unique_id": "model.jaffle_shop.stg_customers",
             "description": "This model cleans up customer data",
             "meta": {},
+            "superset_meta": {},
             "database": "dbt-tutorial-347100",
             "name": "stg_customers",
         },
@@ -905,6 +903,7 @@ def test_dbt_client_get_models(mocker: MockerFixture) -> None:
             "unique_id": "model.jaffle_shop.stg_orders",
             "description": "This model cleans up order data",
             "meta": {},
+            "superset_meta": {},
             "database": "dbt-tutorial-347100",
             "name": "stg_orders",
         },
@@ -913,6 +912,7 @@ def test_dbt_client_get_models(mocker: MockerFixture) -> None:
             "unique_id": "model.metrics.dbt_metrics_default_calendar",
             "description": "",
             "meta": {},
+            "superset_meta": {},
             "database": "dbt-tutorial-347100",
             "name": "dbt_metrics_default_calendar",
         },
@@ -954,6 +954,7 @@ def test_dbt_client_get_og_metrics(mocker: MockerFixture) -> None:
     assert client.get_og_metrics(108380) == [
         {
             "meta": {},
+            "superset_meta": {},
             "name": "new_customers",
             "type": "count",
             "label": "New Customers",
@@ -1008,6 +1009,7 @@ def test_dbt_client_get_og_metrics_versionless_jobs(mocker: MockerFixture) -> No
     assert client.get_og_metrics(108380) == [
         {
             "meta": {},
+            "superset_meta": {},
             "name": "new_customers",
             "type": "count",
             "label": "New Customers",
@@ -1139,7 +1141,13 @@ def test_dbt_client_get_sl_metrics(mocker: MockerFixture) -> None:
     client = DBTClient(auth)
 
     assert client.get_sl_metrics(108380) == [
-        {"name": "a", "description": "A", "type": "SIMPLE"},
+        {
+            "name": "a",
+            "description": "A",
+            "type": "SIMPLE",
+            "meta": {},
+            "superset_meta": {},
+        },
     ]
 
 

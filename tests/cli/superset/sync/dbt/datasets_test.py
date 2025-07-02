@@ -13,7 +13,6 @@ from pytest_mock import MockerFixture
 from sqlalchemy.engine.url import make_url
 from yarl import URL
 
-from preset_cli.api.clients.dbt import ModelSchema, OGMetricSchema
 from preset_cli.api.clients.superset import SupersetMetricDefinition
 from preset_cli.cli.superset.sync.dbt.datasets import (
     DEFAULT_CERTIFICATION,
@@ -29,6 +28,11 @@ from preset_cli.cli.superset.sync.dbt.datasets import (
     no_catalog_support,
     sync_datasets,
 )
+from preset_cli.cli.superset.sync.dbt.schemas import (
+    ColumnSchema,
+    ModelSchema,
+    OGMetricSchema,
+)
 from preset_cli.exceptions import (
     CLIError,
     DatabaseNotFoundError,
@@ -37,7 +41,9 @@ from preset_cli.exceptions import (
     SupersetError,
 )
 
+column_schema = ColumnSchema()
 metric_schema = OGMetricSchema()
+model_schema = ModelSchema()
 
 metrics: Dict[str, List[SupersetMetricDefinition]] = {
     "model.superset_examples.messages_channels": [
@@ -110,7 +116,6 @@ dataset_columns = [
     },
 ]
 
-model_schema = ModelSchema()
 models: List[ModelSchema] = [
     model_schema.load(
         {
@@ -1511,15 +1516,17 @@ def test_compute_columns_metadata_dbt_column_meta() -> None:
     """
     modified_columns = models.copy()
     modified_columns[0]["columns"] = [
-        {
-            "name": "id",
-            "description": "Primary key",
-            "meta": {
-                "superset": {
-                    "groupby": True,
+        column_schema.load(
+            {
+                "name": "id",
+                "description": "Primary key",
+                "meta": {
+                    "superset": {
+                        "groupby": True,
+                    },
                 },
             },
-        },
+        ),
     ]
     result = compute_columns_metadata(
         modified_columns[0]["columns"],
@@ -1545,7 +1552,7 @@ def test_compute_columns_metadata_with_default_configs() -> None:
     to `True` should produce the same result, as we don't discard column metadata.
     """
     default_column_config = {"filterable": False, "description": "dbt desc"}
-    model_columns = [{"name": "id", "description": "Primary key"}]
+    model_columns = [column_schema.load({"name": "id", "description": "Primary key"})]
     dataset_columns = [
         {
             "advanced_data_type": None,
@@ -1646,7 +1653,7 @@ def test_compute_columns_metadata_with_calc_columns() -> None:
     Test the ``compute_columns_metadata`` helper with calculated columns
     set in dbt.
     """
-    dbt_columns = [{"name": "id", "description": "Primary key"}]
+    dbt_columns = [column_schema.load({"name": "id", "description": "Primary key"})]
     dbt_calc_columns = [
         {
             "column_name": "dbt_calc_column",
@@ -1732,7 +1739,7 @@ def test_compute_columns_metadata_with_calc_columns_merge_metadata() -> None:
     Test the ``compute_columns_metadata`` helper with calculated columns
     set in dbt and sync set to merge metadata.
     """
-    dbt_columns = [{"name": "id", "description": "Primary key"}]
+    dbt_columns = [column_schema.load({"name": "id", "description": "Primary key"})]
     dbt_calc_columns = [
         {
             "column_name": "calc_column",
@@ -1960,7 +1967,7 @@ def test_compute_columns_metadata_with_calc_columns_default_configs() -> None:
     Test the ``compute_columns_metadata`` helper with calculated columns
     set in dbt and sync set to merge metadata with default column configs.
     """
-    dbt_columns = [{"name": "id"}]
+    dbt_columns = [column_schema.load({"name": "id"})]
     dbt_calc_columns = [
         {
             "column_name": "calc_column",
@@ -2057,20 +2064,22 @@ def test_compute_dataset_metadata_with_dbt_metadata() -> None:
     """
     Test the ``compute_dataset_metadata`` helper with metadata from dbt.
     """
-    model = {
-        "database": "examples_dev",
-        "schema": "public",
-        "description": "",
-        "meta": {
-            "superset": {
-                "extra": {"warning_markdown": "Under Construction"},
-                "cache_timeout": 300,
+    model = model_schema.load(
+        {
+            "database": "examples_dev",
+            "schema": "public",
+            "description": "",
+            "meta": {
+                "superset": {
+                    "extra": {"warning_markdown": "Under Construction"},
+                    "cache_timeout": 300,
+                },
             },
+            "name": "messages_channels",
+            "unique_id": "model.superset_examples.messages_channels",
+            "columns": [{"name": "id", "description": "Primary key"}],
         },
-        "name": "messages_channels",
-        "unique_id": "model.superset_examples.messages_channels",
-        "columns": [{"name": "id", "description": "Primary key"}],
-    }
+    )
     model_name = model["name"]
     result = compute_dataset_metadata(
         model,
@@ -2101,17 +2110,21 @@ def test_compute_dataset_metadata_with_certification_and_columns() -> None:
     """
     Test the ``compute_dataset_metadata`` helper with certification info and columns.
     """
-    model: Dict[str, Any] = {
-        "database": "examples_dev",
-        "schema": "public",
-        "description": "",
-        "meta": {"superset": {"extra": {"certification": {"details": "Trust this"}}}},
-        "name": "messages_channels",
-        "unique_id": "model.superset_examples.messages_channels",
-        "columns": [{"name": "id", "description": "Primary key"}],
-    }
+    model = model_schema.load(
+        {
+            "database": "examples_dev",
+            "schema": "public",
+            "description": "",
+            "meta": {
+                "superset": {"extra": {"certification": {"details": "Trust this"}}},
+            },
+            "name": "messages_channels",
+            "unique_id": "model.superset_examples.messages_channels",
+            "columns": [{"name": "id", "description": "Primary key"}],
+        },
+    )
     model_name = model["name"]
-    certification_details = model["meta"]["superset"]["extra"]["certification"]
+    certification_details = model["superset_meta"]["extra"]["certification"]
     result = compute_dataset_metadata(
         model,
         {},
@@ -2140,15 +2153,17 @@ def test_compute_dataset_metadata_with_url_disallow_edits_cert_arg() -> None:
     Test the ``compute_dataset_metadata`` helper with base URL, disallow edits and
     a certification argument.
     """
-    model = {
-        "database": "examples_dev",
-        "schema": "public",
-        "description": "",
-        "meta": {},
-        "name": "messages_channels",
-        "unique_id": "model.superset_examples.messages_channels",
-        "columns": [{"name": "id", "description": "Primary key"}],
-    }
+    model = model_schema.load(
+        {
+            "database": "examples_dev",
+            "schema": "public",
+            "description": "",
+            "meta": {},
+            "name": "messages_channels",
+            "unique_id": "model.superset_examples.messages_channels",
+            "columns": [{"name": "id", "description": "Primary key"}],
+        },
+    )
     model_name = model["name"]
     certification = {"details": "This dataset is synced from dbt Cloud"}
     result = compute_dataset_metadata(
@@ -2181,7 +2196,7 @@ def test_compute_dataset_metadata_null_certification() -> None:
     Test the ``compute_dataset_metadata`` helper with certification set to `None`.
     """
     model = models[0].copy()
-    model["meta"] = {"superset": {"extra": {"certification": None}}}
+    model["superset_meta"] = {"extra": {"certification": None}}
     model_name = model["name"]
     result = compute_dataset_metadata(
         model,
