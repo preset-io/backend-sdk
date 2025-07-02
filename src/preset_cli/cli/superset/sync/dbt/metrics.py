@@ -27,16 +27,15 @@ from sqlglot.expressions import (
 )
 from sqlglot.optimizer import traverse_scope
 
-from preset_cli.api.clients.dbt import (
+from preset_cli.api.clients.superset import SupersetMetricDefinition
+from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
+from preset_cli.cli.superset.sync.dbt.schemas import (
     FilterSchema,
     MFMetricWithSQLSchema,
     MFSQLEngine,
     ModelSchema,
     OGMetricSchema,
 )
-from preset_cli.api.clients.superset import SupersetMetricDefinition
-from preset_cli.cli.superset.sync.dbt.exposures import ModelKey
-from preset_cli.cli.superset.sync.dbt.lib import parse_metric_meta
 
 _logger = logging.getLogger(__name__)
 
@@ -208,8 +207,7 @@ def get_metric_definition(
     """
     metric_map = {metric["name"]: metric for metric in metrics}
     metric = metric_map[metric_name]
-    metric_meta = parse_metric_meta(metric)
-    final_metric_name = metric_meta["metric_name_override"] or metric_name
+    final_metric_name = metric["superset_meta"].pop("metric_name", None) or metric_name
 
     return {
         "expression": get_metric_expression(metric_name, metric_map),
@@ -217,8 +215,8 @@ def get_metric_definition(
         "metric_type": (metric.get("type") or metric.get("calculation_method")),
         "verbose_name": metric.get("label", final_metric_name),
         "description": metric.get("description", ""),
-        "extra": json.dumps(metric_meta["meta"]),
-        **metric_meta["kwargs"],  # type: ignore
+        "extra": json.dumps(metric["meta"]),
+        **metric["superset_meta"],  # type: ignore
     }
 
 
@@ -236,7 +234,7 @@ def get_superset_metrics_per_model(
         # model), it's required to specify the dataset the metric should be associated with
         # under the ``meta.superset.model`` key. If the derived metric is just an expression
         # with no dependency, it's not required to parse the metric SQL.
-        if model := metric.get("meta", {}).get("superset", {}).pop("model", None):
+        if model := metric["superset_meta"].pop("model", None):
             if len(metric["depends_on"]) == 0:
                 metric["skip_parsing"] = True
         else:
@@ -369,18 +367,20 @@ def convert_metric_flow_to_superset(
         SUM(CASE WHEN order_total > 20 THEN 1 END)
 
     """
-    metric_meta = parse_metric_meta(sl_metric)
+    final_metric_name = (
+        sl_metric["superset_meta"].pop("metric_name", None) or sl_metric["name"]
+    )
     return {
         "expression": convert_query_to_projection(
             sl_metric["sql"],
             sl_metric["dialect"],
         ),
-        "metric_name": metric_meta["metric_name_override"] or sl_metric["name"],
+        "metric_name": final_metric_name,
         "metric_type": sl_metric["type"],
         "verbose_name": sl_metric["label"],
         "description": sl_metric["description"],
-        "extra": json.dumps(metric_meta["meta"]),
-        **metric_meta["kwargs"],  # type: ignore
+        "extra": json.dumps(sl_metric["meta"]),
+        **sl_metric["superset_meta"],  # type: ignore
     }
 
 

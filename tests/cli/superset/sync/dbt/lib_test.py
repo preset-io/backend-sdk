@@ -2,7 +2,6 @@
 Test for ``preset_cli.cli.superset.sync.dbt.lib``.
 """
 # pylint: disable=invalid-name
-
 import copy
 import json
 import math
@@ -14,7 +13,6 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 from sqlalchemy.engine.url import URL
 
-from preset_cli.api.clients.dbt import MetricSchema, ModelSchema
 from preset_cli.cli.superset.sync.dbt.lib import (
     apply_select,
     as_number,
@@ -25,8 +23,8 @@ from preset_cli.cli.superset.sync.dbt.lib import (
     get_og_metric_from_config,
     list_failed_models,
     load_profiles,
-    parse_metric_meta,
 )
+from preset_cli.cli.superset.sync.dbt.schemas import ModelSchema, parse_meta_properties
 from preset_cli.exceptions import CLIError
 
 base_metric_config: Dict[str, Any] = {
@@ -714,11 +712,8 @@ def test_get_og_metric_from_config() -> None:
     assert get_og_metric_from_config(metric_config, "my_dialect") == {
         "depends_on": ["model.postgres.vehicle_sales"],
         "description": "revenue.",
-        "meta": {
-            "superset": {
-                "d3format": ",.2f",
-            },
-        },
+        "meta": {},
+        "superset_meta": {"d3format": ",.2f"},
         "name": "revenue_metric",
         "label": "Sales Revenue Metric and this is the dbt label",
         "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
@@ -750,11 +745,8 @@ def test_get_og_metric_from_config_older_dbt_version() -> None:
     assert get_og_metric_from_config(metric_config, "other_dialect") == {
         "depends_on": ["model.postgres.vehicle_sales"],
         "description": "revenue.",
-        "meta": {
-            "superset": {
-                "d3format": ",.2f",
-            },
-        },
+        "meta": {},
+        "superset_meta": {"d3format": ",.2f"},
         "name": "revenue_metric",
         "label": "Sales Revenue Metric and this is the dbt label",
         "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
@@ -795,9 +787,8 @@ def test_get_og_metric_from_config_ready_metric() -> None:
     ) == {
         "depends_on": [],
         "description": "revenue.",
-        "meta": {
-            "superset": {"d3format": ",.2f", "model": "model.postgres.vehicle_sales"},
-        },
+        "meta": {},
+        "superset_meta": {"d3format": ",.2f", "model": "model.postgres.vehicle_sales"},
         "name": "revenue_metric",
         "label": "Sales Revenue Metric and this is the dbt label",
         "unique_id": "metric.postgres.revenue_verbose_name_from_dbt",
@@ -818,72 +809,97 @@ def test_get_og_metric_from_config_ready_metric() -> None:
     }
 
 
-def test_parse_metric_meta() -> None:
+def test_parse_meta_properties() -> None:
     """
-    Test the ``parse_metric_meta`` helper.
+    Test the ``parse_meta_properties`` helper.
     """
-    metric_schema = MetricSchema()
-    assert parse_metric_meta(
-        metric_schema.load(
-            {
-                "name": "test metric",
-                "label": "Test Metric",
-                "description": "This is a test metric",
-                "meta": {
-                    "superset": {
-                        "d3format": ",.2f",
-                        "metric_name": "revenue_metric",
-                    },
-                    "airflow": "other_id",
-                },
-            },
-        ),
-    ) == {
+    data = {
+        "name": "test metric",
+        "label": "Test Metric",
+        "description": "This is a test metric",
         "meta": {
+            "superset": {
+                "d3format": ",.2f",
+                "metric_name": "revenue_metric",
+            },
             "airflow": "other_id",
         },
-        "kwargs": {
+    }
+    parse_meta_properties(data)
+    assert data == {
+        "name": "test metric",
+        "label": "Test Metric",
+        "description": "This is a test metric",
+        "meta": {"airflow": "other_id"},
+        "superset_meta": {
             "d3format": ",.2f",
+            "metric_name": "revenue_metric",
         },
-        "metric_name_override": "revenue_metric",
     }
 
-    assert parse_metric_meta(
-        metric_schema.load(
-            {
-                "name": "Sabe but using config",
-                "label": "Meta inside config",
-                "description": "",
-                "meta": {
-                    "superset": {
-                        "d3format": ",.2f",
-                        "metric_name": "revenue_metric",
-                    },
-                    "airflow": "other_id",
-                },
-            },
-        ),
-    ) == {
+    data = {
+        "name": "Sabe but using config",
+        "label": "Meta inside config",
+        "description": "",
         "meta": {
+            "superset": {
+                "d3format": ",.2f",
+                "metric_name": "revenue_metric",
+            },
             "airflow": "other_id",
         },
-        "kwargs": {
+    }
+    parse_meta_properties(data, preserve_dbt_meta=False)
+    assert data == {
+        "name": "Sabe but using config",
+        "label": "Meta inside config",
+        "description": "",
+        "superset_meta": {
             "d3format": ",.2f",
+            "metric_name": "revenue_metric",
         },
-        "metric_name_override": "revenue_metric",
     }
 
-    assert parse_metric_meta(
-        metric_schema.load(
-            {
-                "name": "Sabe but using config",
-                "label": "Meta inside config",
-                "description": "",
-                "meta": {},
-            },
-        ),
-    ) == {
+    data = {
+        "name": "Sabe but using config",
+        "label": "Meta inside config",
+        "description": "",
         "meta": {},
-        "kwargs": {},
-        "metric_name_override": None,
+    }
+    parse_meta_properties(data)
+    assert data == {
+        "name": "Sabe but using config",
+        "label": "Meta inside config",
+        "description": "",
+        "meta": {},
+        "superset_meta": {},
+    }
+
+    data = {
+        "name": "test metric",
+        "label": "Test Metric",
+        "description": "This is a test metric",
+        "config": {
+            "meta": {
+                "superset": {
+                    "d3format": ",.2f",
+                    "metric_name": "revenue_metric",
+                },
+                "airflow": "other_id",
+            },
+        },
+    }
+    parse_meta_properties(data)
+    assert data == {
+        "name": "test metric",
+        "label": "Test Metric",
+        "description": "This is a test metric",
+        "meta": {"airflow": "other_id"},
+        "superset_meta": {
+            "d3format": ",.2f",
+            "metric_name": "revenue_metric",
+        },
+        "config": {
+            "meta": {"airflow": "other_id"},
+        },
     }

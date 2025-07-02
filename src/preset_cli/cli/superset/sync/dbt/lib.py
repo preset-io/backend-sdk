@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import NoSuchModuleError
 
-from preset_cli.api.clients.dbt import MetricSchema, ModelSchema, OGMetricSchema
+from preset_cli.cli.superset.sync.dbt.schemas import ModelSchema, OGMetricSchema
 from preset_cli.exceptions import CLIError
 
 _logger = logging.getLogger(__name__)
@@ -523,16 +523,3 @@ def get_og_metric_from_config(
     metric_config["dialect"] = dialect
 
     return metric_schema.load(metric_config)
-
-
-def parse_metric_meta(metric: MetricSchema) -> Dict[str, Any]:
-    """
-    Parses the metric's meta information.
-    """
-    kwargs = metric.get("meta", {}).pop("superset", {})
-    metric_name_override = kwargs.pop("metric_name", None)
-    return {
-        "meta": metric.get("meta", {}),
-        "kwargs": kwargs,
-        "metric_name_override": metric_name_override,
-    }
