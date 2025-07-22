@@ -39,9 +39,9 @@ marshmallow==3.17.0
 mccabe==0.7.0
 multidict==6.0.2
 nodeenv==1.7.0
-numpy==1.23.1
+numpy==2.3.1
 packaging==21.3
-pandas==1.4.3
+pandas==2.3.1
 pep517==0.13.0
 pip-tools==6.13.0
 platformdirs==2.5.2
@@ -73,6 +73,7 @@ toml==0.10.2
 tomli==2.0.1
 tomlkit==0.11.6
 typing-extensions==4.3.0
+tzdata==2025.2
 urllib3==1.26.9
 virtualenv==20.16.3
 wcwidth==0.2.5
