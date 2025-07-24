@@ -5,6 +5,11 @@ Changelog
 Next
 ====
 
+Version 0.3.7 - 2025-07-24
+==========================
+
+- Added support for specifying ``meta.superset`` under ``config`` (`#356 <https://github.com/preset-io/backend-sdk/pull/356>`_).
+
 Version 0.3.6 - 2025-05-29
 ==========================
 
