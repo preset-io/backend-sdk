@@ -317,7 +317,10 @@ def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema
     """
     Filter a list of dbt models given a select condition.
 
-    Currently only a subset of the syntax is supported.
+    Currently supports a subset of the dbt selector syntax:
+    - tag:value - Filter by tag
+    - config.key:value - Filter by config property
+    - config.key1.key2:value - Filter by nested config property (like config.meta.key:value)
 
     See https://docs.getdbt.com/reference/node-selection/syntax.
     """
@@ -328,9 +331,18 @@ def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema
 
     if condition.startswith("config"):
         filtered_models = []
-        config_key, config_value = re.split(r"[.:]", condition)[1:]
+        config_key, _, config_value = condition.rpartition(":")
+        parts = config_key.split(".")
         for model in models:
-            if model.get("config", {}).get(config_key) == config_value:
+            config = model.get("config", {})
+
+            if len(parts) == 2:  # config.key:value
+                key = parts[1]
+                if config.get(key) == config_value:
+                    filtered_models.append(model)
+            elif (
+                config.get(parts[1], {}).get(parts[2]) == config_value
+            ):  # config.key1.key2:value
                 filtered_models.append(model)
         return filtered_models
 
