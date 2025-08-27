@@ -312,15 +312,14 @@ def load_profiles(
     return apply_templating(profiles)
 
 
-# pylint: disable=R0911
+# pylint: disable=R0911, R0912
 def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema]:
     """
     Filter a list of dbt models given a select condition.
 
     Currently supports a subset of the dbt selector syntax:
     - tag:value - Filter by tag
-    - config.key:value - Filter by config property
-    - config.key1.key2:value - Filter by nested config property (like config.meta.key:value)
+    - config.key1.key2.key3...keyN:value - Filter by arbitrary depth nested config property
 
     See https://docs.getdbt.com/reference/node-selection/syntax.
     """
@@ -329,21 +328,28 @@ def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema
         tag = condition.split(":", 1)[1]
         return [model for model in models if tag in model["tags"]]
 
-    if condition.startswith("config"):
+    if condition.startswith("config."):
         filtered_models = []
         config_key, _, config_value = condition.rpartition(":")
         parts = config_key.split(".")
-        for model in models:
-            config = model.get("config", {})
 
-            if len(parts) == 2:  # config.key:value
-                key = parts[1]
-                if config.get(key) == config_value:
+        # Skip the first part which is "config"
+        keys = parts[1:]
+
+        for model in models:
+            if value := model.get("config", {}):
+                # Traverse nested config using the parts
+                for key in keys:
+                    if isinstance(value, dict):
+                        value = value.get(key, {})
+                    else:
+                        # If we hit a non-dict before exhausting keys, this path doesn't exist
+                        value = {}
+                        break
+
+                if value == config_value:
                     filtered_models.append(model)
-            elif (
-                config.get(parts[1], {}).get(parts[2]) == config_value
-            ):  # config.key1.key2:value
-                filtered_models.append(model)
+
         return filtered_models
 
     # simple match by name
