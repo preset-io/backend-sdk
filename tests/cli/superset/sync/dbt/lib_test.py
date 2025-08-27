@@ -1,7 +1,7 @@
 """
 Test for ``preset_cli.cli.superset.sync.dbt.lib``.
 """
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name, too-many-lines
 import copy
 import json
 import math
@@ -490,6 +490,242 @@ def test_filter_models() -> None:
     )
 
 
+def test_filter_models_config_meta() -> None:
+    """
+    Test ``filter_models`` with config.meta selectors.
+    """
+    model_schema = ModelSchema()
+    one = model_schema.load(
+        {
+            "name": "one",
+            "tags": [],
+            "unique_id": "model.one",
+            "config": {
+                "meta": {
+                    "connection": "oauth",
+                    "priority": "high",
+                    "team": "analytics",
+                },
+            },
+        },
+    )
+    two = model_schema.load(
+        {
+            "name": "two",
+            "tags": [],
+            "unique_id": "model.two",
+            "config": {
+                "meta": {
+                    "connection": "service_account",
+                    "priority": "low",
+                },
+            },
+        },
+    )
+    three = model_schema.load(
+        {
+            "name": "three",
+            "tags": [],
+            "unique_id": "model.three",
+            "config": {
+                "meta": {
+                    "connection": "oauth",
+                    "team": "data_eng",
+                },
+            },
+        },
+    )
+    four = model_schema.load(
+        {
+            "name": "four",
+            "tags": [],
+            "unique_id": "model.four",
+            "config": {
+                "materialized": "table",
+            },
+        },
+    )
+    five = model_schema.load(
+        {
+            "name": "five",
+            "tags": [],
+            "unique_id": "model.five",
+        },
+    )
+    models = [one, two, three, four, five]
+
+    assert {
+        model["name"] for model in filter_models(models, "config.meta.connection:oauth")
+    } == {"one", "three"}
+
+    assert {
+        model["name"]
+        for model in filter_models(models, "config.meta.connection:service_account")
+    } == {"two"}
+
+    assert {
+        model["name"] for model in filter_models(models, "config.meta.priority:high")
+    } == {"one"}
+
+    assert {
+        model["name"] for model in filter_models(models, "config.meta.priority:low")
+    } == {"two"}
+
+    assert {
+        model["name"] for model in filter_models(models, "config.meta.team:analytics")
+    } == {"one"}
+
+    assert {
+        model["name"] for model in filter_models(models, "config.meta.team:data_eng")
+    } == {"three"}
+
+    assert {
+        model["name"]
+        for model in filter_models(models, "config.meta.nonexistent:value")
+    } == set()
+
+    assert {
+        model["name"] for model in filter_models(models, "config.meta.connection:none")
+    } == set()
+
+    assert {
+        model["name"] for model in filter_models(models, "config.materialized:table")
+    } == {"four"}
+
+
+def test_filter_models_deep_nesting() -> None:
+    """
+    Test ``filter_models`` with deeply nested config properties (3+ levels).
+    """
+    model_schema = ModelSchema()
+
+    # Model with 3-level nesting
+    model_one = model_schema.load(
+        {
+            "name": "model_one",
+            "tags": [],
+            "unique_id": "model.one",
+            "config": {
+                "foo": {
+                    "bar": {
+                        "baz": "value1",
+                    },
+                },
+            },
+        },
+    )
+
+    # Model with 4-level nesting
+    model_two = model_schema.load(
+        {
+            "name": "model_two",
+            "tags": [],
+            "unique_id": "model.two",
+            "config": {
+                "foo": {
+                    "bar": {
+                        "baz": {
+                            "qux": "deep_value",
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    # Model with 5-level nesting
+    model_three = model_schema.load(
+        {
+            "name": "model_three",
+            "tags": [],
+            "unique_id": "model.three",
+            "config": {
+                "level1": {
+                    "level2": {
+                        "level3": {
+                            "level4": {
+                                "level5": "very_deep",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    # Model with different 3-level structure
+    model_four = model_schema.load(
+        {
+            "name": "model_four",
+            "tags": [],
+            "unique_id": "model.four",
+            "config": {
+                "foo": {
+                    "bar": {
+                        "baz": "value2",
+                    },
+                },
+            },
+        },
+    )
+
+    # Model with partial path
+    model_five = model_schema.load(
+        {
+            "name": "model_five",
+            "tags": [],
+            "unique_id": "model.five",
+            "config": {
+                "foo": {
+                    "bar": "simple_value",
+                },
+            },
+        },
+    )
+
+    models = [model_one, model_two, model_three, model_four, model_five]
+
+    # Test 3-level nesting
+    assert {
+        model["name"] for model in filter_models(models, "config.foo.bar.baz:value1")
+    } == {"model_one"}
+
+    assert {
+        model["name"] for model in filter_models(models, "config.foo.bar.baz:value2")
+    } == {"model_four"}
+
+    # Test 4-level nesting
+    assert {
+        model["name"]
+        for model in filter_models(models, "config.foo.bar.baz.qux:deep_value")
+    } == {"model_two"}
+
+    # Test 5-level nesting
+    assert {
+        model["name"]
+        for model in filter_models(
+            models,
+            "config.level1.level2.level3.level4.level5:very_deep",
+        )
+    } == {"model_three"}
+
+    # Test non-existent deep path
+    assert {
+        model["name"]
+        for model in filter_models(models, "config.foo.bar.baz.qux.quux:nonexistent")
+    } == set()
+
+    # Test partial match (should not match if full path doesn't exist)
+    assert {
+        model["name"] for model in filter_models(models, "config.foo.bar:simple_value")
+    } == {"model_five"}
+
+    # Test looking for a nested value at wrong level
+    assert {
+        model["name"] for model in filter_models(models, "config.foo.bar:value1")
+    } == set()
+
+
 def test_filter_models_seen() -> None:
     """
     Test that ``filter_models`` dedupes models.
@@ -601,6 +837,76 @@ def test_apply_select() -> None:
     } == {
         "two",
     }
+
+
+def test_apply_select_with_config_meta() -> None:
+    """
+    Test ``apply_select`` with config.meta selectors.
+    """
+    model_schema = ModelSchema()
+    a = model_schema.load(
+        {
+            "name": "a",
+            "tags": [],
+            "unique_id": "a",
+            "depends_on": [],
+            "children": ["b"],
+            "config": {"meta": {"db": "oauth"}},
+        },
+    )
+    b = model_schema.load(
+        {
+            "name": "b",
+            "tags": [],
+            "unique_id": "b",
+            "depends_on": ["a"],
+            "children": [],
+            "config": {"meta": {"db": "service_account"}},
+        },
+    )
+    c = model_schema.load(
+        {
+            "name": "c",
+            "tags": ["production"],
+            "unique_id": "c",
+            "depends_on": [],
+            "children": [],
+            "config": {"meta": {"db": "oauth"}},
+        },
+    )
+    d = model_schema.load(
+        {
+            "name": "d",
+            "tags": [],
+            "unique_id": "d",
+            "depends_on": [],
+            "children": [],
+            "config": {"materialized": "table", "meta": {"db": "oauth"}},
+        },
+    )
+    models = [a, b, c, d]
+
+    assert {
+        model["name"] for model in apply_select(models, ("config.meta.db:oauth",), ())
+    } == {"a", "c", "d"}
+
+    assert {
+        model["name"]
+        for model in apply_select(
+            models,
+            ("config.meta.db:oauth",),
+            ("tag:production",),
+        )
+    } == {"a", "d"}
+
+    assert {
+        model["name"]
+        for model in apply_select(
+            models,
+            ("config.meta.db:oauth,config.materialized:table",),
+            (),
+        )
+    } == {"d"}
 
 
 def test_apply_select_exclude() -> None:

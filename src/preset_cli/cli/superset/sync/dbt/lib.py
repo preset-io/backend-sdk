@@ -312,12 +312,14 @@ def load_profiles(
     return apply_templating(profiles)
 
 
-# pylint: disable=R0911
+# pylint: disable=R0911, R0912
 def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema]:
     """
     Filter a list of dbt models given a select condition.
 
-    Currently only a subset of the syntax is supported.
+    Currently supports a subset of the dbt selector syntax:
+    - tag:value - Filter by tag
+    - config.key1.key2.key3...keyN:value - Filter by arbitrary depth nested config property
 
     See https://docs.getdbt.com/reference/node-selection/syntax.
     """
@@ -326,12 +328,28 @@ def filter_models(models: List[ModelSchema], condition: str) -> List[ModelSchema
         tag = condition.split(":", 1)[1]
         return [model for model in models if tag in model["tags"]]
 
-    if condition.startswith("config"):
+    if condition.startswith("config."):
         filtered_models = []
-        config_key, config_value = re.split(r"[.:]", condition)[1:]
+        config_key, _, config_value = condition.rpartition(":")
+        parts = config_key.split(".")
+
+        # Skip the first part which is "config"
+        keys = parts[1:]
+
         for model in models:
-            if model.get("config", {}).get(config_key) == config_value:
-                filtered_models.append(model)
+            if value := model.get("config", {}):
+                # Traverse nested config using the parts
+                for key in keys:
+                    if isinstance(value, dict):
+                        value = value.get(key, {})
+                    else:
+                        # If we hit a non-dict before exhausting keys, this path doesn't exist
+                        value = {}
+                        break
+
+                if value == config_value:
+                    filtered_models.append(model)
+
         return filtered_models
 
     # simple match by name
