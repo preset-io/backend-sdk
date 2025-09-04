@@ -31,7 +31,6 @@ class Role(int, Enum):
 
 
 class PresetClient:  # pylint: disable=too-few-public-methods
-
     """
     A client for the Preset API.
     """
@@ -157,13 +156,13 @@ class PresetClient:  # pylint: disable=too-few-public-methods
             team_members: List[UserType] = [
                 {
                     "id": 0,
-                    "username": payload["user"]["username"],
-                    "role": [],  # TODO (betodealmeida)
-                    "first_name": payload["user"]["first_name"],
-                    "last_name": payload["user"]["last_name"],
-                    "email": payload["user"]["email"].lower(),
+                    "username": element["user"]["username"],
+                    "role": [element["workspace_role"]["role_identifier"]],
+                    "first_name": element["user"]["first_name"],
+                    "last_name": element["user"]["last_name"],
+                    "email": element["user"]["email"].lower(),
                 }
-                for payload in payload["payload"]
+                for element in payload["payload"]
             ]
             workspace_membership.extend(team_members)
 

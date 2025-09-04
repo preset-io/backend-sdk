@@ -101,6 +101,10 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
                         "last_name": "Doe",
                         "email": "adoe@example.com",
                     },
+                    "workspace_role": {
+                        "name": "Limited Contributor",
+                        "role_identifier": "PresetGamma",
+                    },
                 },
                 {
                     "user": {
@@ -108,6 +112,10 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
                         "first_name": "Bob",
                         "last_name": "Doe",
                         "email": "bdoe@example.com",
+                    },
+                    "workspace_role": {
+                        "name": "Limited Contributor",
+                        "role_identifier": "PresetGamma",
                     },
                 },
             ],
@@ -126,6 +134,10 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
                         "first_name": "Clarisse",
                         "last_name": "Doe",
                         "email": "cdoe@example.com",
+                    },
+                    "workspace_role": {
+                        "name": "Limited Contributor",
+                        "role_identifier": "PresetGamma",
                     },
                 },
             ],
@@ -167,7 +179,7 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "adoe",
             "email": "adoe@example.com",
-            "role": [],
+            "role": ["PresetGamma"],
         },
         {
             "id": 2,
@@ -175,7 +187,7 @@ def test_preset_client_export_users(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "bdoe",
             "email": "bdoe@example.com",
-            "role": [],
+            "role": ["PresetGamma"],
         },
     ]
 

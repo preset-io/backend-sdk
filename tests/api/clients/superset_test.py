@@ -1,6 +1,7 @@
 """
 Tests for ``preset_cli.api.clients.superset``.
 """
+
 # pylint: disable=too-many-lines, trailing-whitespace, line-too-long, use-implicit-booleaness-not-comparison
 
 import json
@@ -16,7 +17,6 @@ from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
 from yarl import URL
 
-from preset_cli import __version__
 from preset_cli.api.clients.superset import (
     RoleType,
     RuleType,
@@ -1891,6 +1891,10 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                         "last_name": "Doe",
                         "email": "adoe@example.com",
                     },
+                    "workspace_role": {
+                        "name": "Limited Contributor",
+                        "role_identifier": "PresetGamma",
+                    },
                 },
                 {
                     "user": {
@@ -1898,6 +1902,10 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                         "first_name": "Bob",
                         "last_name": "Doe",
                         "email": "BDoe@example.com",
+                    },
+                    "workspace_role": {
+                        "name": "Limited Contributor",
+                        "role_identifier": "PresetGamma",
                     },
                 },
             ],
@@ -1917,6 +1925,10 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                         "first_name": "Clarisse",
                         "last_name": "Doe",
                         "email": "cdoe@example.com",
+                    },
+                    "workspace_role": {
+                        "name": "Limited Contributor",
+                        "role_identifier": "PresetGamma",
                     },
                 },
             ],
@@ -1972,7 +1984,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "adoe",
             "email": "adoe@example.com",
-            "role": [],
+            "role": ["PresetGamma"],
         },
         {
             "id": 2,
@@ -1980,7 +1992,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "bdoe",
             "email": "bdoe@example.com",
-            "role": [],
+            "role": ["PresetGamma"],
         },
         {
             "id": 3,
@@ -1988,7 +2000,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "cdoe",
             "email": "cdoe@example.com",
-            "role": [],
+            "role": ["PresetGamma"],
         },
     ]
 
