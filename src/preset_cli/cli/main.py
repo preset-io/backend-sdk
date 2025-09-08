@@ -24,6 +24,7 @@ from preset_cli.cli.export_users import export_users as export_users_command
 from preset_cli.cli.superset.main import superset
 from preset_cli.exceptions import CLIError
 from preset_cli.lib import raise_cli_errors, setup_logging, split_comma
+from preset_cli.typing import UserType
 
 _logger = logging.getLogger(__name__)
 
@@ -428,6 +429,194 @@ def export_group_membership_csv(groups: Dict[str, Any], team: str) -> None:
                     )
 
 
+def detect_users_file_format(users: List[Dict[str, Any]]) -> str:
+    """
+    Detect whether the users file is in the simple format (users.yaml)
+    or the new format with workspace roles (users_workspace_roles.yaml).
+
+    Args:
+        users: List of user dictionaries
+
+    Returns:
+        "simple" for users.yaml format, "workspace_roles" for users_workspace_roles.yaml format
+    """
+    if not users:
+        return "simple"
+
+    # Check if any user has workspace roles in the new format
+    sample_user = users[0]
+    if "workspaces" in sample_user and isinstance(sample_user["workspaces"], dict):
+        # Check if workspaces contain the new format (team/workspace keys)
+        for _, workspace_data in sample_user["workspaces"].items():
+            if isinstance(workspace_data, dict) and "workspace_role" in workspace_data:
+                return "workspace_roles"
+
+    return "simple"
+
+
+def _create_workspace_lookup(
+    team_name: str,
+    workspaces: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Create lookup table for workspace matching."""
+    workspace_lookup = {}
+    for workspace in workspaces:
+        workspace_info = {"id": workspace["id"], "name": workspace["name"]}
+        # Support matching by both title and name
+        workspace_lookup[workspace["title"]] = workspace_info
+        workspace_lookup[workspace["name"]] = workspace_info
+        # Also support "team/workspace" format
+        workspace_key = f"{team_name}/{workspace['title']}"
+        workspace_lookup[workspace_key] = workspace_info
+    return workspace_lookup
+
+
+def _set_user_workspace_role(
+    client: PresetClient,
+    team_name: str,
+    user: Dict[str, Any],
+    user_id: int,
+    workspace_lookup: Dict[str, Dict[str, Any]],
+) -> None:
+    """Set workspace roles for a single user."""
+    if "workspaces" not in user or not user["workspaces"]:
+        return  # pragma: no cover
+
+    user_email = user["email"].lower()
+
+    for workspace_key, workspace_data in user["workspaces"].items():
+        if (
+            not isinstance(workspace_data, dict)
+            or "workspace_role" not in workspace_data
+        ):
+            continue  # pragma: no cover
+
+        workspace_role = workspace_data["workspace_role"].lower()
+
+        # Skip "no access" roles
+        if workspace_role == "no access":
+            continue
+
+        # Find the workspace
+        if workspace_key not in workspace_lookup:
+            _logger.warning(
+                "Workspace %s not found in team %s, skipping",
+                workspace_key,
+                team_name,
+            )
+            continue
+
+        workspace_id = workspace_lookup[workspace_key]["id"]
+
+        # Map workspace role to role identifier
+        if workspace_role not in workspace_role_identifiers:
+            _logger.warning(
+                "Unknown workspace role %s for user %s, skipping",
+                workspace_role,
+                user_email,
+            )
+            continue
+
+        role_identifier = workspace_role_identifiers[workspace_role]
+
+        _logger.info(
+            "Setting workspace role of user %s to %s (%s) in workspace %s",
+            user_email,
+            role_identifier,
+            workspace_role.title(),
+            workspace_key,
+        )
+
+        try:
+            client.change_workspace_role(
+                team_name,
+                workspace_id,
+                user_id,
+                role_identifier,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            _logger.error(
+                "Failed to set workspace role for user %s: %s",
+                user_email,
+                exc,
+            )
+            click.echo(
+                f"Warning: Failed to set workspace role for user {user_email}: {exc}",
+            )
+
+
+def import_users_with_workspace_roles(
+    client: PresetClient,
+    teams: List[str],
+    users: List[Dict[str, Any]],
+) -> None:
+    """
+    Import users and set their workspace roles from users_workspace_roles.yaml format.
+
+    Args:
+        client: PresetClient instance
+        teams: List of team names to process
+        users: List of user dictionaries with workspace role information
+    """
+    # First, import users using SCIM (only basic user info)
+    simple_users: List[UserType] = []
+    for user in users:
+        simple_user: UserType = {
+            "id": 0,  # Will be set by the server
+            "email": user["email"],
+            "first_name": user["first_name"],
+            "last_name": user["last_name"],
+            "username": user.get("username", user["email"]),
+            "role": [],  # Will be set by workspace role assignments
+        }
+        simple_users.append(simple_user)
+
+    client.import_users(teams, simple_users)
+
+    # Now set workspace roles for users who have workspace assignments
+    for team_name in teams:
+        try:
+            workspaces = client.get_workspaces(team_name)
+            workspace_lookup = _create_workspace_lookup(team_name, workspaces)
+
+            # Get team members to get user IDs
+            team_members = client.get_team_members(team_name)
+            user_id_lookup = {
+                member["user"]["email"].lower(): member["user"]["id"]
+                for member in team_members
+            }
+
+            # Set workspace roles for each user
+            for user in users:
+                user_email = user["email"].lower()
+                if user_email not in user_id_lookup:
+                    _logger.warning(
+                        "User %s not found in team %s, skipping workspace role assignment",
+                        user_email,
+                        team_name,
+                    )
+                    continue
+
+                user_id = user_id_lookup[user_email]
+                _set_user_workspace_role(
+                    client,
+                    team_name,
+                    user,
+                    user_id,
+                    workspace_lookup,
+                )
+
+        except Exception as exc:  # pylint: disable=broad-except
+            _logger.error(
+                "Failed to process workspace roles for team %s: %s",
+                team_name,
+                exc,
+            )
+            click.echo(
+                f"Warning: Failed to process workspace roles for team {team_name}: {exc}",
+            )
+
+
 @click.command()
 @click.option("--teams", callback=split_comma)
 @click.argument(
@@ -440,6 +629,12 @@ def export_group_membership_csv(groups: Dict[str, Any], team: str) -> None:
 def import_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
     """
     Import users by adding them via SCIM.
+
+    This command can import users from two file formats:
+    1. Simple format (users.yaml): Only imports basic user information
+    2. Workspace roles format (users_workspace_roles.yaml): Imports users and sets workspace roles
+
+    The format is automatically detected based on the file contents.
     """
     client = PresetClient(ctx.obj["MANAGER_URL"], ctx.obj["AUTH"])
 
@@ -448,6 +643,22 @@ def import_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
 
     with open(path, encoding="utf-8") as input_:
         users = yaml.load(input_, Loader=yaml.SafeLoader)
+
+    if not users:
+        click.echo("No users found in the input file.")
+        return
+
+    file_format = detect_users_file_format(users)
+
+    if file_format == "workspace_roles":
+        _logger.info(
+            "Detected workspace roles format, importing users with workspace role assignments",
+        )
+        click.echo("Importing users with workspace roles...")
+        import_users_with_workspace_roles(client, teams, users)
+    else:
+        _logger.info("Detected simple format, importing users only")
+        click.echo("Importing users...")
         client.import_users(teams, users)
 
 
