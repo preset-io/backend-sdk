@@ -20,6 +20,7 @@ from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.auth.jwt import JWTAuth
 from preset_cli.auth.lib import get_credentials_path, store_credentials
 from preset_cli.auth.preset import JWTTokenError, PresetAuth
+from preset_cli.cli.export_users import export_users as export_users_command
 from preset_cli.cli.superset.main import superset
 from preset_cli.exceptions import CLIError
 from preset_cli.lib import raise_cli_errors, setup_logging, split_comma
@@ -607,3 +608,4 @@ preset_cli.add_command(import_users, name="import-users")
 preset_cli.add_command(sync_roles)
 preset_cli.add_command(superset)
 preset_cli.add_command(list_group_membership, name="list-group-membership")
+preset_cli.add_command(export_users_command, name="export-users")
