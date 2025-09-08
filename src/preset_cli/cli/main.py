@@ -447,7 +447,7 @@ def detect_users_file_format(users: List[Dict[str, Any]]) -> str:
     sample_user = users[0]
     if "workspaces" in sample_user and isinstance(sample_user["workspaces"], dict):
         # Check if workspaces contain the new format (team/workspace keys)
-        for _, workspace_data in sample_user["workspaces"].items():
+        for workspace_data in sample_user["workspaces"].values():
             if isinstance(workspace_data, dict) and "workspace_role" in workspace_data:
                 return "workspace_roles"
 
@@ -482,7 +482,7 @@ def _set_user_workspace_role(
     if "workspaces" not in user or not user["workspaces"]:
         return  # pragma: no cover
 
-    user_email = user["email"].lower()
+    user_email = user["email"]
 
     for workspace_key, workspace_data in user["workspaces"].items():
         if (
@@ -582,13 +582,12 @@ def import_users_with_workspace_roles(
             # Get team members to get user IDs
             team_members = client.get_team_members(team_name)
             user_id_lookup = {
-                member["user"]["email"].lower(): member["user"]["id"]
-                for member in team_members
+                member["user"]["email"]: member["user"]["id"] for member in team_members
             }
 
             # Set workspace roles for each user
             for user in users:
-                user_email = user["email"].lower()
+                user_email = user["email"]
                 if user_email not in user_id_lookup:
                     _logger.warning(
                         "User %s not found in team %s, skipping workspace role assignment",

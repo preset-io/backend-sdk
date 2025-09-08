@@ -439,9 +439,9 @@ def test_export_users_default_filename(mocker: MockerFixture) -> None:
         assert "No teams found." in result.output
 
 
-def test_export_users_case_insensitive_emails(mocker: MockerFixture) -> None:
+def test_export_users_case_sensitive_emails(mocker: MockerFixture) -> None:
     """
-    Test that emails are handled case-insensitively.
+    Test that emails are handled case-sensitively.
     """
     runner = CliRunner()
 
@@ -472,14 +472,14 @@ def test_export_users_case_insensitive_emails(mocker: MockerFixture) -> None:
         {"id": 1, "title": "Workspace One", "name": "ws1"},
     ]
 
-    # Workspace membership with different case
+    # Workspace membership with same case email
     ws_response = MagicMock()
     ws_response.raise_for_status.return_value = None
     ws_response.json.return_value = {
         "payload": [
             {
                 "user": {
-                    "email": "alice@example.com",  # lowercase version
+                    "email": "Alice@Example.COM",  # same case as team member
                     "first_name": "Alice",
                     "last_name": "Smith",
                     "username": "alice",
@@ -511,7 +511,7 @@ def test_export_users_case_insensitive_emails(mocker: MockerFixture) -> None:
 
         # Should have only one user (emails consolidated)
         assert len(data) == 1
-        assert data[0]["email"] == "alice@example.com"  # Normalized to lowercase
+        assert data[0]["email"] == "Alice@Example.COM"  # Preserves original case
 
 
 def test_export_users_no_access_filtered_out(mocker: MockerFixture) -> None:

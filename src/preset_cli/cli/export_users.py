@@ -76,6 +76,110 @@ def process_team_members(
 
 
 # pylint: disable=too-many-arguments,too-many-locals
+def _process_membership_page(
+    client: PresetClient,
+    team_name: str,
+    workspace_id: int,
+    page_number: int,
+) -> Dict[str, Any]:
+    """
+    Fetch and return a single page of workspace memberships.
+
+    Args:
+        client: PresetClient instance
+        team_name: Internal team name
+        workspace_id: Workspace ID
+        page_number: Page number to fetch
+
+    Returns:
+        API response payload containing memberships and metadata
+    """
+    params = {"page_number": page_number, "page_size": 250}
+    url = (
+        client.get_base_url()
+        / "teams"
+        / team_name
+        / "workspaces"
+        / str(workspace_id)
+        / "memberships"
+        % params
+    )
+
+    response = client.session.get(url)
+    response.raise_for_status()
+    return response.json()
+
+
+def _process_membership_data(
+    membership: Dict[str, Any],
+    team_title: str,
+    workspace_title: str,
+    workspace_name: str,
+    user_data: Dict[str, Dict[str, Any]],
+    workspace_role_map: Dict[str, str],
+) -> None:
+    """
+    Process a single membership record and update user data.
+
+    Args:
+        membership: Single membership record from API
+        team_title: Display team title
+        workspace_title: Display workspace title
+        workspace_name: Internal workspace name
+        user_data: User data dictionary to update
+        workspace_role_map: Mapping of role identifiers to role names
+    """
+    user_info = membership["user"]
+    email = user_info["email"]
+
+    # Extract role_identifier from nested workspace_role object
+    workspace_role_obj = membership.get("workspace_role", {})
+    role_identifier = workspace_role_obj.get(
+        "role_identifier",
+        "PresetNoAccess",
+    )
+    role_name = workspace_role_obj.get("name", "")
+
+    # Update user basic info if not already set
+    if not user_data[email]["email"]:
+        user_data[email]["email"] = email
+        user_data[email]["first_name"] = user_info.get("first_name", "")
+        user_data[email]["last_name"] = user_info.get("last_name", "")
+        user_data[email]["username"] = user_info.get("username", email)
+
+    # Add workspace role
+    workspace_role = workspace_role_map.get(
+        role_identifier,
+        f"unknown:{role_identifier}",
+    )
+    _logger.debug(
+        "User %s in %s/%s has role_identifier=%s (name=%s) -> workspace_role=%s",
+        email,
+        team_title,
+        workspace_title,
+        role_identifier,
+        role_name,
+        workspace_role,
+    )
+
+    # Skip only if explicitly no access roles, include everything else for now
+    if role_identifier not in ("PresetNoAccess", "NoAccess"):
+        workspace_key = f"{team_title}/{workspace_title}"
+        user_data[email]["workspaces"][workspace_key] = {
+            "workspace_role": workspace_role,
+            "workspace_name": workspace_name,
+            "team": team_title,
+        }
+    else:
+        _logger.debug(
+            "Skipping workspace %s/%s for user %s (no access: %s)",
+            team_title,
+            workspace_title,
+            email,
+            role_identifier,
+        )
+
+
 def process_workspace_memberships(
     client: PresetClient,
     team_name: str,
@@ -105,71 +209,22 @@ def process_workspace_memberships(
     page_number = 1
     while True:
         try:
-            params = {"page_number": page_number, "page_size": 250}
-            url = (
-                client.get_base_url()
-                / "teams"
-                / team_name
-                / "workspaces"
-                / str(workspace_id)
-                / "memberships"
-                % params
+            payload = _process_membership_page(
+                client,
+                team_name,
+                workspace_id,
+                page_number,
             )
 
-            response = client.session.get(url)
-            response.raise_for_status()
-            payload = response.json()
-
             for membership in payload.get("payload", []):
-                user_info = membership["user"]
-                email = user_info["email"].lower()
-
-                # Extract role_identifier from nested workspace_role object
-                workspace_role_obj = membership.get("workspace_role", {})
-                role_identifier = workspace_role_obj.get(
-                    "role_identifier",
-                    "PresetNoAccess",
-                )
-                role_name = workspace_role_obj.get("name", "")
-
-                # Update user basic info if not already set
-                if not user_data[email]["email"]:
-                    user_data[email]["email"] = email
-                    user_data[email]["first_name"] = user_info.get("first_name", "")
-                    user_data[email]["last_name"] = user_info.get("last_name", "")
-                    user_data[email]["username"] = user_info.get("username", email)
-
-                # Add workspace role
-                workspace_role = workspace_role_map.get(
-                    role_identifier,
-                    f"unknown:{role_identifier}",
-                )
-                _logger.debug(
-                    "User %s in %s/%s has role_identifier=%s (name=%s) -> workspace_role=%s",
-                    email,
+                _process_membership_data(
+                    membership,
                     team_title,
                     workspace_title,
-                    role_identifier,
-                    role_name,
-                    workspace_role,
+                    workspace_name,
+                    user_data,
+                    workspace_role_map,
                 )
-
-                # Skip only if explicitly no access roles, include everything else for now
-                if role_identifier not in ("PresetNoAccess", "NoAccess"):
-                    workspace_key = f"{team_title}/{workspace_title}"
-                    user_data[email]["workspaces"][workspace_key] = {
-                        "workspace_role": workspace_role,
-                        "workspace_name": workspace_name,
-                        "team": team_title,
-                    }
-                else:
-                    _logger.debug(
-                        "Skipping workspace %s/%s for user %s (no access: %s)",
-                        team_title,
-                        workspace_title,
-                        email,
-                        role_identifier,
-                    )
 
             # Check if there are more pages
             if payload["meta"]["count"] <= page_number * 250:
@@ -235,7 +290,7 @@ def convert_user_data_to_list(
         List of user dictionaries with separated teams and workspaces
     """
     users_list = []
-    for _, data in sorted(user_data.items()):
+    for data in sorted(user_data.values()):
         # Separate team entries from workspace entries
         team_roles = {}
         workspace_roles = {}
