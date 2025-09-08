@@ -16,26 +16,22 @@ from preset_cli.lib import raise_cli_errors
 _logger = logging.getLogger(__name__)
 
 
-def get_filtered_teams(client: PresetClient, teams: tuple) -> List[Dict[str, Any]]:
+def get_filtered_teams(client: PresetClient, teams: set[str]) -> List[Dict[str, Any]]:
     """
     Get all teams or filter by specified teams.
 
     Args:
         client: PresetClient instance
-        teams: Tuple of team names/titles to filter by
+        teams: Set of team names/titles to filter by
 
     Returns:
         List of filtered team dictionaries
     """
-    all_teams = client.get_teams()
-    if teams:
-        team_filter = set(teams)
-        return [
-            t
-            for t in all_teams
-            if t["name"] in team_filter or t["title"] in team_filter
-        ]
-    return all_teams
+    return [
+        team
+        for team in client.get_teams()
+        if not teams or team["name"] in teams or team["title"] in teams
+    ]
 
 
 def process_team_members(
@@ -60,7 +56,7 @@ def process_team_members(
 
         for member in team_members:
             user_info = member["user"]
-            email = user_info["email"].lower()
+            email = user_info["email"]
 
             # Update user basic info if not already set
             if not user_data[email]["email"]:  # pragma: no cover
@@ -312,7 +308,7 @@ def export_users(
     client = PresetClient(manager_url, auth)
 
     # Get filtered teams
-    filtered_teams = get_filtered_teams(client, teams)
+    filtered_teams = get_filtered_teams(client, set(teams))
 
     if not filtered_teams:
         click.echo("No teams found.")
