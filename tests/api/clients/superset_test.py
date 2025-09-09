@@ -1891,6 +1891,9 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                         "last_name": "Doe",
                         "email": "adoe@example.com",
                     },
+                    "workspace_role": {
+                        "name": "NoAccess",
+                    },
                 },
                 {
                     "user": {
@@ -1898,6 +1901,9 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                         "first_name": "Bob",
                         "last_name": "Doe",
                         "email": "BDoe@example.com",
+                    },
+                    "workspace_role": {
+                        "name": "NoAccess",
                     },
                 },
             ],
@@ -1917,6 +1923,9 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
                         "first_name": "Clarisse",
                         "last_name": "Doe",
                         "email": "cdoe@example.com",
+                    },
+                    "workspace_role": {
+                        "name": "NoAccess",
                     },
                 },
             ],
@@ -1972,7 +1981,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "adoe",
             "email": "adoe@example.com",
-            "role": [],
+            "role": ["noaccess"],
         },
         {
             "id": 2,
@@ -1980,7 +1989,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "bdoe",
             "email": "bdoe@example.com",
-            "role": [],
+            "role": ["noaccess"],
         },
         {
             "id": 3,
@@ -1988,7 +1997,7 @@ def test_export_users_preset(requests_mock: Mocker) -> None:
             "last_name": "Doe",
             "username": "cdoe",
             "email": "cdoe@example.com",
-            "role": [],
+            "role": ["noaccess"],
         },
     ]
 

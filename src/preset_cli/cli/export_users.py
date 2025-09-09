@@ -5,7 +5,7 @@ Command to export user information for all workspaces.
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 import click
 import yaml
@@ -16,7 +16,7 @@ from preset_cli.lib import raise_cli_errors
 _logger = logging.getLogger(__name__)
 
 
-def get_filtered_teams(client: PresetClient, teams: set[str]) -> List[Dict[str, Any]]:
+def get_filtered_teams(client: PresetClient, teams: Set[str]) -> List[Dict[str, Any]]:
     """
     Get all teams or filter by specified teams.
 
@@ -290,7 +290,7 @@ def convert_user_data_to_list(
         List of user dictionaries with separated teams and workspaces
     """
     users_list = []
-    for data in sorted(user_data.values()):
+    for data in sorted(user_data.values(), key=lambda user: user["email"]):
         # Separate team entries from workspace entries
         team_roles = {}
         workspace_roles = {}

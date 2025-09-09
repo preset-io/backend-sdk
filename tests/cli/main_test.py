@@ -634,6 +634,7 @@ def test_import_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "team1", "name": "team1"}]
     users = [
         {"first_name": "Alice", "last_name": "Doe", "email": "adoe@example.com"},
         {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
@@ -700,6 +701,7 @@ def test_import_users_with_workspace_roles(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
 
     # Mock workspace and team member data
     client.get_workspaces.return_value = [
@@ -802,6 +804,7 @@ def test_import_users_with_workspace_roles_no_access_skipped(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
 
     client.get_workspaces.return_value = [
         {"id": 1, "title": "Analytics", "name": "analytics"},
@@ -892,7 +895,9 @@ def test_import_users_empty_file(mocker: MockerFixture, fs: FakeFilesystem) -> N
     """
     Test the ``import_users`` command with an empty file.
     """
-    mocker.patch("preset_cli.cli.main.PresetClient")
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
 
     fs.create_file("empty_users.yaml", contents=yaml.dump([]))
 
@@ -915,6 +920,7 @@ def test_import_users_workspace_roles_error_handling(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
 
     # Mock error when getting workspaces
     client.get_workspaces.side_effect = Exception("API Error")
@@ -928,6 +934,7 @@ def test_import_users_workspace_roles_error_handling(
                 "TestTeam/Analytics": {
                     "workspace_role": "primary contributor",
                     "team": "TestTeam",
+                    "workspace_name": "analytics",
                 },
             },
         },
@@ -960,6 +967,7 @@ def test_import_users_with_workspace_roles_user_without_workspaces(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
 
     client.get_workspaces.return_value = [
         {"id": 1, "title": "Analytics", "name": "analytics"},
@@ -1007,6 +1015,7 @@ def test_import_users_with_workspace_roles_invalid_workspace_data(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
 
     client.get_workspaces.return_value = [
         {"id": 1, "title": "Analytics", "name": "analytics"},
@@ -1056,6 +1065,7 @@ def test_import_users_with_workspace_roles_workspace_not_found(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
     mock_logger = mocker.patch("preset_cli.cli.main._logger")
 
     # Return empty workspaces list
@@ -1074,6 +1084,7 @@ def test_import_users_with_workspace_roles_workspace_not_found(
                 "TestTeam/NonexistentWorkspace": {
                     "workspace_role": "primary contributor",
                     "team": "TestTeam",
+                    "workspace_name": "NonexistentWorkspace",
                 },
             },
         },
@@ -1096,7 +1107,7 @@ def test_import_users_with_workspace_roles_workspace_not_found(
     # Should log warning about workspace not found
     mock_logger.warning.assert_any_call(
         "Workspace %s not found in team %s, skipping",
-        "TestTeam/NonexistentWorkspace",
+        "NonexistentWorkspace",
         "TestTeam",
     )
     client.change_workspace_role.assert_not_called()
@@ -1111,6 +1122,7 @@ def test_import_users_with_workspace_roles_unknown_role(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
     mock_logger = mocker.patch("preset_cli.cli.main._logger")
 
     client.get_workspaces.return_value = [
@@ -1130,6 +1142,7 @@ def test_import_users_with_workspace_roles_unknown_role(
                 "TestTeam/Analytics": {
                     "workspace_role": "unknown_role",  # Invalid role
                     "team": "TestTeam",
+                    "workspace_name": "analytics",
                 },
             },
         },
@@ -1167,6 +1180,7 @@ def test_import_users_with_workspace_roles_change_role_exception(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
     mock_logger = mocker.patch("preset_cli.cli.main._logger")
 
     client.get_workspaces.return_value = [
@@ -1189,6 +1203,7 @@ def test_import_users_with_workspace_roles_change_role_exception(
                 "TestTeam/Analytics": {
                     "workspace_role": "primary contributor",
                     "team": "TestTeam",
+                    "workspace_name": "analytics",
                 },
             },
         },
@@ -1233,6 +1248,7 @@ def test_import_users_with_workspace_roles_user_not_in_team(
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
     mock_logger = mocker.patch("preset_cli.cli.main._logger")
 
     client.get_workspaces.return_value = [
@@ -1251,6 +1267,7 @@ def test_import_users_with_workspace_roles_user_not_in_team(
                 "TestTeam/Analytics": {
                     "workspace_role": "primary contributor",
                     "team": "TestTeam",
+                    "workspace_name": "analytics",
                 },
             },
         },
@@ -1344,6 +1361,7 @@ def test_sync_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "team1", "name": "team1"}]
     client.get_workspaces.return_value = [
         {"workspace_status": "READY", "title": "My Workspace", "hostname": "ws1"},
         {"workspace_status": "READY", "title": "My Other Workspace", "hostname": "ws2"},

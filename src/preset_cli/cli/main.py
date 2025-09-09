@@ -454,37 +454,21 @@ def detect_users_file_format(users: List[Dict[str, Any]]) -> str:
     return "simple"
 
 
-def _create_workspace_lookup(
-    team_name: str,
-    workspaces: List[Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
-    """Create lookup table for workspace matching."""
-    workspace_lookup = {}
-    for workspace in workspaces:
-        workspace_info = {"id": workspace["id"], "name": workspace["name"]}
-        # Support matching by both title and name
-        workspace_lookup[workspace["title"]] = workspace_info
-        workspace_lookup[workspace["name"]] = workspace_info
-        # Also support "team/workspace" format
-        workspace_key = f"{team_name}/{workspace['title']}"
-        workspace_lookup[workspace_key] = workspace_info
-    return workspace_lookup
-
-
 def _set_user_workspace_role(
     client: PresetClient,
     team_name: str,
     user: Dict[str, Any],
     user_id: int,
-    workspace_lookup: Dict[str, Dict[str, Any]],
+    workspaces: List[Dict[str, Any]],
 ) -> None:
     """Set workspace roles for a single user."""
     if "workspaces" not in user or not user["workspaces"]:
         return  # pragma: no cover
 
     user_email = user["email"]
+    workspace_ids = {workspace["name"]: workspace["id"] for workspace in workspaces}
 
-    for workspace_key, workspace_data in user["workspaces"].items():
+    for workspace_data in user["workspaces"].values():
         if (
             not isinstance(workspace_data, dict)
             or "workspace_role" not in workspace_data
@@ -498,15 +482,16 @@ def _set_user_workspace_role(
             continue
 
         # Find the workspace
-        if workspace_key not in workspace_lookup:
+        workspace_name = workspace_data["workspace_name"]
+        if workspace_name not in workspace_ids:
             _logger.warning(
                 "Workspace %s not found in team %s, skipping",
-                workspace_key,
+                workspace_name,
                 team_name,
             )
             continue
 
-        workspace_id = workspace_lookup[workspace_key]["id"]
+        workspace_id = workspace_ids[workspace_name]
 
         # Map workspace role to role identifier
         if workspace_role not in workspace_role_identifiers:
@@ -524,7 +509,7 @@ def _set_user_workspace_role(
             user_email,
             role_identifier,
             workspace_role.title(),
-            workspace_key,
+            workspace_name,
         )
 
         try:
@@ -577,7 +562,6 @@ def import_users_with_workspace_roles(
     for team_name in teams:
         try:
             workspaces = client.get_workspaces(team_name)
-            workspace_lookup = _create_workspace_lookup(team_name, workspaces)
 
             # Get team members to get user IDs
             team_members = client.get_team_members(team_name)
@@ -602,7 +586,7 @@ def import_users_with_workspace_roles(
                     team_name,
                     user,
                     user_id,
-                    workspace_lookup,
+                    workspaces,
                 )
 
         except Exception as exc:  # pylint: disable=broad-except
@@ -639,6 +623,10 @@ def import_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
 
     if not teams:
         teams = get_teams(client)
+    else:
+        # convert provided teams to proper names
+        team_names = {team["title"]: team["name"] for team in client.get_teams()}
+        teams = [team_names[team] for team in teams if team in team_names]
 
     with open(path, encoding="utf-8") as input_:
         users = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -657,6 +645,7 @@ def import_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
         import_users_with_workspace_roles(client, teams, users)
     else:
         _logger.info("Detected simple format, importing users only")
+        # TODO (betodealmeida): use --workspaces to set the roles as well like above
         click.echo("Importing users...")
         client.import_users(teams, users)
 
@@ -677,6 +666,10 @@ def sync_roles(ctx: click.core.Context, teams: List[str], path: str) -> None:
 
     if not teams:
         teams = get_teams(client)
+    else:
+        # convert provided teams to proper names
+        team_names = {team["title"]: team["name"] for team in client.get_teams()}
+        teams = [team_names[team] for team in teams if team in team_names]
 
     with open(path, encoding="utf-8") as input_:
         user_roles = yaml.load(input_, Loader=yaml.SafeLoader)
