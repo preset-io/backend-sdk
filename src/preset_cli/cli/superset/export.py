@@ -253,7 +253,8 @@ def export_users(
     """
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
-    client = SupersetClient(url, auth)
+    preset_baseurl = ctx.obj.get("MANAGER_URL")
+    client = SupersetClient(url, auth, preset_baseurl)
 
     users = [
         {k: v for k, v in user.items() if k != "id"} for user in client.export_users()

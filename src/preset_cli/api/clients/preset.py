@@ -31,7 +31,6 @@ class Role(int, Enum):
 
 
 class PresetClient:  # pylint: disable=too-few-public-methods
-
     """
     A client for the Preset API.
     """
@@ -158,7 +157,7 @@ class PresetClient:  # pylint: disable=too-few-public-methods
                 {
                     "id": 0,
                     "username": payload["user"]["username"],
-                    "role": [],  # TODO (betodealmeida)
+                    "role": [payload["workspace_role"]["name"].lower()],
                     "first_name": payload["user"]["first_name"],
                     "last_name": payload["user"]["last_name"],
                     "email": payload["user"]["email"].lower(),

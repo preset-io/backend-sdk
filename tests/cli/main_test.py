@@ -1,6 +1,7 @@
 """
 Tests for ``preset_cli.cli.main``.
 """
+
 # pylint: disable=unused-argument, invalid-name, redefined-outer-name, too-many-lines
 
 import csv
@@ -17,6 +18,8 @@ from pytest_mock import MockerFixture
 from yarl import URL
 
 from preset_cli.cli.main import (
+    UserFileFormat,
+    detect_users_file_format,
     export_group_membership_csv,
     export_group_membership_yaml,
     get_status_icon,
@@ -633,6 +636,7 @@ def test_import_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "team1", "name": "team1"}]
     users = [
         {"first_name": "Alice", "last_name": "Doe", "email": "adoe@example.com"},
         {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
@@ -690,12 +694,679 @@ def test_import_users_choose_teams(mocker: MockerFixture, fs: FakeFilesystem) ->
     )
 
 
+def test_import_users_with_workspace_roles(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``import_users`` command with workspace roles format.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+
+    # Mock workspace and team member data
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+        {"id": 2, "title": "Marketing", "name": "marketing"},
+    ]
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+        {"user": {"id": 11, "email": "bdoe@example.com"}},
+    ]
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {
+                "TestTeam/Analytics": {
+                    "workspace_role": "primary contributor",
+                    "workspace_name": "analytics",
+                    "team": "TestTeam",
+                },
+            },
+        },
+        {
+            "first_name": "Bob",
+            "last_name": "Doe",
+            "email": "bdoe@example.com",
+            "username": "bob.doe",
+            "workspaces": {
+                "TestTeam/Marketing": {
+                    "workspace_role": "viewer",
+                    "workspace_name": "marketing",
+                    "team": "TestTeam",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Verify users were imported with basic info
+    client.import_users.assert_called_with(
+        ["TestTeam"],
+        [
+            {
+                "id": 0,
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "email": "adoe@example.com",
+                "username": "alice.doe",
+                "role": [],
+            },
+            {
+                "id": 0,
+                "first_name": "Bob",
+                "last_name": "Doe",
+                "email": "bdoe@example.com",
+                "username": "bob.doe",
+                "role": [],
+            },
+        ],
+    )
+
+    # Verify workspace roles were set
+    assert client.change_workspace_role.call_count == 2
+    client.change_workspace_role.assert_any_call(
+        "TestTeam",
+        1,
+        10,
+        "PresetAlpha",
+    )  # Alice, Analytics, primary contributor
+    client.change_workspace_role.assert_any_call(
+        "TestTeam",
+        2,
+        11,
+        "PresetReportsOnly",
+    )  # Bob, Marketing, viewer
+
+
+def test_import_users_with_workspace_roles_no_access_skipped(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test that users with 'no access' workspace roles are skipped.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+    ]
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+    ]
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {
+                "TestTeam/Analytics": {
+                    "workspace_role": "no access",
+                    "workspace_name": "analytics",
+                    "team": "TestTeam",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Verify user was imported but no workspace role was set
+    client.import_users.assert_called_once()
+    client.change_workspace_role.assert_not_called()
+
+
+def test_detect_users_file_format() -> None:
+    """
+    Test the ``detect_users_file_format`` function.
+    """
+    # Test simple format (users.yaml)
+    simple_users = [
+        {"first_name": "Alice", "last_name": "Doe", "email": "adoe@example.com"},
+        {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
+    ]
+
+    assert detect_users_file_format(simple_users) == UserFileFormat.SIMPLE
+
+    # Test workspace roles format (users_workspace_roles.yaml)
+    workspace_roles_users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "workspaces": {
+                "Team/Workspace": {
+                    "workspace_role": "primary contributor",
+                    "team": "Team",
+                },
+            },
+        },
+    ]
+    assert (
+        detect_users_file_format(workspace_roles_users)
+        == UserFileFormat.WORKSPACE_ROLES
+    )
+
+    # Test empty list
+    assert detect_users_file_format([]) == UserFileFormat.SIMPLE
+
+    # Test users with workspaces but not in the new format
+    old_workspace_users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "workspaces": {"workspace1": "admin"},  # Old format
+        },
+    ]
+    assert detect_users_file_format(old_workspace_users) == UserFileFormat.SIMPLE
+
+
+def test_import_users_empty_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``import_users`` command with an empty file.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+
+    fs.create_file("empty_users.yaml", contents=yaml.dump([]))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        ["--jwt-token=XXX", "import-users", "--teams=TestTeam", "empty_users.yaml"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "No users found in the input file." in result.output
+
+
+def test_import_users_workspace_roles_error_handling(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test error handling in workspace roles import.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+
+    # Mock error when getting workspaces
+    client.get_workspaces.side_effect = Exception("API Error")
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "workspaces": {
+                "TestTeam/Analytics": {
+                    "workspace_role": "primary contributor",
+                    "team": "TestTeam",
+                    "workspace_name": "analytics",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert (
+        "Warning: Failed to process workspace roles for team TestTeam" in result.output
+    )
+
+
+def test_import_users_with_workspace_roles_user_without_workspaces(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test import with user that has no workspaces (line 483).
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+    ]
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+    ]
+
+    # User with no workspaces key
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            # No workspaces key
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # User should be imported but no workspace roles set
+    client.import_users.assert_called_once()
+    client.change_workspace_role.assert_not_called()
+
+
+def test_import_users_with_workspace_roles_invalid_workspace_data(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test import with invalid workspace data format (line 492).
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+    ]
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+    ]
+
+    # User with invalid workspace data (string instead of dict)
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {
+                "TestTeam/Analytics": "invalid_string_data",  # Invalid format
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # User should be imported but no workspace roles set due to invalid data
+    client.import_users.assert_called_once()
+    client.change_workspace_role.assert_not_called()
+
+
+def test_import_users_with_workspace_roles_workspace_not_found(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test import with workspace not found in team (lines 502-507).
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+    mock_logger = mocker.patch("preset_cli.cli.main._logger")
+
+    # Return empty workspaces list
+    client.get_workspaces.return_value = []
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+    ]
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {
+                "TestTeam/NonexistentWorkspace": {
+                    "workspace_role": "primary contributor",
+                    "team": "TestTeam",
+                    "workspace_name": "NonexistentWorkspace",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Should log warning about workspace not found
+    mock_logger.warning.assert_any_call(
+        "Workspace %s not found in team %s, skipping",
+        "NonexistentWorkspace",
+        "TestTeam",
+    )
+    client.change_workspace_role.assert_not_called()
+
+
+def test_import_users_with_workspace_roles_unknown_role(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test import with unknown workspace role (lines 513-518).
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+    mock_logger = mocker.patch("preset_cli.cli.main._logger")
+
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+    ]
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+    ]
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {
+                "TestTeam/Analytics": {
+                    "workspace_role": "unknown_role",  # Invalid role
+                    "team": "TestTeam",
+                    "workspace_name": "analytics",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Should log warning about unknown role
+    mock_logger.warning.assert_any_call(
+        "Unknown workspace role %s for user %s, skipping",
+        "unknown_role",
+        "adoe@example.com",
+    )
+    client.change_workspace_role.assert_not_called()
+
+
+def test_import_users_with_workspace_roles_change_role_exception(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test import with exception when changing workspace role (lines 537-543).
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+    mock_logger = mocker.patch("preset_cli.cli.main._logger")
+
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+    ]
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+    ]
+
+    # Make change_workspace_role raise an exception
+    client.change_workspace_role.side_effect = Exception("API Error")
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {
+                "TestTeam/Analytics": {
+                    "workspace_role": "primary contributor",
+                    "team": "TestTeam",
+                    "workspace_name": "analytics",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Should log error about failed role change
+    mock_logger.error.assert_any_call(
+        "Failed to set workspace role for user %s: %s",
+        "adoe@example.com",
+        mocker.ANY,  # The exception object
+    )
+    # Should display warning to user
+    assert (
+        "Warning: Failed to set workspace role for user adoe@example.com: API Error"
+        in result.output
+    )
+
+    # Should still attempt to change the role
+    client.change_workspace_role.assert_called_once()
+
+
+def test_import_users_with_workspace_roles_user_not_in_team(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test import with user not found in team members (lines 593-598).
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+    mock_logger = mocker.patch("preset_cli.cli.main._logger")
+
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+    ]
+    # Return empty team members list
+    client.get_team_members.return_value = []
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {
+                "TestTeam/Analytics": {
+                    "workspace_role": "primary contributor",
+                    "team": "TestTeam",
+                    "workspace_name": "analytics",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Should log warning about user not found
+    mock_logger.warning.assert_any_call(
+        "User %s not found in team %s, skipping workspace role assignment",
+        "adoe@example.com",
+        "TestTeam",
+    )
+    client.change_workspace_role.assert_not_called()
+
+
+def test_import_users_with_workspace_roles_edge_cases(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test import with edge cases for missing coverage (lines 483, 492).
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+    ]
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+        {"user": {"id": 11, "email": "bdoe@example.com"}},
+    ]
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {},  # Empty workspaces dict - should trigger line 483
+        },
+        {
+            "first_name": "Bob",
+            "last_name": "Doe",
+            "email": "bdoe@example.com",
+            "username": "bob.doe",
+            "workspaces": {
+                "TestTeam/Analytics": {
+                    # Missing workspace_role key - should trigger line 492
+                    "team": "TestTeam",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Both users should be imported but no workspace roles set
+    client.import_users.assert_called_once()
+    client.change_workspace_role.assert_not_called()
+
+
 def test_sync_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``sync_roles`` command.
     """
     PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
     client = PresetClient()
+    client.get_teams.return_value = [{"title": "team1", "name": "team1"}]
     client.get_workspaces.return_value = [
         {"workspace_status": "READY", "title": "My Workspace", "hostname": "ws1"},
         {"workspace_status": "READY", "title": "My Other Workspace", "hostname": "ws2"},

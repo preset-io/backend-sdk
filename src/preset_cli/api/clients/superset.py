@@ -231,15 +231,20 @@ class OwnershipType(TypedDict):
 
 
 class SupersetClient:  # pylint: disable=too-many-public-methods
-
     """
     A client for running queries against Superset.
     """
 
-    def __init__(self, baseurl: Union[str, URL], auth: Auth):
+    def __init__(
+        self,
+        baseurl: Union[str, URL],
+        auth: Auth,
+        preset_baseurl: Union[str, URL] = "https://api.app.preset.io/",
+    ):
         # convert to URL if necessary
         self.baseurl = URL(baseurl)
         self.auth = auth
+        self.preset_baseurl = URL(preset_baseurl)
 
         self.session = auth.session
         self.session.headers.update(auth.get_headers())
@@ -360,9 +365,11 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         # and order bys
         processed_orderbys = [
-            (orderby, not order_desc)
-            if orderby in metric_names
-            else (convert_to_adhoc_metric(orderby), not order_desc)
+            (
+                (orderby, not order_desc)
+                if orderby in metric_names
+                else (convert_to_adhoc_metric(orderby), not order_desc)
+            )
             for orderby in (order_by or [])
         ]
 
@@ -796,8 +803,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Return all users from a Preset workspace.
         """
-        # TODO (betodealmeida): remove hardcoded Manager URL
-        client = PresetClient("https://api.app.preset.io/", self.auth)
+        client = PresetClient(self.preset_baseurl, self.auth)
         return client.export_users(self.baseurl)
 
     def _export_users_superset(self) -> Iterator[UserType]:
