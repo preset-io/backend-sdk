@@ -9,6 +9,7 @@ import os.path
 import sys
 import webbrowser
 from collections import defaultdict
+from enum import Enum
 from typing import Any, DefaultDict, Dict, List, Optional, Set, cast
 
 import click
@@ -429,7 +430,14 @@ def export_group_membership_csv(groups: Dict[str, Any], team: str) -> None:
                     )
 
 
-def detect_users_file_format(users: List[Dict[str, Any]]) -> str:
+class UserFileFormat(Enum):
+    """Enum for user import file formats."""
+
+    SIMPLE = "simple"  # users.yaml format
+    WORKSPACE_ROLES = "workspace_roles"  # users_workspace_roles.yaml format
+
+
+def detect_users_file_format(users: List[Dict[str, Any]]) -> UserFileFormat:
     """
     Detect whether the users file is in the simple format (users.yaml)
     or the new format with workspace roles (users_workspace_roles.yaml).
@@ -438,10 +446,11 @@ def detect_users_file_format(users: List[Dict[str, Any]]) -> str:
         users: List of user dictionaries
 
     Returns:
-        "simple" for users.yaml format, "workspace_roles" for users_workspace_roles.yaml format
+        UserFileFormat.SIMPLE for users.yaml format,
+        UserFileFormat.WORKSPACE_ROLES for users_workspace_roles.yaml format
     """
     if not users:
-        return "simple"
+        return UserFileFormat.SIMPLE
 
     # Check if any user has workspace roles in the new format
     sample_user = users[0]
@@ -449,9 +458,9 @@ def detect_users_file_format(users: List[Dict[str, Any]]) -> str:
         # Check if workspaces contain the new format (team/workspace keys)
         for workspace_data in sample_user["workspaces"].values():
             if isinstance(workspace_data, dict) and "workspace_role" in workspace_data:
-                return "workspace_roles"
+                return UserFileFormat.WORKSPACE_ROLES
 
-    return "simple"
+    return UserFileFormat.SIMPLE
 
 
 def _set_user_workspace_role(
@@ -484,6 +493,10 @@ def _set_user_workspace_role(
         # Find the workspace
         workspace_name = workspace_data["workspace_name"]
         if workspace_name not in workspace_ids:
+            # TODO: Consider adding --continue-on-error flag and checkpoint file support
+            # similar to asset imports. This would allow recovering from partial imports
+            # if workspaces are deleted between exports. Current warning approach is good
+            # for resilience but checkpoint files would help with larger migrations.
             _logger.warning(
                 "Workspace %s not found in team %s, skipping",
                 workspace_name,
@@ -637,7 +650,7 @@ def import_users(ctx: click.core.Context, teams: List[str], path: str) -> None:
 
     file_format = detect_users_file_format(users)
 
-    if file_format == "workspace_roles":
+    if file_format == UserFileFormat.WORKSPACE_ROLES:
         _logger.info(
             "Detected workspace roles format, importing users with workspace role assignments",
         )

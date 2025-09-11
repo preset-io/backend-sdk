@@ -1,6 +1,7 @@
 """
 Tests for ``preset_cli.cli.main``.
 """
+
 # pylint: disable=unused-argument, invalid-name, redefined-outer-name, too-many-lines
 
 import csv
@@ -17,6 +18,7 @@ from pytest_mock import MockerFixture
 from yarl import URL
 
 from preset_cli.cli.main import (
+    UserFileFormat,
     detect_users_file_format,
     export_group_membership_csv,
     export_group_membership_yaml,
@@ -858,7 +860,7 @@ def test_detect_users_file_format() -> None:
         {"first_name": "Bob", "last_name": "Doe", "email": "bdoe@example.com"},
     ]
 
-    assert detect_users_file_format(simple_users) == "simple"
+    assert detect_users_file_format(simple_users) == UserFileFormat.SIMPLE
 
     # Test workspace roles format (users_workspace_roles.yaml)
     workspace_roles_users = [
@@ -874,10 +876,13 @@ def test_detect_users_file_format() -> None:
             },
         },
     ]
-    assert detect_users_file_format(workspace_roles_users) == "workspace_roles"
+    assert (
+        detect_users_file_format(workspace_roles_users)
+        == UserFileFormat.WORKSPACE_ROLES
+    )
 
     # Test empty list
-    assert detect_users_file_format([]) == "simple"
+    assert detect_users_file_format([]) == UserFileFormat.SIMPLE
 
     # Test users with workspaces but not in the new format
     old_workspace_users = [
@@ -888,7 +893,7 @@ def test_detect_users_file_format() -> None:
             "workspaces": {"workspace1": "admin"},  # Old format
         },
     ]
-    assert detect_users_file_format(old_workspace_users) == "simple"
+    assert detect_users_file_format(old_workspace_users) == UserFileFormat.SIMPLE
 
 
 def test_import_users_empty_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:
