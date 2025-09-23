@@ -5,6 +5,13 @@ Changelog
 Next
 ====
 
+Version 0.3.8 - 2025-09-23
+==========================
+
+- It's now possible to use nested properties under `config` to filter models in the dbt sync command (`#359 <https://github.com/preset-io/backend-sdk/pull/359>`_).
+- New command ``export-users`` added to export users from the Preset team (`#361 <https://github.com/preset-io/backend-sdk/pull/361>`_).
+- The ``superset export-users`` command now also include the user's Workspace Role for Preset Workspaces (`#361 <https://github.com/preset-io/backend-sdk/pull/361>`_).
+
 Version 0.3.7 - 2025-07-24
 ==========================
 
