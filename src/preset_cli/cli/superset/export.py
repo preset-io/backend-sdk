@@ -6,7 +6,7 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, List, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from zipfile import ZipFile
 
 import click
@@ -24,6 +24,108 @@ assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
 def get_newline_char(force_unix_eol: bool = False) -> Union[str, None]:
     """Returns the newline character used by the open function"""
     return "\n" if force_unix_eol else None
+
+
+def extract_uuid_from_asset(
+    file_path: Optional[Path] = None,
+    file_content: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Load YAML file and extract its UUID.
+    """
+    if file_path:
+        with open(file_path, "r", encoding="utf-8") as content:
+            file_content = content.read()
+
+    if not file_content:
+        return None
+
+    data = yaml.load(file_content, Loader=yaml.SafeLoader)
+    return data.get("uuid")
+
+
+def build_local_uuid_mapping(root: Path) -> Dict[str, Dict[str, Path]]:
+    """
+    Build a mapping of UUIDs to file paths for existing resources in the
+    target directory.
+    """
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "dashboards": {},
+        "charts": {},
+        "datasets": {},
+        "databases": {},
+    }
+
+    for resource_type, resource_map in uuid_mapping.items():
+        resource_dir = root / resource_type
+        if not resource_dir.exists():
+            continue
+
+        # For datasets, we need to handle subdirectories (database connections)
+        if resource_type == "datasets":
+            for db_dir in resource_dir.iterdir():
+                for yaml_file in db_dir.glob("*.yaml"):
+                    uuid = extract_uuid_from_asset(file_path=yaml_file)
+                    if uuid:
+                        resource_map[uuid] = yaml_file
+        else:
+            for yaml_file in resource_dir.glob("*.yaml"):
+                uuid = extract_uuid_from_asset(file_path=yaml_file)
+                if uuid:
+                    resource_map[uuid] = yaml_file
+
+    return uuid_mapping
+
+
+def check_asset_uniqueness(  # pylint: disable=too-many-arguments
+    overwrite: bool,
+    file_content: str,
+    file_name: str,
+    file_path: Path,
+    uuid_mapping: Dict[str, Dict[str, Path]],
+    files_to_delete: List[Path],
+) -> None:
+    """
+    Check if the asset is new to the directory or not.
+    """
+    # First validate by file name
+    if file_path.exists() and not overwrite:
+        raise Exception(
+            f"File already exists and ``--overwrite`` was not specified: {file_path}",
+        )
+    # Short circuit as file will be automatically overwritten based on its filename
+    if file_path.exists():
+        return
+
+    # Alternatively, validate by UUID
+    incoming_uuid = extract_uuid_from_asset(file_content=file_content)
+    if not incoming_uuid:
+        return
+
+    resource_type = None
+    if file_name.startswith("dashboards/"):
+        resource_type = "dashboards"
+    elif file_name.startswith("charts/"):
+        resource_type = "charts"
+    elif file_name.startswith("datasets/"):
+        resource_type = "datasets"
+    elif file_name.startswith("databases/"):
+        resource_type = "databases"
+
+    if (
+        resource_type
+        and resource_type in uuid_mapping
+        and (existing_file := uuid_mapping[resource_type].get(incoming_uuid))
+    ):
+        if not overwrite:
+            raise Exception(
+                f"Resource with UUID {incoming_uuid} already exists at {existing_file}. "
+                f"Use --overwrite flag to replace it with {file_path}",
+            )
+
+        # Add the existing file to deletion queue
+        files_to_delete.append(existing_file)
+        del uuid_mapping[resource_type][incoming_uuid]
 
 
 @click.command()
@@ -143,29 +245,53 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
             for file_name in bundle.namelist()
         }
 
-    for file_name, file_contents in contents.items():
+    # Build UUID mapping for existing files to validate uniqueness
+    uuid_mapping = build_local_uuid_mapping(root)
+    files_to_delete: List[Path] = []
+
+    for file_name, file_content in contents.items():
         if skip_related and not file_name.startswith(resource_name):
             continue
 
         target = root / file_name
-        if target.exists() and not overwrite:
-            raise Exception(
-                f"File already exists and ``--overwrite`` was not specified: {target}",
-            )
+        check_asset_uniqueness(
+            overwrite,
+            file_content,
+            file_name,
+            target,
+            uuid_mapping,
+            files_to_delete,
+        )
+
         if not target.parent.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
 
         # escape any pre-existing Jinja2 templates
         if not disable_jinja_escaping:
-            asset_content = yaml.load(file_contents, Loader=yaml.SafeLoader)
-            for key, value in asset_content.items():
-                asset_content[key] = traverse_data(value, handle_string)
+            asset_yaml = yaml.load(file_content, Loader=yaml.SafeLoader)
+            for key, value in asset_yaml.items():
+                asset_yaml[key] = traverse_data(value, handle_string)
 
-            file_contents = yaml.dump(asset_content, sort_keys=False)
+            file_content = yaml.dump(asset_yaml, sort_keys=False)
 
         newline = get_newline_char(force_unix_eol)
         with open(target, "w", encoding="utf-8", newline=newline) as output:
-            output.write(file_contents)
+            output.write(file_content)
+
+    # Delete old files that have been replaced (only after successful write)
+    failed_deletions = []
+    for file_to_delete in files_to_delete:
+        try:
+            file_to_delete.unlink()
+        except (IOError, OSError):
+            failed_deletions.append(str(file_to_delete))
+
+    if failed_deletions:
+        error_msg = "Failed to delete the following files:\n" + "\n".join(
+            failed_deletions,
+        )
+        click.echo(error_msg, err=True)
+        raise SystemExit(1)
 
 
 def traverse_data(value: Any, handler: Callable) -> Any:

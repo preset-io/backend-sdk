@@ -6,6 +6,7 @@ Tests for the export commands.
 import json
 from io import BytesIO
 from pathlib import Path
+from typing import Dict, List
 from unittest import mock
 from uuid import UUID
 from zipfile import ZipFile
@@ -17,7 +18,12 @@ from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
 from preset_cli.auth.main import Auth
-from preset_cli.cli.superset.export import export_resource
+from preset_cli.cli.superset.export import (
+    build_local_uuid_mapping,
+    check_asset_uniqueness,
+    export_resource,
+    extract_uuid_from_asset,
+)
 from preset_cli.cli.superset.main import superset_cli
 
 
@@ -1033,3 +1039,680 @@ def test_export_resource_force_unix_eol_command(
             ),
         ],
     )
+
+
+def test_extract_uuid_from_asset() -> None:
+    """
+    Test the extract_uuid_from_asset helper function.
+    """
+    # Test valid YAML with UUID
+    yaml_content = """
+slice_name: Test Chart
+uuid: 3f966611-8afc-4841-abdc-fa4361ff69f8
+version: 1.0.0
+"""
+    assert (
+        extract_uuid_from_asset(file_content=yaml_content)
+        == "3f966611-8afc-4841-abdc-fa4361ff69f8"
+    )
+
+    # Test YAML without UUID
+    yaml_content_no_uuid = """
+slice_name: Test Chart
+version: 1.0.0
+"""
+    assert extract_uuid_from_asset(file_content=yaml_content_no_uuid) is None
+
+
+def test_build_local_uuid_mapping(fs: FakeFilesystem) -> None:
+    """
+    Test the build_local_uuid_mapping function.
+    """
+    root = Path("/test/root")
+
+    # Create test directory structure with YAML files
+    fs.create_dir(root / "dashboards")
+    fs.create_dir(root / "charts")
+    fs.create_dir(root / "datasets/db1")
+    fs.create_dir(root / "databases")
+
+    # Dashboard with UUID
+    with open(root / "dashboards/dashboard1.yaml", "w", encoding="utf-8") as f:
+        f.write("uuid: dashboard-uuid-1\nname: Dashboard 1")
+
+    # Chart with UUID
+    with open(root / "charts/chart1.yaml", "w", encoding="utf-8") as f:
+        f.write("uuid: chart-uuid-1\nname: Chart 1")
+
+    # Dataset with UUID (in subdirectory)
+    with open(root / "datasets/db1/dataset1.yaml", "w", encoding="utf-8") as f:
+        f.write("uuid: dataset-uuid-1\nname: Dataset 1")
+
+    # Database with UUID
+    with open(root / "databases/db1.yaml", "w", encoding="utf-8") as f:
+        f.write("uuid: database-uuid-1\nname: Database 1")
+
+    # File without UUID (should be ignored)
+    with open(root / "charts/chart_no_uuid.yaml", "w", encoding="utf-8") as f:
+        f.write("name: Chart without UUID")
+
+    mapping = build_local_uuid_mapping(root)
+
+    assert (
+        mapping["dashboards"]["dashboard-uuid-1"] == root / "dashboards/dashboard1.yaml"
+    )
+    assert mapping["charts"]["chart-uuid-1"] == root / "charts/chart1.yaml"
+    assert mapping["datasets"]["dataset-uuid-1"] == root / "datasets/db1/dataset1.yaml"
+    assert mapping["databases"]["database-uuid-1"] == root / "databases/db1.yaml"
+    assert "chart-no-uuid" not in mapping["charts"]
+
+
+def test_export_resource_uuid_validation(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test export_resource with UUID-based overwrite validation.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing chart with UUID
+    fs.create_dir(root / "charts")
+    with open(root / "charts/old_name.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Old Name", "uuid": "same-uuid-123"}))
+
+    # Create ZIP with chart that has the same UUID but different name
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/new_name.yaml": yaml.dump(
+            {"slice_name": "New Name", "uuid": "same-uuid-123"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should raise exception without overwrite flag
+    with pytest.raises(Exception) as excinfo:
+        export_resource(
+            resource_name="chart",
+            requested_ids=set(),
+            root=root,
+            client=client,
+            overwrite=False,
+            disable_jinja_escaping=True,
+            force_unix_eol=False,
+        )
+    assert "Resource with UUID same-uuid-123 already exists" in str(excinfo.value)
+    assert "old_name.yaml" in str(excinfo.value)
+
+
+def test_export_resource_uuid_with_overwrite(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test export_resource with UUID-based overwrite enabled.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing chart with UUID
+    fs.create_dir(root / "charts")
+    with open(root / "charts/old_name.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Old Name", "uuid": "same-uuid-123"}))
+
+    # Create ZIP with chart that has the same UUID but different name
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/new_name.yaml": yaml.dump(
+            {"slice_name": "New Name", "uuid": "same-uuid-123"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should succeed with overwrite flag and delete old file
+    export_resource(
+        resource_name="chart",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=True,
+        disable_jinja_escaping=True,
+        force_unix_eol=False,
+    )
+
+    # Old file should be deleted
+    assert not (root / "charts/old_name.yaml").exists()
+    # New file should exist
+    assert (root / "charts/new_name.yaml").exists()
+
+    with open(root / "charts/new_name.yaml", encoding="utf-8") as f:
+        content = yaml.load(f.read(), Loader=yaml.SafeLoader)
+        assert content["slice_name"] == "New Name"
+        assert content["uuid"] == "same-uuid-123"
+
+
+def test_export_resource_uuid_with_overrides(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test that multiple resources with same UUID are handled correctly.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing dashboards with different UUIDs
+    fs.create_dir(root / "dashboards")
+    with open(root / "dashboards/dashboard1.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"dashboard_title": "Dashboard 1", "uuid": "uuid-1"}))
+    with open(root / "dashboards/dashboard2.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"dashboard_title": "Dashboard 2", "uuid": "uuid-2"}))
+
+    # Create ZIP with renamed dashboards (same UUIDs, different names)
+    contents = {
+        "dashboard_export/metadata.yaml": "Metadata",
+        "dashboard_export/dashboards/renamed_dashboard1.yaml": yaml.dump(
+            {"dashboard_title": "Renamed Dashboard 1", "uuid": "uuid-1"},
+        ),
+        "dashboard_export/dashboards/renamed_dashboard2.yaml": yaml.dump(
+            {"dashboard_title": "Renamed Dashboard 2", "uuid": "uuid-2"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should succeed with overwrite flag and delete both old files
+    export_resource(
+        resource_name="dashboard",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=True,
+        disable_jinja_escaping=True,
+        force_unix_eol=False,
+    )
+
+    # Old files should be deleted
+    assert not (root / "dashboards/dashboard1.yaml").exists()
+    assert not (root / "dashboards/dashboard2.yaml").exists()
+    # New files should exist
+    assert (root / "dashboards/renamed_dashboard1.yaml").exists()
+    assert (root / "dashboards/renamed_dashboard2.yaml").exists()
+
+
+def test_export_resource_backward_compatibility(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test that export still works for resources without UUID fields.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create ZIP with resources without UUID
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/chart_no_uuid.yaml": yaml.dump(
+            {"slice_name": "Chart without UUID"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should succeed for resources without UUID
+    export_resource(
+        resource_name="chart",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=False,
+        disable_jinja_escaping=True,
+        force_unix_eol=False,
+    )
+
+    assert (root / "charts/chart_no_uuid.yaml").exists()
+
+    # Second export of same file without UUID should fail without overwrite
+    buf.seek(0)
+    client.export_zip.return_value = buf
+
+    with pytest.raises(Exception) as excinfo:
+        export_resource(
+            resource_name="chart",
+            requested_ids=set(),
+            root=root,
+            client=client,
+            overwrite=False,
+            disable_jinja_escaping=True,
+            force_unix_eol=False,
+        )
+    assert "File already exists" in str(excinfo.value)
+
+
+def test_extract_uuid_from_asset_file_path(fs: FakeFilesystem) -> None:
+    """
+    Test extract_uuid_from_asset with file path parameter.
+    """
+    # Test with file path
+    fs.create_dir("/test")
+    test_file = Path("/test/chart.yaml")
+    with open(test_file, "w", encoding="utf-8") as f:
+        f.write("slice_name: Test\nuuid: test-uuid-123")
+
+    assert extract_uuid_from_asset(file_path=test_file) == "test-uuid-123"
+
+    # Test with empty file
+    empty_file = Path("/test/empty.yaml")
+    with open(empty_file, "w", encoding="utf-8") as f:
+        f.write("")
+    assert extract_uuid_from_asset(file_path=empty_file) is None
+
+
+def test_check_asset_uniqueness_no_uuid(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test check_asset_uniqueness with file content that has no UUID.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create empty UUID mapping
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "charts": {},
+        "dashboards": {},
+        "datasets": {},
+        "databases": {},
+    }
+    files_to_delete: List[Path] = []
+
+    # File content without UUID
+    file_content = yaml.dump({"slice_name": "Test Chart"})
+    target = root / "charts/test.yaml"
+
+    # Should return early without doing anything
+    check_asset_uniqueness(
+        overwrite=False,
+        file_content=file_content,
+        file_name="charts/test.yaml",
+        file_path=target,
+        uuid_mapping=uuid_mapping,
+        files_to_delete=files_to_delete,
+    )
+
+    # No files should be added to deletion queue
+    assert len(files_to_delete) == 0
+
+
+def test_check_asset_uniqueness_unknown_resource_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test check_asset_uniqueness with unknown resource type.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create empty UUID mapping
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "charts": {},
+        "dashboards": {},
+        "datasets": {},
+        "databases": {},
+    }
+    files_to_delete: List[Path] = []
+
+    # File content with UUID but unknown resource type
+    file_content = yaml.dump({"slice_name": "Test Chart", "uuid": "test-uuid"})
+    target = root / "unknown/test.yaml"
+
+    # Should return early without doing anything
+    check_asset_uniqueness(
+        overwrite=False,
+        file_content=file_content,
+        file_name="unknown/test.yaml",  # Unknown resource type
+        file_path=target,
+        uuid_mapping=uuid_mapping,
+        files_to_delete=files_to_delete,
+    )
+
+    # No files should be added to deletion queue
+    assert len(files_to_delete) == 0
+
+
+def test_check_asset_uniqueness_uuid_conflict_no_overwrite() -> None:
+    """
+    Test check_asset_uniqueness when UUID conflict exists but overwrite is False.
+    """
+    root = Path("/test/root")
+
+    # Create UUID mapping with existing UUID
+    existing_file = root / "charts/existing.yaml"
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "charts": {"conflict-uuid": existing_file},
+        "dashboards": {},
+        "datasets": {},
+        "databases": {},
+    }
+    files_to_delete: List[Path] = []
+
+    # File content with conflicting UUID
+    file_content = yaml.dump({"slice_name": "New Chart", "uuid": "conflict-uuid"})
+    target = root / "charts/new.yaml"
+
+    # Should raise exception when overwrite=False and UUID conflicts
+    with pytest.raises(Exception) as excinfo:
+        check_asset_uniqueness(
+            overwrite=False,
+            file_content=file_content,
+            file_name="charts/new.yaml",
+            file_path=target,
+            uuid_mapping=uuid_mapping,
+            files_to_delete=files_to_delete,
+        )
+
+    assert "Resource with UUID conflict-uuid already exists" in str(excinfo.value)
+    assert "existing.yaml" in str(excinfo.value)
+    assert "Use --overwrite flag" in str(excinfo.value)
+
+
+def test_build_local_uuid_mapping_with_db_subdirs(fs: FakeFilesystem) -> None:
+    """
+    Test build_local_uuid_mapping handles dataset subdirectories correctly.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create datasets with database subdirectories
+    fs.create_dir(root / "datasets/postgres")
+    fs.create_dir(root / "datasets/mysql")
+
+    # IMPORTANT: Create a file (not directory) in datasets to test line 67
+    with open(root / "datasets/not_a_dir.txt", "w", encoding="utf-8") as f:
+        f.write("This is not a directory")
+
+    # Dataset with UUID in postgres subdir
+    with open(root / "datasets/postgres/table1.yaml", "w", encoding="utf-8") as f:
+        f.write("table_name: table1\nuuid: postgres-table-uuid")
+
+    # Dataset with UUID in mysql subdir
+    with open(root / "datasets/mysql/table2.yaml", "w", encoding="utf-8") as f:
+        f.write("table_name: table2\nuuid: mysql-table-uuid")
+
+    # Dataset without UUID
+    with open(
+        root / "datasets/postgres/no_uuid_table.yaml",
+        "w",
+        encoding="utf-8",
+    ) as f:
+        f.write("table_name: no_uuid_table")
+
+    mapping = build_local_uuid_mapping(root)
+
+    assert (
+        mapping["datasets"]["postgres-table-uuid"]
+        == root / "datasets/postgres/table1.yaml"
+    )
+    assert (
+        mapping["datasets"]["mysql-table-uuid"] == root / "datasets/mysql/table2.yaml"
+    )
+    assert "no-uuid" not in mapping["datasets"]
+
+
+def test_check_asset_uniqueness_all_resource_types() -> None:
+    """
+    Test check_asset_uniqueness with all resource types to ensure full coverage.
+    """
+    root = Path("/test/root")
+
+    # Test with databases resource type
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "charts": {},
+        "dashboards": {},
+        "datasets": {},
+        "databases": {"db-uuid": root / "databases/existing_db.yaml"},
+    }
+    files_to_delete: List[Path] = []
+
+    # Test databases conflict
+    file_content = yaml.dump({"database_name": "New DB", "uuid": "db-uuid"})
+    target = root / "databases/new_db.yaml"
+
+    with pytest.raises(Exception) as excinfo:
+        check_asset_uniqueness(
+            overwrite=False,
+            file_content=file_content,
+            file_name="databases/new_db.yaml",
+            file_path=target,
+            uuid_mapping=uuid_mapping,
+            files_to_delete=files_to_delete,
+        )
+
+    assert "Resource with UUID db-uuid already exists" in str(excinfo.value)
+
+    # Test with overwrite=True for databases
+    check_asset_uniqueness(
+        overwrite=True,
+        file_content=file_content,
+        file_name="databases/new_db.yaml",
+        file_path=target,
+        uuid_mapping=uuid_mapping,
+        files_to_delete=files_to_delete,
+    )
+
+    # Should have added the existing file to deletion queue
+    assert len(files_to_delete) == 1
+    assert files_to_delete[0] == root / "databases/existing_db.yaml"
+
+    # Test datasets type as well
+    uuid_mapping = {
+        "charts": {},
+        "dashboards": {},
+        "datasets": {"dataset-uuid": root / "datasets/postgres/existing.yaml"},
+        "databases": {},
+    }
+    files_to_delete = []
+
+    file_content = yaml.dump({"table_name": "New Table", "uuid": "dataset-uuid"})
+    target = root / "datasets/mysql/new_table.yaml"
+
+    check_asset_uniqueness(
+        overwrite=True,
+        file_content=file_content,
+        file_name="datasets/mysql/new_table.yaml",
+        file_path=target,
+        uuid_mapping=uuid_mapping,
+        files_to_delete=files_to_delete,
+    )
+
+    assert len(files_to_delete) == 1
+    assert files_to_delete[0] == root / "datasets/postgres/existing.yaml"
+
+
+def test_export_resource_deletion_failure_with_unlink(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test export_resource when file deletion with unlink fails.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing chart with UUID
+    fs.create_dir(root / "charts")
+    with open(root / "charts/old_name.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Old Name", "uuid": "same-uuid-123"}))
+
+    # Create ZIP with chart that has the same UUID but different name
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/new_name.yaml": yaml.dump(
+            {"slice_name": "New Name", "uuid": "same-uuid-123"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Mock unlink to raise an error
+    def mock_unlink(self):
+        if str(self).endswith("old_name.yaml"):
+            raise OSError("Permission denied")
+
+    # Patch the unlink method directly on pathlib.Path
+    mocker.patch("pathlib.Path.unlink", mock_unlink)
+    mock_echo = mocker.patch("preset_cli.cli.superset.export.click.echo")
+
+    # Should raise SystemExit(1) when deletion fails
+    with pytest.raises(SystemExit) as excinfo:
+        export_resource(
+            resource_name="chart",
+            requested_ids=set(),
+            root=root,
+            client=client,
+            overwrite=True,
+            disable_jinja_escaping=True,
+            force_unix_eol=False,
+        )
+
+    assert excinfo.value.code == 1
+    mock_echo.assert_called_once()
+    error_msg = mock_echo.call_args[0][0]
+    assert "Failed to delete the following files:" in error_msg
+    assert "old_name.yaml" in error_msg
+
+
+def test_export_resource_mixed_uuid_conflicts(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test export with both UUID conflicts and regular file conflicts.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing files
+    fs.create_dir(root / "charts")
+    # File with UUID that will conflict
+    with open(root / "charts/old_uuid_file.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Old UUID File", "uuid": "conflict-uuid"}))
+
+    # File without UUID that will conflict by name
+    with open(root / "charts/same_name.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Same Name"}))
+
+    # Create ZIP with conflicting files
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/new_uuid_file.yaml": yaml.dump(
+            {"slice_name": "New UUID File", "uuid": "conflict-uuid"},
+        ),
+        "chart_export/charts/same_name.yaml": yaml.dump(
+            {"slice_name": "Same Name Updated"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should succeed with overwrite flag
+    export_resource(
+        resource_name="chart",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=True,
+        disable_jinja_escaping=True,
+        force_unix_eol=False,
+    )
+
+    # UUID conflict: old file should be deleted, new file created
+    assert not (root / "charts/old_uuid_file.yaml").exists()
+    assert (root / "charts/new_uuid_file.yaml").exists()
+
+    # Name conflict: file should be overwritten
+    assert (root / "charts/same_name.yaml").exists()
+    with open(root / "charts/same_name.yaml", encoding="utf-8") as f:
+        content = yaml.load(f.read(), Loader=yaml.SafeLoader)
+        assert content["slice_name"] == "Same Name Updated"
+
+
+def test_build_local_uuid_mapping_empty_dirs(fs: FakeFilesystem) -> None:
+    """
+    Test build_local_uuid_mapping with empty or non-existent directories.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create empty directories
+    fs.create_dir(root / "dashboards")
+    fs.create_dir(root / "charts")
+    # Don't create datasets and databases dirs
+
+    mapping = build_local_uuid_mapping(root)
+
+    # Should return empty mappings for all resource types
+    assert mapping["dashboards"] == {}
+    assert mapping["charts"] == {}
+    assert mapping["datasets"] == {}
+    assert mapping["databases"] == {}
