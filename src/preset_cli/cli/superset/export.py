@@ -89,12 +89,11 @@ def check_asset_uniqueness(  # pylint: disable=too-many-arguments
     Check if the asset is new to the directory or not.
     """
     # First validate by file name
-    if file_path.exists() and not overwrite:
-        raise Exception(
-            f"File already exists and ``--overwrite`` was not specified: {file_path}",
-        )
-    # Short circuit as file will be automatically overwritten based on its filename
     if file_path.exists():
+        if not overwrite:
+            raise Exception(
+                f"File already exists and ``--overwrite`` was not specified: {file_path}",
+            )
         return
 
     # Alternatively, validate by UUID
