@@ -5,7 +5,7 @@
 #    pip-compile --no-annotate dev-requirements.in
 #
 -e file:.
-aiohttp==3.8.3
+aiohttp==3.9.0
 aiosignal==1.2.0
 appdirs==1.4.4
 astroid==2.12.12
