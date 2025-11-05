@@ -477,7 +477,7 @@ def export_rls(
 def export_ownership(
     ctx: click.core.Context,
     path: str,
-    asset_type: tuple[str, ...],
+    asset_type: Tuple[str, ...],
     force_unix_eol: bool = False,
     exclude_old_users: bool = False,
 ) -> None:
