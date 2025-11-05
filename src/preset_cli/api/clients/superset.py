@@ -1165,11 +1165,15 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return id_
 
-    def export_ownership(self, resource_name: str) -> Iterator[OwnershipType]:
+    def export_ownership(
+        self,
+        resource_name: str,
+        users: Dict[int, str],
+        exclude_old_users: bool,
+    ) -> Iterator[OwnershipType]:
         """
         Return information about resource ownership.
         """
-        emails = {user["id"]: user["email"] for user in self.export_users()}
         uuids = self.get_uuids(resource_name)
         name_key = {
             "dataset": "table_name",
@@ -1178,11 +1182,30 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         }[resource_name]
 
         for resource in self.get_resources(resource_name):
-            yield {
+            info: OwnershipType = {
                 "name": resource[name_key],
                 "uuid": uuids[resource["id"]],
-                "owners": [emails[owner["id"]] for owner in resource.get("owners", [])],
+                "owners": [],
             }
+            for owner in resource.get("owners", []):
+                if user := users.get(owner["id"]):
+                    info["owners"].append(user)
+                else:
+                    if not exclude_old_users:
+                        raise Exception(
+                            f"User {owner['first_name']} {owner['last_name']} owns the "
+                            f"{resource_name} {resource[name_key]} but is not a member in the team."
+                            " You can trigger this command with ``--exclude-old-users`` to "
+                            "automatically remove old members.",
+                        )
+                    _logger.warning(
+                        "User %s %s not found in team. Removing from ownership config for %s %s.",
+                        owner["first_name"],
+                        owner["last_name"],
+                        resource_name,
+                        resource[name_key],
+                    )
+            yield info
 
     def import_ownership(
         self,

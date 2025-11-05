@@ -2577,14 +2577,6 @@ def test_export_ownership(mocker: MockerFixture) -> None:
     """
     mocker.patch.object(
         SupersetClient,
-        "export_users",
-        return_value=[
-            {"id": 1, "email": "admin@example.com"},
-            {"id": 2, "email": "adoe@example.com"},
-        ],
-    )
-    mocker.patch.object(
-        SupersetClient,
         "get_uuids",
         return_value={
             1: UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
@@ -2604,10 +2596,94 @@ def test_export_ownership(mocker: MockerFixture) -> None:
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    assert list(client.export_ownership("chart")) == [
+    users = {1: "admin@example.com", 2: "adoe@example.com"}
+    assert list(client.export_ownership("chart", users, exclude_old_users=False)) == [
         {
             "name": "My chart",
             "owners": ["admin@example.com", "adoe@example.com"],
+            "uuid": UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+        },
+    ]
+
+
+def test_export_ownership_user_not_found_raises_exception(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test ``export_ownership`` when user not found and exclude_old_users=False.
+    """
+    mocker.patch.object(
+        SupersetClient,
+        "get_uuids",
+        return_value={
+            1: UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+        },
+    )
+    mocker.patch.object(
+        SupersetClient,
+        "get_resources",
+        return_value=[
+            {
+                "slice_name": "My chart",
+                "id": 1,
+                "owners": [
+                    {"id": 1, "first_name": "John", "last_name": "Doe"},
+                    {"id": 999, "first_name": "Missing", "last_name": "User"},
+                ],
+            },
+        ],
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    users = {1: "admin@example.com"}  # User 999 is not in the dict
+
+    with pytest.raises(
+        Exception,
+        match="User Missing User owns the chart My chart but is not a member in the team",
+    ):
+        list(client.export_ownership("chart", users, exclude_old_users=False))
+
+
+def test_export_ownership_user_not_found_with_exclude_flag(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test ``export_ownership`` when user not found and exclude_old_users=True.
+    """
+    mocker.patch.object(
+        SupersetClient,
+        "get_uuids",
+        return_value={
+            1: UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+        },
+    )
+    mocker.patch.object(
+        SupersetClient,
+        "get_resources",
+        return_value=[
+            {
+                "slice_name": "My chart",
+                "id": 1,
+                "owners": [
+                    {"id": 1, "first_name": "John", "last_name": "Doe"},
+                    {"id": 999, "first_name": "Missing", "last_name": "User"},
+                ],
+            },
+        ],
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    users = {1: "admin@example.com"}  # User 999 is not in the dict
+
+    # Should not raise exception, and should exclude the missing user
+    result = list(client.export_ownership("chart", users, exclude_old_users=True))
+
+    assert result == [
+        {
+            "name": "My chart",
+            "owners": ["admin@example.com"],  # Only user 1, user 999 excluded
             "uuid": UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
         },
     ]
