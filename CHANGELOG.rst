@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.3.9 - 2025-11-06
+==========================
+
+- The ``export-assets`` command now considers the ``uuid`` value instead of file name to decide when to overwrite files (`#364 <https://github.com/preset-io/backend-sdk/pull/364>`_).
+- New ``exclude-old-users`` flag added to the ``export-ownership`` command to remove legacy users from ownership configurations (`#365 <https://github.com/preset-io/backend-sdk/pull/365>`_).
+
 Version 0.3.8 - 2025-09-23
 ==========================
 
