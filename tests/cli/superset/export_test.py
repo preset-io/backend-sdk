@@ -744,6 +744,10 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+        {"id": 2, "email": "bdoe@example.com"},
+    ]
     client.export_ownership.side_effect = [
         [],
         [
@@ -763,6 +767,13 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
+
+    # Verify export_ownership was called with users dict and exclude_old_users=False
+    expected_users = {1: "adoe@example.com", 2: "bdoe@example.com"}
+    assert client.export_ownership.call_count == 3
+    client.export_ownership.assert_any_call("dataset", expected_users, False)
+    client.export_ownership.assert_any_call("chart", expected_users, False)
+    client.export_ownership.assert_any_call("dashboard", expected_users, False)
 
     with open("ownership.yaml", encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -787,6 +798,10 @@ def test_export_ownership_force_unix_eol_enable(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+        {"id": 2, "email": "bdoe@example.com"},
+    ]
     client.export_ownership.side_effect = [
         [],
         [
@@ -815,6 +830,130 @@ def test_export_ownership_force_unix_eol_enable(
                 "name": "My chart",
                 "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
                 "owners": ["adoe@example.com", "bdoe@example.com"],
+            },
+        ],
+    }
+
+
+def test_export_ownership_by_asset_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command with ``--asset-type`` filter.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+        {"id": 2, "email": "bdoe@example.com"},
+    ]
+    client.export_ownership.side_effect = [
+        [
+            {
+                "name": "My chart",
+                "uuid": UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        [
+            {
+                "name": "My dashboard",
+                "uuid": UUID("a1b2c3d4-1234-5678-90ab-cdefabcd1234"),
+                "owners": ["bdoe@example.com"],
+            },
+        ],
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-ownership",
+            "--asset-type",
+            "chart",
+            "--asset-type",
+            "dashboard",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Verify that export_ownership was called only for chart and dashboard, not dataset
+    expected_users = {1: "adoe@example.com", 2: "bdoe@example.com"}
+    assert client.export_ownership.call_count == 2
+    client.export_ownership.assert_any_call("chart", expected_users, False)
+    client.export_ownership.assert_any_call("dashboard", expected_users, False)
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "chart": [
+            {
+                "name": "My chart",
+                "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        "dashboard": [
+            {
+                "name": "My dashboard",
+                "uuid": "a1b2c3d4-1234-5678-90ab-cdefabcd1234",
+                "owners": ["bdoe@example.com"],
+            },
+        ],
+    }
+
+
+def test_export_ownership_single_asset_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command with a single ``--asset-type``.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 3, "email": "cdoe@example.com"},
+    ]
+    client.export_ownership.return_value = [
+        {
+            "name": "My dataset",
+            "uuid": UUID("12345678-1234-5678-90ab-cdefabcd5678"),
+            "owners": ["cdoe@example.com"],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-ownership",
+            "--asset-type",
+            "dataset",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Verify that export_ownership was called only once for dataset
+    expected_users = {3: "cdoe@example.com"}
+    assert client.export_ownership.call_count == 1
+    client.export_ownership.assert_called_once_with("dataset", expected_users, False)
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "dataset": [
+            {
+                "name": "My dataset",
+                "uuid": "12345678-1234-5678-90ab-cdefabcd5678",
+                "owners": ["cdoe@example.com"],
             },
         ],
     }

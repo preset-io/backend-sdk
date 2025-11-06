@@ -457,16 +457,29 @@ def export_rls(
     default="ownership.yaml",
 )
 @click.option(
+    "--asset-type",
+    help="Asset type",
+    multiple=True,
+)
+@click.option(
     "--force-unix-eol",
     is_flag=True,
     default=False,
     help="Force Unix end-of-line characters, otherwise use system default",
 )
+@click.option(
+    "--exclude-old-users",
+    is_flag=True,
+    default=False,
+    help="Exclude users that are no longer a member in the team from the generated file",
+)
 @click.pass_context
 def export_ownership(
     ctx: click.core.Context,
     path: str,
+    asset_type: Tuple[str, ...],
     force_unix_eol: bool = False,
+    exclude_old_users: bool = False,
 ) -> None:
     """
     Export DBs/datasets/charts/dashboards ownership to a YAML file.
@@ -475,9 +488,21 @@ def export_ownership(
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
+    users = {user["id"]: user["email"] for user in client.export_users()}
+    asset_types = set(asset_type) if asset_type else set()
+    resources_to_export = (
+        [r for r in ["dataset", "chart", "dashboard"] if r in asset_types]
+        if asset_types
+        else ["dataset", "chart", "dashboard"]
+    )
+
     ownership = defaultdict(list)
-    for resource_name in ["dataset", "chart", "dashboard"]:
-        for resource in client.export_ownership(resource_name):
+    for resource_name in resources_to_export:
+        for resource in client.export_ownership(
+            resource_name,
+            users,
+            exclude_old_users,
+        ):
             ownership[resource_name].append(
                 {
                     "name": resource["name"],
@@ -486,6 +511,10 @@ def export_ownership(
                 },
             )
 
-    newline = get_newline_char(force_unix_eol)
-    with open(path, "w", encoding="utf-8", newline=newline) as output:
+    with open(
+        path,
+        "w",
+        encoding="utf-8",
+        newline=get_newline_char(force_unix_eol),
+    ) as output:
         yaml.dump(dict(ownership), output)
