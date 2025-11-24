@@ -701,7 +701,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
     def delete_chart(self, chart_id):
         """
-        delete a chart.
+        Delete a chart.
         """
         self.delete_resource("chart", chart_id)
 
