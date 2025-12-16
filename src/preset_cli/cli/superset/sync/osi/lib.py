@@ -19,6 +19,35 @@ from preset_cli.exceptions import CLIError
 
 _logger = logging.getLogger(__name__)
 
+# Fields to remove from metrics/columns when updating (not accepted by Superset API)
+FIELDS_TO_CLEAN = (
+    "autoincrement",
+    "changed_on",
+    "comment",
+    "created_on",
+    "default",
+    "name",
+    "nullable",
+    "type_generic",
+    "precision",
+    "scale",
+    "max_length",
+    "info",
+)
+
+
+def clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Remove incompatible fields from metadata for create/update operations.
+
+    Superset's API doesn't accept certain read-only fields like changed_on, created_on, etc.
+    """
+    cleaned = metadata.copy()
+    for key in FIELDS_TO_CLEAN:
+        cleaned.pop(key, None)
+    return cleaned
+
+
 # Map sqlalchemy driver names to sqlglot dialects
 DIALECT_MAP = {
     "postgresql": "postgres",
@@ -58,8 +87,8 @@ def parse_osi_file(file_path: str) -> Dict[str, Any]:
 
     Returns the first semantic model from the file.
     """
-    with open(file_path, encoding="utf-8") as f:
-        content = yaml.safe_load(f)
+    with open(file_path, encoding="utf-8") as file_handle:
+        content = yaml.safe_load(file_handle)
 
     if "semantic_model" not in content:
         raise CLIError("Invalid OSI file: missing 'semantic_model' key", 1)
@@ -82,16 +111,16 @@ def get_database_id(client: SupersetClient) -> int:
         raise CLIError("No databases available", 1)
 
     if len(databases) == 1:
-        db = databases[0]
+        database = databases[0]
         click.echo(
-            f'Using database {db["database_name"]} [id={db["id"]}] '
+            f'Using database {database["database_name"]} [id={database["id"]}] '
             "since it's the only one",
         )
-        return db["id"]
+        return database["id"]
 
     click.echo("Choose a database:")
-    for i, db in enumerate(databases):
-        click.echo(f'({i+1}) {db["database_name"]} [id={db["id"]}]')
+    for i, database in enumerate(databases):
+        click.echo(f'({i+1}) {database["database_name"]} [id={database["id"]}]')
 
     while True:
         try:
@@ -172,7 +201,7 @@ def translate_expression(
     return expression
 
 
-def parse_source(source: str) -> Dict[str, str]:
+def parse_source(source: str) -> Dict[str, Optional[str]]:
     """
     Parse an OSI dataset source string.
 
@@ -186,7 +215,7 @@ def parse_source(source: str) -> Dict[str, str]:
     return {"catalog": None, "schema": None, "table": parts[0]}
 
 
-def build_join_sql(
+def build_join_sql(  # noqa: C901  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     datasets: List[Dict[str, Any]],
     relationships: List[Dict[str, Any]],
 ) -> str:
@@ -200,27 +229,27 @@ def build_join_sql(
         raise CLIError("No datasets defined in OSI model", 1)
 
     # Build dataset lookup
-    dataset_by_name = {ds["name"]: ds for ds in datasets}
+    dataset_by_name = {dataset["name"]: dataset for dataset in datasets}
 
     # Find fact table (most outgoing relationships)
-    outgoing_counts: Dict[str, int] = {ds["name"]: 0 for ds in datasets}
+    outgoing_counts: Dict[str, int] = {dataset["name"]: 0 for dataset in datasets}
     for rel in relationships or []:
-        from_ds = rel.get("from")
-        if from_ds in outgoing_counts:
-            outgoing_counts[from_ds] += 1
+        from_dataset = rel.get("from")
+        if from_dataset in outgoing_counts:
+            outgoing_counts[from_dataset] += 1
 
     # Sort by outgoing count descending
     sorted_datasets = sorted(
         datasets,
-        key=lambda ds: outgoing_counts.get(ds["name"], 0),
+        key=lambda d: outgoing_counts.get(d["name"], 0),
         reverse=True,
     )
     fact_table = sorted_datasets[0]
 
     # Build SELECT clause with all columns from all tables
     select_parts = []
-    for ds in datasets:
-        alias = ds["name"]
+    for dataset in datasets:
+        alias = dataset["name"]
         select_parts.append(f"{alias}.*")
 
     # Build FROM clause
@@ -248,8 +277,8 @@ def build_join_sql(
         if to_ds_name in joined_tables and from_ds_name not in joined_tables:
             # Join the 'from' table
             join_ds_name = from_ds_name
-            join_ds = dataset_by_name.get(join_ds_name)
-            if not join_ds:
+            join_dataset = dataset_by_name.get(join_ds_name)
+            if not join_dataset:
                 continue
 
             on_conditions = [
@@ -259,8 +288,8 @@ def build_join_sql(
         elif from_ds_name in joined_tables and to_ds_name not in joined_tables:
             # Join the 'to' table
             join_ds_name = to_ds_name
-            join_ds = dataset_by_name.get(join_ds_name)
-            if not join_ds:
+            join_dataset = dataset_by_name.get(join_ds_name)
+            if not join_dataset:
                 continue
 
             on_conditions = [
@@ -270,7 +299,7 @@ def build_join_sql(
         else:
             continue
 
-        join_source = parse_source(join_ds["source"])
+        join_source = parse_source(join_dataset["source"])
         join_table_ref = join_source["table"]
         if join_source["schema"]:
             join_table_ref = f'{join_source["schema"]}.{join_table_ref}'
@@ -282,17 +311,17 @@ def build_join_sql(
         joined_tables.add(join_ds_name)
 
     # Handle tables not yet joined (no relationships)
-    for ds in datasets:
-        if ds["name"] not in joined_tables:
-            ds_source = parse_source(ds["source"])
+    for dataset in datasets:
+        if dataset["name"] not in joined_tables:
+            ds_source = parse_source(dataset["source"])
             ds_table_ref = ds_source["table"]
             if ds_source["schema"]:
                 ds_table_ref = f'{ds_source["schema"]}.{ds_table_ref}'
             if ds_source["catalog"]:
                 ds_table_ref = f'{ds_source["catalog"]}.{ds_table_ref}'
             # Cross join unrelated tables (rare case)
-            join_clauses.append(f"CROSS JOIN {ds_table_ref} {ds['name']}")
-            joined_tables.add(ds["name"])
+            join_clauses.append(f"CROSS JOIN {ds_table_ref} {dataset['name']}")
+            joined_tables.add(dataset["name"])
 
     sql = f"SELECT {', '.join(select_parts)}\nFROM {from_clause}"
     if join_clauses:
@@ -314,7 +343,7 @@ def get_or_create_physical_dataset(
     schema = source["schema"]
 
     # Check if dataset already exists
-    filters = {
+    filters: Dict[str, Any] = {
         "database": OneToMany(database["id"]),
         "table_name": table_name,
     }
@@ -393,7 +422,7 @@ def build_metric_for_physical_dataset(
     Strips the dataset prefix from column references since we're on the physical table.
     """
     name = metric.get("name", "")
-    expression = get_osi_expression(metric)
+    expression = get_osi_expression(metric) or ""
 
     # Remove dataset prefix from expression (e.g., "store_sales.amount" -> "amount")
     pattern = rf"\b{re.escape(dataset_name)}\.(\w+)"
@@ -422,12 +451,14 @@ def build_metric_for_physical_dataset(
     return superset_metric
 
 
-def create_physical_datasets(
+def create_physical_datasets(  # pylint: disable=too-many-arguments,too-many-locals
     client: SupersetClient,
     osi_datasets: List[Dict[str, Any]],
     database: Dict[str, Any],
     osi_metrics: Optional[List[Dict[str, Any]]] = None,
     target_dialect: Optional[str] = None,
+    reload_columns: bool = True,
+    merge_metadata: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Create physical datasets for each OSI dataset.
@@ -448,7 +479,9 @@ def create_physical_datasets(
 
             # Find metrics that reference only this dataset
             dataset_metrics = get_metrics_for_dataset(
-                osi_metrics, name, all_dataset_names
+                osi_metrics,
+                name,
+                all_dataset_names,
             )
 
             if dataset_metrics:
@@ -458,22 +491,26 @@ def create_physical_datasets(
                     for m in dataset_metrics
                 ]
 
-                # Get existing metrics to merge
+                # Compute final metrics using merge logic
                 existing_metrics = dataset.get("metrics", [])
-                existing_metric_names = {m["metric_name"] for m in existing_metrics}
+                final_metrics = compute_metrics(
+                    existing_metrics,
+                    superset_metrics,
+                    reload_columns,
+                    merge_metadata,
+                )
 
-                # Add new metrics (don't duplicate)
-                new_metrics = [
-                    m for m in superset_metrics
-                    if m["metric_name"] not in existing_metric_names
-                ]
+                # Count new metrics for output
+                existing_names = {m["metric_name"] for m in existing_metrics}
+                new_count = sum(
+                    1 for m in final_metrics if m["metric_name"] not in existing_names
+                )
 
-                if new_metrics:
-                    all_metrics = existing_metrics + new_metrics
-                    client.update_dataset(dataset["id"], metrics=all_metrics)
+                client.update_dataset(dataset["id"], metrics=final_metrics)
+                if new_count > 0:
                     click.echo(
                         f"  Created/found physical dataset: {name} "
-                        f"(+{len(new_metrics)} metric(s))"
+                        f"(+{new_count} metric(s))",
                     )
                 else:
                     click.echo(f"  Created/found physical dataset: {name}")
@@ -491,9 +528,14 @@ def build_metrics(
     osi_metrics: List[Dict[str, Any]],
     target_dialect: Optional[str],
     dataset_aliases: Dict[str, str],
+    strip_prefixes: bool = True,
 ) -> List[SupersetMetricDefinition]:
     """
     Convert OSI metrics to Superset metric format with dialect translation.
+
+    When strip_prefixes is True (default for denormalized datasets), dataset
+    prefixes like "store_sales." are removed from expressions since the virtual
+    dataset subquery doesn't have table aliases.
     """
     superset_metrics: List[SupersetMetricDefinition] = []
 
@@ -506,6 +548,12 @@ def build_metrics(
 
         # Translate expression
         translated = translate_expression(expression, target_dialect, dataset_aliases)
+
+        # Strip dataset prefixes for denormalized virtual datasets
+        # e.g., "SUM(store_sales.ss_ext_sales_price)" -> "SUM(ss_ext_sales_price)"
+        if strip_prefixes:
+            for alias in dataset_aliases:
+                translated = re.sub(rf"\b{re.escape(alias)}\.", "", translated)
 
         superset_metric: SupersetMetricDefinition = {
             "metric_name": name,
@@ -521,6 +569,45 @@ def build_metrics(
         superset_metrics.append(superset_metric)
 
     return superset_metrics
+
+
+def compute_metrics(
+    existing_metrics: List[Dict[str, Any]],
+    new_metrics: List[SupersetMetricDefinition],
+    reload_columns: bool,
+    merge_metadata: bool,
+) -> List[Dict[str, Any]]:
+    """
+    Compute the final list of metrics for updating a dataset.
+
+    reload_columns (default): OSI metrics replace all, Superset-only metrics deleted
+    merge_metadata: OSI metrics synced, Superset-only metrics preserved
+    if both are false (preserve_metadata): Superset metrics preserved, only add new OSI metrics
+    """
+    # Index existing metrics by name
+    existing_by_name = {m["metric_name"]: m for m in existing_metrics}
+    new_by_name = {m["metric_name"]: m for m in new_metrics}
+
+    final_metrics: List[Dict[str, Any]] = []
+
+    # Process new metrics from OSI
+    for name, metric in new_by_name.items():
+        if reload_columns or merge_metadata or name not in existing_by_name:
+            final_metric = dict(metric)
+            # If metric exists, include its ID for update instead of create
+            if name in existing_by_name:
+                final_metric["id"] = existing_by_name[name]["id"]
+            final_metrics.append(final_metric)
+
+    # Preserve existing Superset metrics if not reload_columns
+    if not reload_columns:
+        for existing_name, existing_metric in existing_by_name.items():
+            if not merge_metadata or existing_name not in new_by_name:
+                # Clean metadata and add to final list
+                cleaned = clean_metadata(existing_metric)
+                final_metrics.append(cleaned)
+
+    return final_metrics
 
 
 def build_columns_from_fields(
@@ -561,14 +648,14 @@ def build_columns_from_fields(
                 column["description"] = description
 
             # Add verbose name from description or field name
-            column["verbose_name"] = (
-                description or field_name.replace("_", " ").title()
-            )
+            column["verbose_name"] = description or field_name.replace("_", " ").title()
 
             # Check if it's a computed column (expression != column name)
             if expression and expression != field_name:
                 translated = translate_expression(
-                    expression, target_dialect, {alias: alias}
+                    expression,
+                    target_dialect,
+                    {alias: alias},
                 )
                 column["expression"] = translated
 
@@ -577,11 +664,13 @@ def build_columns_from_fields(
     return columns
 
 
-def get_or_create_denormalized_dataset(
+def get_or_create_denormalized_dataset(  # pylint: disable=too-many-arguments,too-many-locals
     client: SupersetClient,
     osi_model: Dict[str, Any],
     database: Dict[str, Any],
     target_dialect: Optional[str],
+    reload_columns: bool = True,
+    merge_metadata: bool = False,
 ) -> Dict[str, Any]:
     """
     Create or update the denormalized virtual dataset with JOINs and metrics.
@@ -618,7 +707,7 @@ def get_or_create_denormalized_dataset(
     # Build dataset aliases for metric translation
     dataset_aliases = {ds["name"]: ds["name"] for ds in datasets}
 
-    # Build metrics
+    # Build metrics from OSI
     superset_metrics = build_metrics(metrics, target_dialect, dataset_aliases)
 
     if existing:
@@ -627,16 +716,19 @@ def get_or_create_denormalized_dataset(
         _logger.info("Updating existing denormalized dataset %s", denorm_name)
         dataset = client.get_dataset(dataset_id)
 
-        # Merge metrics (preserve existing, add new)
-        existing_metric_names = {m["metric_name"] for m in dataset.get("metrics", [])}
-        for metric in superset_metrics:
-            if metric["metric_name"] not in existing_metric_names:
-                dataset.setdefault("metrics", []).append(metric)
+        # Compute final metrics using merge logic
+        existing_metrics = dataset.get("metrics", [])
+        final_metrics = compute_metrics(
+            existing_metrics,
+            superset_metrics,
+            reload_columns,
+            merge_metadata,
+        )
 
         # Update with new SQL and metrics
         update_payload = {
             "sql": join_sql,
-            "metrics": superset_metrics,
+            "metrics": final_metrics,
             "description": osi_model.get("description", ""),
         }
 
@@ -671,9 +763,20 @@ def sync_osi(
     client: SupersetClient,
     osi_model: Dict[str, Any],
     database: Dict[str, Any],
+    reload_columns: bool = True,
+    merge_metadata: bool = False,
 ) -> Dict[str, Any]:
     """
     Main sync function that creates all datasets and metrics from OSI model.
+
+    Args:
+        client: SupersetClient instance
+        osi_model: Parsed OSI model dictionary
+        database: Database configuration from Superset
+        reload_columns: If True (default), OSI metrics replace all existing metrics.
+                       If False, existing Superset metrics are preserved.
+        merge_metadata: If True, update existing metrics from OSI while preserving
+                       Superset-only metrics. Only applies when reload_columns=False.
 
     Returns the denormalized dataset with all metrics.
     """
@@ -691,18 +794,29 @@ def sync_osi(
     # Step 1: Create physical datasets (with single-dataset metrics)
     click.echo(f"Creating {len(datasets)} physical dataset(s)...")
     create_physical_datasets(
-        client, datasets, database, osi_metrics=metrics, target_dialect=target_dialect
+        client,
+        datasets,
+        database,
+        osi_metrics=metrics,
+        target_dialect=target_dialect,
+        reload_columns=reload_columns,
+        merge_metadata=merge_metadata,
     )
 
     # Step 2: Create denormalized virtual dataset with JOINs and all metrics
     click.echo("Creating denormalized virtual dataset...")
     denorm_dataset = get_or_create_denormalized_dataset(
-        client, osi_model, database, target_dialect
+        client,
+        osi_model,
+        database,
+        target_dialect,
+        reload_columns=reload_columns,
+        merge_metadata=merge_metadata,
     )
 
     click.echo(
         f"Created denormalized dataset '{denorm_dataset['table_name']}' "
-        f"with {len(metrics)} metric(s)"
+        f"with {len(metrics)} metric(s)",
     )
 
     return denorm_dataset
