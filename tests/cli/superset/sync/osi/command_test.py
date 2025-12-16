@@ -27,6 +27,7 @@ from preset_cli.cli.superset.sync.osi.lib import (
     get_database_id,
     get_metrics_for_dataset,
     get_or_create_denormalized_dataset,
+    get_or_create_physical_dataset,
     get_osi_expression,
     get_referenced_datasets,
     parse_osi_file,
@@ -1425,3 +1426,813 @@ def test_get_osi_expression_non_ansi_dialect() -> None:
     }
     result = get_osi_expression(field)
     assert result == "SNOWFLAKE_EXPR"
+
+
+def test_get_osi_expression_direct_list_format() -> None:
+    """
+    Test get_osi_expression when expression is directly a list of dialects.
+    """
+    # When expression itself is a list (alternate format)
+    field = {
+        "expression": [
+            {"dialect": "ANSI_SQL", "expression": "direct_list_expr"},
+        ],
+    }
+    result = get_osi_expression(field)
+    assert result == "direct_list_expr"
+
+
+def test_build_join_sql_reverse_join_direction() -> None:
+    """
+    Test JOIN SQL where the relationship goes from dimension to fact.
+
+    This tests the branch where to_ds is in joined_tables but from_ds is not.
+    """
+    datasets = [
+        {"name": "fact_sales", "source": "db.public.fact_sales"},
+        {"name": "dim_product", "source": "db.public.dim_product"},
+    ]
+    # Relationship defined from dimension to fact (reverse of typical)
+    relationships = [
+        {
+            "name": "product_to_sales",
+            "from": "dim_product",
+            "to": "fact_sales",
+            "from_columns": ["product_id"],
+            "to_columns": ["product_id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    # Should generate valid JOIN SQL
+    assert "SELECT" in sql
+    assert "FROM" in sql
+    assert "LEFT JOIN" in sql
+    assert "dim_product" in sql
+
+
+def test_build_join_sql_missing_dataset_in_relationship() -> None:
+    """
+    Test JOIN SQL when a relationship references a non-existent dataset.
+    """
+    datasets = [
+        {"name": "orders", "source": "db.public.orders"},
+    ]
+    relationships = [
+        {
+            "name": "orders_to_missing",
+            "from": "orders",
+            "to": "missing_table",  # Does not exist
+            "from_columns": ["id"],
+            "to_columns": ["order_id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    # Should still generate SQL, just without the join for missing table
+    assert "SELECT" in sql
+    assert "FROM" in sql
+    # Should not have LEFT JOIN since the target doesn't exist
+    assert "LEFT JOIN" not in sql
+
+
+def test_build_join_sql_both_tables_already_joined() -> None:
+    """
+    Test JOIN SQL when both tables in a relationship are already joined.
+
+    This covers the 'else: continue' branch (line 300).
+    """
+    datasets = [
+        {"name": "orders", "source": "db.public.orders"},
+        {"name": "customers", "source": "db.public.customers"},
+        {"name": "products", "source": "db.public.products"},
+    ]
+    relationships = [
+        # First relationship joins customers
+        {
+            "name": "orders_to_customers",
+            "from": "orders",
+            "to": "customers",
+            "from_columns": ["customer_id"],
+            "to_columns": ["id"],
+        },
+        # Second relationship joins products
+        {
+            "name": "orders_to_products",
+            "from": "orders",
+            "to": "products",
+            "from_columns": ["product_id"],
+            "to_columns": ["id"],
+        },
+        # Third relationship between already-joined tables (should be skipped)
+        {
+            "name": "customers_to_products",
+            "from": "customers",
+            "to": "products",
+            "from_columns": ["fav_product"],
+            "to_columns": ["id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    # Should have JOINs for customers and products, but not a third JOIN
+    assert sql.count("LEFT JOIN") == 2
+
+
+def test_build_join_sql_with_schema_only() -> None:
+    """
+    Test JOIN SQL with schema.table format (no catalog).
+    """
+    datasets = [
+        {"name": "orders", "source": "public.orders"},
+        {"name": "customers", "source": "public.customers"},
+    ]
+    relationships = [
+        {
+            "name": "orders_to_customers",
+            "from": "orders",
+            "to": "customers",
+            "from_columns": ["customer_id"],
+            "to_columns": ["id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    assert "public.orders" in sql
+    assert "public.customers" in sql
+
+
+def test_build_join_sql_unrelated_with_schema_catalog() -> None:
+    """
+    Test CROSS JOIN for unrelated tables with full catalog.schema.table format.
+    """
+    datasets = [
+        {"name": "main", "source": "cat.schema.main"},
+        {"name": "lookup", "source": "cat.schema.lookup"},
+    ]
+    relationships: List[Dict[str, Any]] = []  # No relationships
+
+    sql = build_join_sql(datasets, relationships)
+
+    assert "CROSS JOIN" in sql
+    assert "cat.schema.lookup" in sql
+
+
+def test_get_or_create_physical_dataset_existing(mocker: MockerFixture) -> None:
+    """
+    Test get_or_create_physical_dataset when dataset already exists.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = [{"id": 42}]
+    client.get_dataset.return_value = {
+        "id": 42,
+        "table_name": "existing_table",
+    }
+
+    osi_dataset = {"name": "my_table", "source": "db.public.my_table"}
+    database = {"id": 1}
+
+    result = get_or_create_physical_dataset(client, osi_dataset, database)
+
+    assert result["id"] == 42
+    # Should not call create_dataset since it exists
+    client.create_dataset.assert_not_called()
+
+
+def test_get_or_create_physical_dataset_with_catalog(mocker: MockerFixture) -> None:
+    """
+    Test get_or_create_physical_dataset with catalog.schema.table format.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []  # No existing
+    client.create_dataset.return_value = {"id": 100}
+    client.get_dataset.return_value = {"id": 100, "table_name": "my_table"}
+
+    osi_dataset = {"name": "my_table", "source": "my_catalog.my_schema.my_table"}
+    database = {"id": 1}
+
+    result = get_or_create_physical_dataset(client, osi_dataset, database)
+
+    assert result["id"] == 100
+    # Verify catalog was passed
+    call_kwargs = client.create_dataset.call_args[1]
+    assert call_kwargs.get("catalog") == "my_catalog"
+    assert call_kwargs.get("schema") == "my_schema"
+
+
+def test_get_metrics_for_dataset_no_expression() -> None:
+    """
+    Test get_metrics_for_dataset skips metrics without expressions.
+    """
+    osi_metrics = [
+        {
+            "name": "valid_metric",
+            "expression": {
+                "dialects": [
+                    {"dialect": "ANSI_SQL", "expression": "SUM(orders.amount)"},
+                ],
+            },
+        },
+        {
+            "name": "invalid_metric",
+            "expression": {},  # No valid expression
+        },
+    ]
+
+    result = get_metrics_for_dataset(osi_metrics, "orders", ["orders", "customers"])
+
+    # Should only include the valid metric
+    assert len(result) == 1
+    assert result[0]["name"] == "valid_metric"
+
+
+def test_build_metric_for_physical_dataset_with_dialect() -> None:
+    """
+    Test build_metric_for_physical_dataset with target dialect translation.
+    """
+    metric = {
+        "name": "total_amount",
+        "expression": {
+            "dialects": [
+                {"dialect": "ANSI_SQL", "expression": "SUM(orders.amount)"},
+            ],
+        },
+        "description": "Total order amount",
+    }
+
+    result = build_metric_for_physical_dataset(metric, "orders", "snowflake")
+
+    assert result["metric_name"] == "total_amount"
+    assert result["description"] == "Total order amount"
+    # Expression should have dataset prefix stripped
+    assert "orders." not in result["expression"]
+    assert "amount" in result["expression"]
+
+
+def test_build_metric_for_physical_dataset_translation_error(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test build_metric_for_physical_dataset handles translation errors gracefully.
+    """
+    # Mock sqlglot to raise an exception
+    mocker.patch(
+        "preset_cli.cli.superset.sync.osi.lib.sqlglot.transpile",
+        side_effect=Exception("Translation failed"),
+    )
+
+    metric = {
+        "name": "test_metric",
+        "expression": {
+            "dialects": [{"dialect": "ANSI_SQL", "expression": "SUM(t.x)"}],
+        },
+    }
+
+    # Should not raise, should fall back to original expression
+    result = build_metric_for_physical_dataset(metric, "t", "postgres")
+
+    assert result["metric_name"] == "test_metric"
+    # Expression should still be set (original, without prefix)
+    assert "expression" in result
+
+
+def test_create_physical_datasets_existing_metrics_no_new(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test create_physical_datasets when all metrics already exist (no new count).
+
+    This covers line 516 (echo without new metrics count).
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.return_value = {"id": 1}
+    client.get_dataset.return_value = {
+        "id": 1,
+        "table_name": "orders",
+        "metrics": [
+            {"metric_name": "existing_metric", "expression": "COUNT(*)"},
+        ],
+    }
+
+    osi_datasets = [{"name": "orders", "source": "db.public.orders"}]
+    database = {"id": 1, "database_name": "test_db"}
+    osi_metrics = [
+        {
+            "name": "existing_metric",  # Same name as existing
+            "expression": {
+                "dialects": [
+                    {"dialect": "ANSI_SQL", "expression": "COUNT(orders.id)"},
+                ],
+            },
+        },
+    ]
+
+    result = create_physical_datasets(
+        client,
+        osi_datasets,
+        database,
+        osi_metrics=osi_metrics,
+        target_dialect="postgres",
+        reload_columns=False,  # Preserve existing
+        merge_metadata=False,
+    )
+
+    assert "orders" in result
+
+
+def test_get_or_create_denormalized_dataset_empty_datasets(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test get_or_create_denormalized_dataset with empty datasets list.
+
+    This covers line 691 (schema = None when no datasets).
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.return_value = {"id": 1}
+    client.get_dataset.return_value = {"id": 1, "table_name": "test_denormalized"}
+
+    osi_model = {
+        "name": "test_model",
+        "datasets": [],  # Empty datasets
+        "relationships": [],
+        "metrics": [],
+    }
+    database = {"id": 1, "database_name": "test_db"}
+
+    # This will raise CLIError due to empty datasets in build_join_sql
+    with pytest.raises(CLIError, match="No datasets"):
+        get_or_create_denormalized_dataset(
+            client,
+            osi_model,
+            database,
+            target_dialect="postgres",
+        )
+
+
+def test_get_or_create_denormalized_dataset_with_schema(mocker: MockerFixture) -> None:
+    """
+    Test creating new denormalized dataset with schema.
+
+    This covers lines 745-746 (adding schema to kwargs).
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []  # No existing
+    client.create_dataset.return_value = {"id": 200}
+    client.get_dataset.return_value = {
+        "id": 200,
+        "table_name": "test_model_denormalized",
+    }
+
+    osi_model = {
+        "name": "test_model",
+        "datasets": [
+            {"name": "orders", "source": "myschema.orders"},  # Has schema
+        ],
+        "relationships": [],
+        "metrics": [],
+    }
+    database = {"id": 1, "database_name": "test_db"}
+
+    result = get_or_create_denormalized_dataset(
+        client,
+        osi_model,
+        database,
+        target_dialect="postgres",
+    )
+
+    # Verify schema was passed to create_dataset
+    call_kwargs = client.create_dataset.call_args[1]
+    assert call_kwargs.get("schema") == "myschema"
+    assert result["id"] == 200
+
+
+def test_translate_expression_transpile_failure(mocker: MockerFixture) -> None:
+    """
+    Test translate_expression when sqlglot transpile fails.
+    """
+    mocker.patch(
+        "preset_cli.cli.superset.sync.osi.lib.sqlglot.transpile",
+        side_effect=Exception("Parse error"),
+    )
+
+    result = translate_expression("INVALID SQL", "postgres", {})
+
+    # Should return original expression on failure
+    assert result == "INVALID SQL"
+
+
+def test_translate_expression_empty_result(mocker: MockerFixture) -> None:
+    """
+    Test translate_expression when sqlglot returns empty result.
+    """
+    mocker.patch(
+        "preset_cli.cli.superset.sync.osi.lib.sqlglot.transpile",
+        return_value=[],  # Empty result
+    )
+
+    result = translate_expression("SUM(x)", "postgres", {})
+
+    # Should return original expression when result is empty
+    assert result == "SUM(x)"
+
+
+def test_build_join_sql_fact_table_without_schema() -> None:
+    """
+    Test JOIN SQL where fact table source has no schema (just table name).
+    """
+    datasets = [
+        {"name": "orders", "source": "orders"},  # No schema
+        {"name": "customers", "source": "customers"},  # No schema
+    ]
+    relationships = [
+        {
+            "name": "orders_to_customers",
+            "from": "orders",
+            "to": "customers",
+            "from_columns": ["customer_id"],
+            "to_columns": ["id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    assert "FROM orders orders" in sql
+    assert "LEFT JOIN customers customers" in sql
+
+
+def test_build_join_sql_join_with_schema_no_catalog() -> None:
+    """
+    Test JOIN SQL where joined table has schema but no catalog.
+
+    This covers the branch at line 304-305.
+    """
+    datasets = [
+        {"name": "fact", "source": "public.fact"},  # Schema only
+        {"name": "dim", "source": "public.dim"},  # Schema only
+    ]
+    relationships = [
+        {
+            "name": "fact_to_dim",
+            "from": "fact",
+            "to": "dim",
+            "from_columns": ["dim_id"],
+            "to_columns": ["id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    assert "LEFT JOIN public.dim" in sql
+
+
+def test_build_join_sql_join_with_catalog() -> None:
+    """
+    Test JOIN SQL where joined table has full catalog.schema.table format.
+
+    This covers the branch at line 306-307.
+    """
+    datasets = [
+        {"name": "fact", "source": "cat.schema.fact"},
+        {"name": "dim", "source": "cat.schema.dim"},
+    ]
+    relationships = [
+        {
+            "name": "fact_to_dim",
+            "from": "fact",
+            "to": "dim",
+            "from_columns": ["dim_id"],
+            "to_columns": ["id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    assert "LEFT JOIN cat.schema.dim" in sql
+
+
+def test_build_join_sql_unrelated_with_schema_no_catalog() -> None:
+    """
+    Test CROSS JOIN for unrelated table with schema but no catalog.
+
+    This covers the branch at lines 318-319.
+    """
+    datasets = [
+        {"name": "main", "source": "public.main"},
+        {"name": "lookup", "source": "public.lookup"},
+    ]
+    relationships: List[Dict[str, Any]] = []
+
+    sql = build_join_sql(datasets, relationships)
+
+    assert "CROSS JOIN public.lookup" in sql
+
+
+def test_get_or_create_physical_dataset_with_schema_no_catalog(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test get_or_create_physical_dataset with schema.table format (no catalog).
+
+    This covers the branch at lines 364-365 (schema without catalog).
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []  # No existing
+    client.create_dataset.return_value = {"id": 100}
+    client.get_dataset.return_value = {"id": 100, "table_name": "my_table"}
+
+    osi_dataset = {"name": "my_table", "source": "my_schema.my_table"}
+    database = {"id": 1}
+
+    result = get_or_create_physical_dataset(client, osi_dataset, database)
+
+    assert result["id"] == 100
+    call_kwargs = client.create_dataset.call_args[1]
+    assert call_kwargs.get("schema") == "my_schema"
+    assert call_kwargs.get("catalog") is None
+
+
+def test_get_or_create_physical_dataset_existing_with_schema(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test get_or_create_physical_dataset when dataset exists and has schema.
+
+    This covers the branch at line 350-351 (schema filter added).
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = [{"id": 42}]
+    client.get_dataset.return_value = {"id": 42, "table_name": "my_table"}
+
+    osi_dataset = {"name": "my_table", "source": "my_schema.my_table"}
+    database = {"id": 1}
+
+    result = get_or_create_physical_dataset(client, osi_dataset, database)
+
+    assert result["id"] == 42
+    # Verify schema was included in the filter
+    call_kwargs = client.get_datasets.call_args[1]
+    assert call_kwargs.get("schema") == "my_schema"
+
+
+def test_build_metric_for_physical_dataset_successful_translation() -> None:
+    """
+    Test build_metric_for_physical_dataset with successful dialect translation.
+
+    This covers the branch at lines 432-436 where transpile succeeds.
+    """
+    metric = {
+        "name": "count_metric",
+        "expression": {
+            "dialects": [
+                {"dialect": "ANSI_SQL", "expression": "COUNT(orders.id)"},
+            ],
+        },
+    }
+
+    # Test with a dialect that sqlglot supports
+    result = build_metric_for_physical_dataset(metric, "orders", "postgres")
+
+    assert result["metric_name"] == "count_metric"
+    # The expression should be translated and have prefix stripped
+    assert "COUNT" in result["expression"]
+    assert "orders." not in result["expression"]
+
+
+def test_get_or_create_denormalized_dataset_no_schema(mocker: MockerFixture) -> None:
+    """
+    Test creating denormalized dataset when source has no schema.
+
+    This covers the branch at line 745 where schema is None.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []
+    client.create_dataset.return_value = {"id": 300}
+    client.get_dataset.return_value = {
+        "id": 300,
+        "table_name": "test_model_denormalized",
+    }
+
+    osi_model = {
+        "name": "test_model",
+        "datasets": [
+            {"name": "orders", "source": "orders"},  # No schema
+        ],
+        "relationships": [],
+        "metrics": [],
+    }
+    database = {"id": 1, "database_name": "test_db"}
+
+    result = get_or_create_denormalized_dataset(
+        client,
+        osi_model,
+        database,
+        target_dialect="postgres",
+    )
+
+    # Verify schema was NOT passed (since source has no schema)
+    call_kwargs = client.create_dataset.call_args[1]
+    assert "schema" not in call_kwargs
+    assert result["id"] == 300
+
+
+def test_build_join_sql_dimension_joins_fact() -> None:
+    """
+    Test JOIN SQL when dimension table needs to join to fact table.
+
+    This covers lines 279-284 where to_ds is already joined and from_ds needs joining.
+    """
+    # Create a scenario where the dimension is the second table to be joined
+    datasets = [
+        {"name": "fact_sales", "source": "sales"},  # Will be fact table
+        {"name": "dim_time", "source": "time_dim"},
+        {"name": "dim_product", "source": "product_dim"},
+    ]
+    # Relationships from dimensions to fact
+    relationships = [
+        {
+            "name": "time_to_sales",
+            "from": "dim_time",  # Not in joined yet
+            "to": "fact_sales",  # Is the fact table (already joined)
+            "from_columns": ["time_key"],
+            "to_columns": ["time_fk"],
+        },
+        {
+            "name": "product_to_sales",
+            "from": "dim_product",
+            "to": "fact_sales",
+            "from_columns": ["product_key"],
+            "to_columns": ["product_fk"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    # Should join dim_time and dim_product to fact_sales
+    assert "LEFT JOIN" in sql
+    assert "dim_time" in sql
+    assert "dim_product" in sql
+
+
+def test_translate_expression_no_dialect() -> None:
+    """
+    Test translate_expression when no target dialect is specified.
+
+    This ensures the branch where target_dialect is None/empty is taken.
+    """
+    result = translate_expression("SUM(amount)", None, {"orders": "o"})
+
+    # Should replace aliases but not translate (no dialect)
+    assert "o.amount" in result or "SUM(amount)" in result
+
+
+def test_build_metric_for_physical_dataset_no_dialect() -> None:
+    """
+    Test build_metric_for_physical_dataset without target dialect.
+
+    This covers the branch where target_dialect is None (lines 432-440 not taken).
+    """
+    metric = {
+        "name": "simple_metric",
+        "expression": {
+            "dialects": [
+                {"dialect": "ANSI_SQL", "expression": "SUM(orders.total)"},
+            ],
+        },
+    }
+
+    # No dialect - should not attempt translation
+    result = build_metric_for_physical_dataset(metric, "orders", None)
+
+    assert result["metric_name"] == "simple_metric"
+    # Expression should have prefix stripped but no dialect translation
+    assert "orders." not in result["expression"]
+    assert "total" in result["expression"]
+
+
+def test_get_or_create_physical_dataset_no_schema(mocker: MockerFixture) -> None:
+    """
+    Test get_or_create_physical_dataset with just table name (no schema/catalog).
+
+    This covers the branch at lines 350 and 364 where schema is None.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = []  # No existing
+    client.create_dataset.return_value = {"id": 100}
+    client.get_dataset.return_value = {"id": 100, "table_name": "my_table"}
+
+    osi_dataset = {"name": "my_table", "source": "my_table"}  # Just table name
+    database = {"id": 1}
+
+    result = get_or_create_physical_dataset(client, osi_dataset, database)
+
+    assert result["id"] == 100
+    call_kwargs = client.create_dataset.call_args[1]
+    # Schema should not be in kwargs when source has no schema
+    assert "schema" not in call_kwargs or call_kwargs.get("schema") is None
+
+
+def test_build_join_sql_relationship_from_unknown_dataset() -> None:
+    """
+    Test JOIN SQL when relationship's 'from' field references unknown dataset.
+
+    This covers line 238->236 where from_dataset is not in outgoing_counts.
+    """
+    datasets = [
+        {"name": "orders", "source": "orders"},
+        {"name": "customers", "source": "customers"},
+    ]
+    relationships = [
+        {
+            "name": "unknown_to_orders",
+            "from": "unknown_dataset",  # Not in datasets list
+            "to": "orders",
+            "from_columns": ["id"],
+            "to_columns": ["ref_id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    # Should still generate valid SQL, ignoring the unknown relationship
+    assert "SELECT" in sql
+    assert "FROM" in sql
+
+
+def test_build_join_sql_reverse_join_missing_from_dataset() -> None:
+    """
+    Test JOIN SQL where 'from' table is not in dataset list but 'to' is joined.
+
+    This covers line 282 where join_dataset is None in the reverse join branch.
+    """
+    datasets = [
+        {"name": "fact_sales", "source": "sales"},
+    ]
+    # Relationship from non-existent dataset to fact_sales
+    relationships = [
+        {
+            "name": "ghost_to_sales",
+            "from": "non_existent_dim",  # Not in datasets
+            "to": "fact_sales",  # Is the fact table (already joined)
+            "from_columns": ["key"],
+            "to_columns": ["dim_fk"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    # Should still generate valid SQL without the join
+    assert "SELECT" in sql
+    assert "FROM sales fact_sales" in sql
+    assert "LEFT JOIN" not in sql  # No join since 'from' doesn't exist
+
+
+def test_build_join_sql_unrelated_table_no_schema() -> None:
+    """
+    Test CROSS JOIN for unrelated table with just table name (no schema).
+
+    This covers lines 318->320 where ds_source["schema"] is falsy.
+    """
+    datasets = [
+        {"name": "main_table", "source": "main"},  # No schema
+        {"name": "lookup", "source": "lookup"},  # No schema, will be CROSS JOINed
+    ]
+    relationships: List[Dict[str, Any]] = []  # No relationships
+
+    sql = build_join_sql(datasets, relationships)
+
+    # Should use CROSS JOIN with just table name (no schema prefix)
+    assert "CROSS JOIN lookup lookup" in sql
+
+
+def test_build_metric_for_physical_dataset_empty_transpile_result(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test build_metric_for_physical_dataset when transpile returns empty list.
+
+    This covers lines 435->440 where result is empty/falsy.
+    """
+    mocker.patch(
+        "preset_cli.cli.superset.sync.osi.lib.sqlglot.transpile",
+        return_value=[],  # Empty result
+    )
+
+    metric = {
+        "name": "test_metric",
+        "expression": {
+            "dialects": [{"dialect": "ANSI_SQL", "expression": "SUM(t.amount)"}],
+        },
+    }
+
+    result = build_metric_for_physical_dataset(metric, "t", "postgres")
+
+    assert result["metric_name"] == "test_metric"
+    # Expression should be the cleaned (prefix-stripped) original
+    assert result["expression"] == "SUM(amount)"

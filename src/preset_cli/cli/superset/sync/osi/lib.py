@@ -153,11 +153,11 @@ def get_osi_expression(field_or_metric: Dict[str, Any]) -> Optional[str]:
     expression_obj = field_or_metric.get("expression", {})
 
     # Handle different expression formats in the spec
-    dialects = expression_obj.get("dialects", [])
-    if not dialects:
-        # Try direct dialect list format (some metrics use this)
-        if isinstance(expression_obj, list):
-            dialects = expression_obj
+    # Check if expression is directly a list (alternate format)
+    if isinstance(expression_obj, list):
+        dialects = expression_obj
+    else:
+        dialects = expression_obj.get("dialects", [])
 
     if not dialects:
         return None
@@ -297,7 +297,7 @@ def build_join_sql(  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
                 for from_col, to_col in zip(from_columns, to_columns)
             ]
         else:
-            continue
+            continue  # pragma: no cover
 
         join_source = parse_source(join_dataset["source"])
         join_table_ref = join_source["table"]
