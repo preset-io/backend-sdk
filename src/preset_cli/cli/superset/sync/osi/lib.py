@@ -851,8 +851,7 @@ def get_or_create_denormalized_dataset(  # pylint: disable=too-many-arguments,to
     if column_metadata:
         create_payload["columns"] = column_metadata
 
-    if create_payload:
-        client.update_dataset(dataset_id, **create_payload)
+    client.update_dataset(dataset_id, **create_payload)
 
     return client.get_dataset(dataset_id)
 

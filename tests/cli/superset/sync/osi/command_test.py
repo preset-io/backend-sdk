@@ -1289,6 +1289,64 @@ def test_get_or_create_denormalized_dataset_existing(mocker: MockerFixture) -> N
     assert result["id"] == 100
 
 
+def test_get_or_create_denormalized_dataset_existing_with_fields(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test updating an existing denormalized dataset with field definitions.
+
+    This covers the path where column_metadata is populated and included in update.
+    """
+    client = mocker.MagicMock()
+    client.get_datasets.return_value = [{"id": 100}]
+    client.get_dataset.return_value = {
+        "id": 100,
+        "table_name": "test_model_denormalized",
+        "metrics": [],
+    }
+
+    osi_model = {
+        "name": "test_model",
+        "datasets": [
+            {
+                "name": "orders",
+                "source": "db.public.orders",
+                "fields": [
+                    {
+                        "name": "order_date",
+                        "expression": {
+                            "dialects": [
+                                {"dialect": "ANSI_SQL", "expression": "order_date"},
+                            ],
+                        },
+                        "dimension": {"is_time": True},
+                    },
+                ],
+            },
+        ],
+        "relationships": [],
+        "metrics": [],
+    }
+    database = {
+        "id": 1,
+        "database_name": "test_db",
+        "sqlalchemy_uri": "postgresql://host/db",
+    }
+
+    result = get_or_create_denormalized_dataset(
+        client,
+        osi_model,
+        database,
+        target_dialect="postgres",
+    )
+
+    # Should update with columns metadata
+    assert client.update_dataset.called
+    call_kwargs = client.update_dataset.call_args[1]
+    assert "columns" in call_kwargs
+    assert result["id"] == 100
+
+
 def test_get_or_create_denormalized_dataset_new(mocker: MockerFixture) -> None:
     """
     Test creating a new denormalized dataset.
@@ -2253,6 +2311,43 @@ def test_build_metric_for_physical_dataset_empty_transpile_result(
     assert result["metric_name"] == "test_metric"
     # Expression should be the cleaned (prefix-stripped) original
     assert result["expression"] == "SUM(amount)"
+
+
+def test_get_column_selections_skips_empty_field_names() -> None:
+    """
+    Test that _get_column_selections skips fields with empty names.
+    """
+    from preset_cli.cli.superset.sync.osi.lib import _get_column_selections
+
+    dataset = {
+        "name": "orders",
+        "fields": [
+            {
+                "name": "order_id",
+                "expression": {
+                    "dialects": [{"dialect": "ANSI_SQL", "expression": "order_id"}],
+                },
+            },
+            {
+                "name": "",  # Empty name - should be skipped
+                "expression": {
+                    "dialects": [{"dialect": "ANSI_SQL", "expression": "amount"}],
+                },
+            },
+            {
+                # Missing name key - should be skipped
+                "expression": {
+                    "dialects": [{"dialect": "ANSI_SQL", "expression": "quantity"}],
+                },
+            },
+        ],
+    }
+
+    selections = _get_column_selections(dataset, is_fact_table=True)
+
+    # Only order_id should be included
+    assert len(selections) == 1
+    assert selections[0] == "orders.order_id"
 
 
 def test_build_columns_from_fields_with_fact_table() -> None:
