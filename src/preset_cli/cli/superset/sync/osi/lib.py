@@ -676,7 +676,7 @@ def compute_metrics(
     return final_metrics
 
 
-def build_columns_from_fields(
+def build_columns_from_fields(  # pylint: disable=too-many-locals
     osi_datasets: List[Dict[str, Any]],
     target_dialect: Optional[str],
     fact_table_name: Optional[str] = None,

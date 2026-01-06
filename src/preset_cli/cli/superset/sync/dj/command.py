@@ -70,9 +70,8 @@ def dj(  # pylint: disable=invalid-name,too-many-arguments
     Sync DJ cubes to Superset.
     """
     # Lazy import to avoid ImportError when datajunction is not installed
-    from datajunction import (
-        DJClient,  # pylint: disable=import-outside-toplevel,no-name-in-module
-    )
+    # pylint: disable=import-outside-toplevel,no-name-in-module
+    from datajunction import DJClient
 
     superset_auth = ctx.obj["AUTH"]
     superset_url = URL(ctx.obj["INSTANCE"])
