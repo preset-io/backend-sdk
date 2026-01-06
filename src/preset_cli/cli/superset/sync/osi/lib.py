@@ -215,23 +215,52 @@ def parse_source(source: str) -> Dict[str, Optional[str]]:
     return {"catalog": None, "schema": None, "table": parts[0]}
 
 
-def build_join_sql(  # noqa: C901  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-    datasets: List[Dict[str, Any]],
-    relationships: List[Dict[str, Any]],
-) -> str:
+def _get_column_selections(
+    dataset: Dict[str, Any],
+    is_fact_table: bool,
+) -> List[str]:
     """
-    Build SQL query that JOINs all related tables.
+    Build column selection expressions for a dataset.
 
-    Identifies the fact table as the one with the most outgoing relationships,
-    then LEFT JOINs all dimension tables.
+    For the fact table, columns are selected without prefix.
+    For dimension tables, columns are prefixed with table name to avoid collisions.
+    """
+    alias = dataset["name"]
+    fields = dataset.get("fields", [])
+
+    if not fields:
+        # No fields defined, fall back to SELECT *
+        return [f"{alias}.*"]
+
+    selections = []
+    for field in fields:
+        field_name = field.get("name", "")
+        if not field_name:
+            continue
+
+        if is_fact_table:
+            # Fact table columns: no prefix needed
+            selections.append(f"{alias}.{field_name}")
+        else:
+            # Dimension table columns: prefix with table name to avoid collisions
+            selections.append(f"{alias}.{field_name} AS {alias}__{field_name}")
+
+    return selections if selections else [f"{alias}.*"]
+
+
+def _identify_fact_table(
+    datasets: List[Dict[str, Any]],
+    relationships: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """
+    Identify the fact table from datasets based on outgoing relationships.
+
+    The fact table is the one with the most outgoing (foreign key) relationships.
     """
     if not datasets:
         raise CLIError("No datasets defined in OSI model", 1)
 
-    # Build dataset lookup
-    dataset_by_name = {dataset["name"]: dataset for dataset in datasets}
-
-    # Find fact table (most outgoing relationships)
+    # Count outgoing relationships for each dataset
     outgoing_counts: Dict[str, int] = {dataset["name"]: 0 for dataset in datasets}
     for rel in relationships or []:
         from_dataset = rel.get("from")
@@ -244,13 +273,34 @@ def build_join_sql(  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
         key=lambda d: outgoing_counts.get(d["name"], 0),
         reverse=True,
     )
-    fact_table = sorted_datasets[0]
+    return sorted_datasets[0]
 
-    # Build SELECT clause with all columns from all tables
+
+def build_join_sql(  # noqa: C901  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    datasets: List[Dict[str, Any]],
+    relationships: List[Dict[str, Any]],
+) -> str:
+    """
+    Build SQL query that JOINs all related tables.
+
+    Identifies the fact table as the one with the most outgoing relationships,
+    then LEFT JOINs all dimension tables.
+
+    Column naming:
+    - Fact table columns use original names (e.g., order_id, amount)
+    - Dimension table columns are prefixed to avoid collisions (e.g., customers__id)
+    """
+    fact_table = _identify_fact_table(datasets, relationships)
+
+    # Build dataset lookup
+    dataset_by_name = {dataset["name"]: dataset for dataset in datasets}
+
+    # Build SELECT clause with columns from all tables
     select_parts = []
     for dataset in datasets:
-        alias = dataset["name"]
-        select_parts.append(f"{alias}.*")
+        is_fact = dataset["name"] == fact_table["name"]
+        selections = _get_column_selections(dataset, is_fact_table=is_fact)
+        select_parts.extend(selections)
 
     # Build FROM clause
     fact_source = parse_source(fact_table["source"])
@@ -466,8 +516,10 @@ def create_physical_datasets(  # pylint: disable=too-many-arguments,too-many-loc
     Also adds metrics that reference only a single dataset to that dataset.
 
     Returns a mapping of dataset name to Superset dataset.
+    Failures are logged and a summary is printed at the end.
     """
     result = {}
+    failures: List[tuple[str, str]] = []  # (name, error message)
     all_dataset_names = [ds["name"] for ds in osi_datasets]
     osi_metrics = osi_metrics or []
 
@@ -518,8 +570,22 @@ def create_physical_datasets(  # pylint: disable=too-many-arguments,too-many-loc
                 click.echo(f"  Created/found physical dataset: {name}")
 
         except Exception as ex:  # pylint: disable=broad-except
-            _logger.error("Failed to create dataset %s: %s", name, ex)
-            click.echo(f"  Failed to create physical dataset: {name} ({ex})")
+            error_msg = str(ex)
+            _logger.error("Failed to create dataset %s: %s", name, error_msg)
+            click.echo(f"  Failed to create physical dataset: {name} ({error_msg})")
+            failures.append((name, error_msg))
+
+    # Print summary if there were failures
+    if failures:
+        click.echo(
+            click.style(
+                f"\nWarning: {len(failures)} of {len(osi_datasets)} physical "
+                f"dataset(s) failed to sync:",
+                fg="yellow",
+            ),
+        )
+        for name, error in failures:
+            click.echo(click.style(f"  - {name}: {error}", fg="yellow"))
 
     return result
 
@@ -613,28 +679,43 @@ def compute_metrics(
 def build_columns_from_fields(
     osi_datasets: List[Dict[str, Any]],
     target_dialect: Optional[str],
+    fact_table_name: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Build column metadata from OSI field definitions.
 
     Returns list of column definitions with descriptions and is_dttm flags.
+
+    Args:
+        osi_datasets: List of OSI dataset definitions
+        target_dialect: Target SQL dialect for expression translation
+        fact_table_name: Name of the fact table. If provided, dimension table
+            columns will be prefixed with {table_name}__ to match the JOIN SQL.
     """
     columns = []
     seen_columns = set()
 
     for dataset in osi_datasets:
         alias = dataset["name"]
+        is_fact_table = fact_table_name is None or alias == fact_table_name
+
         for field in dataset.get("fields", []):
             field_name = field.get("name", "")
             expression = get_osi_expression(field)
 
+            # For denormalized views, dimension table columns are prefixed
+            if is_fact_table:
+                column_name = field_name
+            else:
+                column_name = f"{alias}__{field_name}"
+
             # Skip if we've already processed this column
-            if field_name in seen_columns:
+            if column_name in seen_columns:
                 continue
-            seen_columns.add(field_name)
+            seen_columns.add(column_name)
 
             column: Dict[str, Any] = {
-                "column_name": field_name,
+                "column_name": column_name,
             }
 
             # Check if it's a time dimension
@@ -674,6 +755,8 @@ def get_or_create_denormalized_dataset(  # pylint: disable=too-many-arguments,to
 ) -> Dict[str, Any]:
     """
     Create or update the denormalized virtual dataset with JOINs and metrics.
+
+    Also sets column metadata (is_dttm, descriptions) from OSI field definitions.
     """
     model_name = osi_model.get("name", "osi_model")
     datasets = osi_model.get("datasets", [])
@@ -710,6 +793,15 @@ def get_or_create_denormalized_dataset(  # pylint: disable=too-many-arguments,to
     # Build metrics from OSI
     superset_metrics = build_metrics(metrics, target_dialect, dataset_aliases)
 
+    # Build column metadata from OSI fields (with prefixed names for dimensions)
+    fact_table = _identify_fact_table(datasets, relationships) if datasets else None
+    fact_table_name = fact_table["name"] if fact_table else None
+    column_metadata = build_columns_from_fields(
+        datasets,
+        target_dialect,
+        fact_table_name,
+    )
+
     if existing:
         # Update existing dataset
         dataset_id = existing[0]["id"]
@@ -725,12 +817,14 @@ def get_or_create_denormalized_dataset(  # pylint: disable=too-many-arguments,to
             merge_metadata,
         )
 
-        # Update with new SQL and metrics
-        update_payload = {
+        # Update with new SQL, metrics, and column metadata
+        update_payload: Dict[str, Any] = {
             "sql": join_sql,
             "metrics": final_metrics,
             "description": osi_model.get("description", ""),
         }
+        if column_metadata:
+            update_payload["columns"] = column_metadata
 
         client.update_dataset(dataset_id, **update_payload)
         return client.get_dataset(dataset_id)
@@ -748,13 +842,17 @@ def get_or_create_denormalized_dataset(  # pylint: disable=too-many-arguments,to
     dataset = client.create_dataset(**kwargs)
     dataset_id = dataset["id"]
 
-    # Update with metrics and description
+    # Update with metrics, description, and column metadata
+    create_payload: Dict[str, Any] = {
+        "description": osi_model.get("description", ""),
+    }
     if superset_metrics:
-        update_payload = {
-            "metrics": superset_metrics,
-            "description": osi_model.get("description", ""),
-        }
-        client.update_dataset(dataset_id, **update_payload)
+        create_payload["metrics"] = superset_metrics
+    if column_metadata:
+        create_payload["columns"] = column_metadata
+
+    if create_payload:
+        client.update_dataset(dataset_id, **create_payload)
 
     return client.get_dataset(dataset_id)
 

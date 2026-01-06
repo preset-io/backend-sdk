@@ -1211,6 +1211,8 @@ def test_create_physical_datasets(mocker: MockerFixture) -> None:
 def test_create_physical_datasets_error_handling(mocker: MockerFixture) -> None:
     """
     Test that errors in creating datasets are handled gracefully.
+
+    Errors should be logged, and a summary printed at the end.
     """
     client = mocker.MagicMock()
     client.get_datasets.return_value = []
@@ -1218,13 +1220,28 @@ def test_create_physical_datasets_error_handling(mocker: MockerFixture) -> None:
 
     osi_datasets = [
         {"name": "orders", "source": "db.public.orders"},
+        {"name": "customers", "source": "db.public.customers"},
     ]
     database = {"id": 1, "database_name": "test_db"}
+
+    # Capture click output
+    mock_echo = mocker.patch("preset_cli.cli.superset.sync.osi.lib.click.echo")
+    mocker.patch(
+        "preset_cli.cli.superset.sync.osi.lib.click.style",
+        side_effect=lambda text, **kwargs: text,
+    )
 
     result = create_physical_datasets(client, osi_datasets, database)
 
     # Should return empty dict but not raise
     assert result == {}
+
+    # Should print failure summary
+    summary_calls = [
+        call for call in mock_echo.call_args_list if "failed to sync" in str(call)
+    ]
+    assert len(summary_calls) == 1
+    assert "2 of 2" in str(summary_calls[0])
 
 
 def test_get_or_create_denormalized_dataset_existing(mocker: MockerFixture) -> None:
@@ -2236,3 +2253,137 @@ def test_build_metric_for_physical_dataset_empty_transpile_result(
     assert result["metric_name"] == "test_metric"
     # Expression should be the cleaned (prefix-stripped) original
     assert result["expression"] == "SUM(amount)"
+
+
+def test_build_columns_from_fields_with_fact_table() -> None:
+    """
+    Test that build_columns_from_fields prefixes dimension table columns.
+
+    When fact_table_name is provided, dimension table columns are prefixed
+    with {table_name}__ to match the JOIN SQL column naming.
+    """
+    osi_datasets = [
+        {
+            "name": "orders",
+            "fields": [
+                {
+                    "name": "id",
+                    "expression": {
+                        "dialects": [{"dialect": "ANSI_SQL", "expression": "id"}],
+                    },
+                },
+                {
+                    "name": "order_date",
+                    "expression": {
+                        "dialects": [
+                            {"dialect": "ANSI_SQL", "expression": "order_date"},
+                        ],
+                    },
+                    "dimension": {"is_time": True},
+                    "description": "Order date",
+                },
+            ],
+        },
+        {
+            "name": "customers",
+            "fields": [
+                {
+                    "name": "id",
+                    "expression": {
+                        "dialects": [{"dialect": "ANSI_SQL", "expression": "id"}],
+                    },
+                },
+            ],
+        },
+    ]
+
+    columns = build_columns_from_fields(
+        osi_datasets,
+        "postgres",
+        fact_table_name="orders",
+    )
+
+    # Fact table columns should be unprefixed
+    fact_cols = [c for c in columns if not c["column_name"].startswith("customers__")]
+    assert any(c["column_name"] == "id" for c in fact_cols)
+    assert any(c["column_name"] == "order_date" for c in fact_cols)
+
+    # Dimension table columns should be prefixed
+    dim_cols = [c for c in columns if c["column_name"].startswith("customers__")]
+    assert any(c["column_name"] == "customers__id" for c in dim_cols)
+
+    # Time dimension should have is_dttm flag
+    order_date_col = next(c for c in columns if c["column_name"] == "order_date")
+    assert order_date_col["is_dttm"] is True
+
+
+def test_build_join_sql_with_fields_avoids_column_collisions() -> None:
+    """
+    Test that JOIN SQL prefixes dimension table columns to avoid collisions.
+
+    When fields are defined, fact table columns are unprefixed but dimension
+    table columns are prefixed with {table}__{column} to avoid name collisions.
+    """
+    datasets = [
+        {
+            "name": "orders",
+            "source": "public.orders",
+            "fields": [
+                {
+                    "name": "id",
+                    "expression": {
+                        "dialects": [{"dialect": "ANSI_SQL", "expression": "id"}],
+                    },
+                },
+                {
+                    "name": "customer_id",
+                    "expression": {
+                        "dialects": [
+                            {"dialect": "ANSI_SQL", "expression": "customer_id"},
+                        ],
+                    },
+                },
+            ],
+        },
+        {
+            "name": "customers",
+            "source": "public.customers",
+            "fields": [
+                {
+                    "name": "id",  # Same name as orders.id - would collide!
+                    "expression": {
+                        "dialects": [{"dialect": "ANSI_SQL", "expression": "id"}],
+                    },
+                },
+                {
+                    "name": "name",
+                    "expression": {
+                        "dialects": [{"dialect": "ANSI_SQL", "expression": "name"}],
+                    },
+                },
+            ],
+        },
+    ]
+    relationships = [
+        {
+            "name": "orders_to_customers",
+            "from": "orders",
+            "to": "customers",
+            "from_columns": ["customer_id"],
+            "to_columns": ["id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    # Fact table (orders) columns should be unprefixed
+    assert "orders.id" in sql
+    assert "orders.customer_id" in sql
+
+    # Dimension table (customers) columns should be prefixed to avoid collision
+    assert "customers.id AS customers__id" in sql
+    assert "customers.name AS customers__name" in sql
+
+    # Should NOT have table.* when fields are defined
+    assert "orders.*" not in sql
+    assert "customers.*" not in sql

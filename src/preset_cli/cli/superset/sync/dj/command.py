@@ -8,7 +8,6 @@ import logging
 from uuid import UUID
 
 import click
-from datajunction import DJClient  # pylint: disable=no-name-in-module
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
@@ -70,6 +69,11 @@ def dj(  # pylint: disable=invalid-name,too-many-arguments
     """
     Sync DJ cubes to Superset.
     """
+    # Lazy import to avoid ImportError when datajunction is not installed
+    from datajunction import (
+        DJClient,  # pylint: disable=import-outside-toplevel,no-name-in-module
+    )
+
     superset_auth = ctx.obj["AUTH"]
     superset_url = URL(ctx.obj["INSTANCE"])
     superset_client = SupersetClient(superset_url, superset_auth)
