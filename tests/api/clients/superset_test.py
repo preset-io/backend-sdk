@@ -1,6 +1,7 @@
 """
 Tests for ``preset_cli.api.clients.superset``.
 """
+
 # pylint: disable=too-many-lines, trailing-whitespace, line-too-long, use-implicit-booleaness-not-comparison
 
 import json
@@ -16,7 +17,6 @@ from pytest_mock import MockerFixture
 from requests_mock.mocker import Mocker
 from yarl import URL
 
-from preset_cli import __version__
 from preset_cli.api.clients.superset import (
     RoleType,
     RuleType,

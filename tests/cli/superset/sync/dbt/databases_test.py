@@ -1,6 +1,7 @@
 """
 Tests for ``preset_cli.cli.superset.sync.dbt.databases``.
 """
+
 # pylint: disable=invalid-name
 
 from pathlib import Path
