@@ -1,6 +1,7 @@
 """
 Tests for ``preset_cli.cli.superset.lib``.
 """
+
 # pylint: disable=unused-argument, invalid-name
 
 from pathlib import Path

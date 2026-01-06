@@ -1,6 +1,7 @@
 """
 Main entry point for Superset commands.
 """
+
 from typing import Any, Optional
 
 import click
@@ -96,7 +97,10 @@ def mutate_commands(source: click.core.Group, target: click.core.Group) -> None:
             @click.group()
             @click.pass_context
             def new_group(
-                ctx: click.core.Context, *args: Any, command=command, **kwargs: Any
+                ctx: click.core.Context,
+                *args: Any,
+                command=command,
+                **kwargs: Any,
             ) -> None:
                 ctx.invoke(command, *args, **kwargs)
 
@@ -109,7 +113,10 @@ def mutate_commands(source: click.core.Group, target: click.core.Group) -> None:
             @click.command()
             @click.pass_context
             def new_command(
-                ctx: click.core.Context, *args: Any, command=command, **kwargs: Any
+                ctx: click.core.Context,
+                *args: Any,
+                command=command,
+                **kwargs: Any,
             ) -> None:
                 for instance in ctx.obj["WORKSPACES"]:
                     click.echo(f"\n{instance}")

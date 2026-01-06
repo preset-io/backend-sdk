@@ -8,7 +8,7 @@ import logging
 from uuid import UUID
 
 import click
-from datajunction import DJClient
+from datajunction import DJClient  # pylint: disable=no-name-in-module
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient

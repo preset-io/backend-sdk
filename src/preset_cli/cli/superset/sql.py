@@ -1,6 +1,7 @@
 """
 Run SQL queries on Superset.
 """
+
 import os.path
 import traceback
 from operator import itemgetter

@@ -1,6 +1,7 @@
 """
 Tests for ``preset_cli.cli.superset.sync.dbt.exposures``.
 """
+
 # pylint: disable=invalid-name
 
 import copy

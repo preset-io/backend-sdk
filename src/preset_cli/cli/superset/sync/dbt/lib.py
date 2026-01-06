@@ -490,7 +490,7 @@ def apply_select(
                 *[
                     {model["unique_id"] for model in filter_models(models, condition)}
                     for condition in selection.split(",")
-                ]
+                ],
             )
             selected.update({id_: model_ids[id_] for id_ in ids})
 
@@ -499,7 +499,7 @@ def apply_select(
             *[
                 {model["unique_id"] for model in filter_models(models, condition)}
                 for condition in selection.split(",")
-            ]
+            ],
         ):
             if id_ in selected:
                 del selected[id_]

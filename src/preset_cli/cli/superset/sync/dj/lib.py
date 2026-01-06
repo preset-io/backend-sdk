@@ -6,7 +6,7 @@ import json
 from typing import Any, Optional
 from uuid import UUID
 
-from datajunction import DJClient
+from datajunction import DJClient  # pylint: disable=no-name-in-module
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient

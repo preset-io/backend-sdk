@@ -523,7 +523,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         return endpoint_info
 
     def validate_key_in_resource_schema(
-        self, resource_name: str, key_name: str, **kwargs: Any
+        self,
+        resource_name: str,
+        key_name: str,
+        **kwargs: Any,
     ) -> Any:
         """
         Validate if a key is present in a resource schema.
@@ -1029,15 +1032,15 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 permission = PERMISSION_MAP[permission]
             elif match_ := DATABASE_PERMISSION.match(permission):
                 permission = "Database access on {database_name}".format(
-                    **match_.groupdict()
+                    **match_.groupdict(),
                 )
             elif match_ := SCHEMA_PERMISSION.match(permission):
                 permission = "Schema access on {database_name}.{schema_name}".format(
-                    **match_.groupdict()
+                    **match_.groupdict(),
                 )
             elif match_ := DATASET_PERMISSION.match(permission):
                 permission = "Dataset access on {database_name}.{dataset_name}".format(
-                    **match_.groupdict()
+                    **match_.groupdict(),
                 )
 
             if permission in permission_id_map:

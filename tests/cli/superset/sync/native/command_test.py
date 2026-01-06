@@ -642,9 +642,9 @@ def test_native_external_url(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     assert result.exit_code == 0
     database_config["external_url"] = "https://repo.example.com/databases/gsheets.yaml"
-    dataset_config[
-        "external_url"
-    ] = "https://repo.example.com/datasets/gsheets/test.yaml"
+    dataset_config["external_url"] = (
+        "https://repo.example.com/datasets/gsheets/test.yaml"
+    )
     contents = {
         "bundle/databases/gsheets.yaml": yaml.dump(database_config),
         "bundle/datasets/gsheets/test.yaml": yaml.dump(dataset_config),
