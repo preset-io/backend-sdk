@@ -14,7 +14,7 @@ from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.api.operators import OneToMany
 
 if TYPE_CHECKING:
-    from datajunction import DJClient  # pylint: disable=no-name-in-module
+    from datajunction import DJClient  # pragma: no cover
 
 
 def sync_cube(  # pylint: disable=too-many-arguments
