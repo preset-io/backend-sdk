@@ -8,7 +8,7 @@ aiosignal==1.4.0
 alive-progress==3.3.0
 anyio==4.12.1
 appdirs==1.4.4
-astroid==2.13.5
+astroid==4.0.3
 async-timeout==5.0.1
 attrs==25.4.0
 backoff==2.2.1
@@ -41,7 +41,6 @@ importlib-metadata==8.7.1
 iniconfig==2.3.0
 isort==5.13.2
 jinja2==3.1.6
-lazy-object-proxy==1.12.0
 markdown-it-py==4.0.0
 markupsafe==3.0.3
 marshmallow==4.2.0
@@ -62,7 +61,7 @@ prompt-toolkit==3.0.52
 propcache==0.4.1
 pyfakefs==6.0.0
 pygments==2.19.2
-pylint==2.15.5
+pylint==4.0.4
 pyproject-hooks==1.2.0
 pytest==9.0.2
 pytest-cov==7.0.0
@@ -90,6 +89,5 @@ virtualenv==20.35.4
 wcwidth==0.2.14
 websockets==15.0.1
 wheel==0.45.1
-wrapt==1.17.3
 yarl==1.22.0
 zipp==3.23.0

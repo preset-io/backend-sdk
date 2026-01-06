@@ -81,6 +81,6 @@ repos:
   hooks:
   - id: pylint
     name: pylint
-    entry: pylint --disable=use-implicit-booleaness-not-comparison,fixme,duplicate-code,unsubscriptable-object
+    entry: pylint --disable=use-implicit-booleaness-not-comparison,fixme,duplicate-code,unsubscriptable-object,broad-exception-raised,too-many-positional-arguments,use-dict-literal,possibly-used-before-assignment,use-yield-from,consider-using-join
     language: system
     types: [python]
