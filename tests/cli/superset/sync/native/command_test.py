@@ -209,9 +209,9 @@ def test_import_resources_overwrite_needed(mocker: MockerFixture) -> None:
     contents = {"bundle/databases/gsheets.yaml": "GSheets"}
     import_resources(contents, client, False, ResourceType.ASSET)
 
-    assert click.style.called_with(
+    click.style.assert_called_with(
         "The following file(s) already exist. Pass ``--overwrite`` to replace them.\n"
-        "databases/gsheets.yaml",
+        "- databases/gsheets.yaml",
         fg="bright_red",
     )
 
