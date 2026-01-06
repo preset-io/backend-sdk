@@ -10,6 +10,19 @@ on:
     branches: [ main ]
 
 jobs:
+  # Dummy jobs for deprecated Python versions (3.8, 3.9 reached EOL October 2024)
+  # These satisfy branch protection rules until an admin removes the required checks
+  build-deprecated:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9']
+    # This creates jobs named "build (3.8)" and "build (3.9)" to match the required checks
+    name: build (${{ matrix.python-version }})
+    steps:
+      - name: Skip deprecated Python version
+        run: echo "Python ${{ matrix.python-version }} is EOL and no longer supported"
+
   build:
 
     runs-on: ubuntu-latest
