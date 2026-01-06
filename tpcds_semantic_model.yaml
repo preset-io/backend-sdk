@@ -571,3 +571,4 @@ semantic_model:
 
       - vendor_name: DBT
         data: '{"project_name": "tpcds_analytics", "models_path": "models/semantic"}'
+
