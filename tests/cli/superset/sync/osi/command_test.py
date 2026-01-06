@@ -16,6 +16,7 @@ from pytest_mock import MockerFixture
 from preset_cli.api.clients.superset import SupersetMetricDefinition
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.osi.lib import (
+    _get_column_selections,
     build_columns_from_fields,
     build_join_sql,
     build_metric_for_physical_dataset,
@@ -2317,8 +2318,6 @@ def test_get_column_selections_skips_empty_field_names() -> None:
     """
     Test that _get_column_selections skips fields with empty names.
     """
-    from preset_cli.cli.superset.sync.osi.lib import _get_column_selections
-
     dataset = {
         "name": "orders",
         "fields": [
