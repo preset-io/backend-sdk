@@ -23,7 +23,9 @@ def test_dj_command(mocker: MockerFixture) -> None:
     UsernamePasswordAuth = mocker.patch(
         "preset_cli.cli.superset.main.UsernamePasswordAuth",
     )
-    DJClient = mocker.patch("preset_cli.cli.superset.sync.dj.command.DJClient")
+    # DJClient is lazy-imported inside the function, so patch the source module
+    # Use create=True since the module may not export DJClient in some environments
+    DJClient = mocker.patch("datajunction.DJClient", create=True)
     sync_cube = mocker.patch("preset_cli.cli.superset.sync.dj.command.sync_cube")
 
     runner = CliRunner()

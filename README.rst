@@ -125,6 +125,7 @@ The following commands are currently available:
 - ``preset-cli superset sync native`` (alternatively, ``preset-cli superset import-assets``): synchronize the workspace from a directory of templated configuration files.
 - ``preset-cli superset sync dbt-core``: synchronize the workspace from a dbt Core project.
 - ``preset-cli superset sync dbt-cloud``: synchronize the workspace from a dbt Cloud project.
+- ``preset-cli superset sync osi``: synchronize the workspace from an OSI (Open Semantic Interchange) spec file.
 
 All the ``superset`` sub-commands can also be executed against a standalone Superset instance, using the ``superset-cli`` command. This means that if you are running an instance of Superset at https://superset.example.org/ you can export its resources with the command:
 
@@ -465,6 +466,86 @@ Finally, the CLI also supports the ``--exclude`` flag in a similar way:
     % preset-cli --select my_model+ --exclude tag:test
 
 The command above synchronizes "my_model" and its children, as long as the models don't have the "test" tag.
+
+Synchronizing from OSI
+----------------------
+
+The CLI also supports importing `Open Semantic Interchange (OSI) <https://github.com/open-semantic-interchange/osi-spec>`_ v1 spec files into Superset. OSI is an open specification for defining semantic models that can be used across different BI tools.
+
+To import an OSI spec file:
+
+.. code-block:: bash
+
+    % preset-cli --workspaces=https://abcdef12.us1a.app.preset.io/ \
+    > superset sync osi /path/to/semantic_model.yaml --database-id=5
+
+Running this command will:
+
+1. Parse the OSI YAML file and extract datasets, relationships, and metrics.
+2. Create physical datasets in Superset for each dataset defined in the spec.
+3. Create a denormalized virtual dataset with JOINs for all relationships.
+4. Translate metric expressions from ANSI SQL to the target database dialect using sqlglot.
+5. Add metrics to both physical datasets (for single-dataset metrics) and the virtual dataset.
+
+If you don't specify the ``--database-id`` option, you will be prompted to select a database from the available connections in your workspace.
+
+The OSI sync command also supports metadata preservation options similar to the dbt sync:
+
+.. code-block:: bash
+
+    # Preserve existing Superset metrics, only add new OSI metrics
+    % preset-cli superset sync osi /path/to/model.yaml --preserve-metadata
+
+    # Update existing metrics from OSI while preserving Superset-only metrics
+    % preset-cli superset sync osi /path/to/model.yaml --merge-metadata
+
+Example OSI spec file:
+
+.. code-block:: yaml
+
+    semantic_model:
+      - name: sales_model
+        description: Sales data model for analytics
+        datasets:
+          - name: orders
+            source: mydb.public.orders
+            fields:
+              - name: order_id
+                expression:
+                  dialects:
+                    - dialect: ANSI_SQL
+                      expression: order_id
+              - name: amount
+                expression:
+                  dialects:
+                    - dialect: ANSI_SQL
+                      expression: amount
+          - name: customers
+            source: mydb.public.customers
+            fields:
+              - name: customer_id
+                expression:
+                  dialects:
+                    - dialect: ANSI_SQL
+                      expression: customer_id
+              - name: name
+                expression:
+                  dialects:
+                    - dialect: ANSI_SQL
+                      expression: name
+        relationships:
+          - name: orders_to_customers
+            from: orders
+            to: customers
+            from_columns: [customer_id]
+            to_columns: [customer_id]
+        metrics:
+          - name: total_revenue
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: SUM(orders.amount)
+            description: Total revenue from all orders
 
 Exporting resources
 -------------------
