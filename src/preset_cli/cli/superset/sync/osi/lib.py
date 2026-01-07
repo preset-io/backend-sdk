@@ -313,52 +313,70 @@ def build_join_sql(  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
 
     from_clause = f"{fact_table_ref} {fact_alias}"
 
-    # Build JOIN clauses
+    # Build JOIN clauses, iterating until no more relationships can be attached.
     join_clauses = []
     joined_tables = {fact_table["name"]}
+    pending_relationships = list(relationships or [])
 
-    for rel in relationships or []:
-        from_ds_name = rel.get("from")
-        to_ds_name = rel.get("to")
-        from_columns = rel.get("from_columns", [])
-        to_columns = rel.get("to_columns", [])
+    while pending_relationships:
+        progress = False
+        remaining_relationships = []
 
-        # Determine which table to join
-        if to_ds_name in joined_tables and from_ds_name not in joined_tables:
-            # Join the 'from' table
-            join_ds_name = from_ds_name
-            join_dataset = dataset_by_name.get(join_ds_name)
-            if not join_dataset:
+        for rel in pending_relationships:
+            from_ds_name = rel.get("from")
+            to_ds_name = rel.get("to")
+            from_columns = rel.get("from_columns", [])
+            to_columns = rel.get("to_columns", [])
+
+            # Determine which table to join
+            if to_ds_name in joined_tables and from_ds_name not in joined_tables:
+                # Join the 'from' table
+                join_ds_name = from_ds_name
+                join_dataset = dataset_by_name.get(join_ds_name)
+                if not join_dataset:
+                    continue
+
+                on_conditions = [
+                    f"{join_ds_name}.{from_col} = {to_ds_name}.{to_col}"
+                    for from_col, to_col in zip(from_columns, to_columns)
+                ]
+            elif from_ds_name in joined_tables and to_ds_name not in joined_tables:
+                # Join the 'to' table
+                join_ds_name = to_ds_name
+                join_dataset = dataset_by_name.get(join_ds_name)
+                if not join_dataset:
+                    continue
+
+                on_conditions = [
+                    f"{from_ds_name}.{from_col} = {join_ds_name}.{to_col}"
+                    for from_col, to_col in zip(from_columns, to_columns)
+                ]
+            else:
+                if (
+                    from_ds_name not in joined_tables
+                    and to_ds_name not in joined_tables
+                ):
+                    remaining_relationships.append(rel)
                 continue
 
-            on_conditions = [
-                f"{join_ds_name}.{from_col} = {to_ds_name}.{to_col}"
-                for from_col, to_col in zip(from_columns, to_columns)
-            ]
-        elif from_ds_name in joined_tables and to_ds_name not in joined_tables:
-            # Join the 'to' table
-            join_ds_name = to_ds_name
-            join_dataset = dataset_by_name.get(join_ds_name)
-            if not join_dataset:
-                continue
+            join_source = parse_source(join_dataset["source"])
+            join_table_ref = join_source["table"]
+            if join_source["schema"]:
+                join_table_ref = f'{join_source["schema"]}.{join_table_ref}'
+            if join_source["catalog"]:
+                join_table_ref = f'{join_source["catalog"]}.{join_table_ref}'
 
-            on_conditions = [
-                f"{from_ds_name}.{from_col} = {join_ds_name}.{to_col}"
-                for from_col, to_col in zip(from_columns, to_columns)
-            ]
-        else:
-            continue  # pragma: no cover
+            on_clause = " AND ".join(on_conditions)
+            join_clauses.append(
+                f"LEFT JOIN {join_table_ref} {join_ds_name} ON {on_clause}",
+            )
+            joined_tables.add(join_ds_name)
+            progress = True
 
-        join_source = parse_source(join_dataset["source"])
-        join_table_ref = join_source["table"]
-        if join_source["schema"]:
-            join_table_ref = f'{join_source["schema"]}.{join_table_ref}'
-        if join_source["catalog"]:
-            join_table_ref = f'{join_source["catalog"]}.{join_table_ref}'
+        if not progress:
+            break
 
-        on_clause = " AND ".join(on_conditions)
-        join_clauses.append(f"LEFT JOIN {join_table_ref} {join_ds_name} ON {on_clause}")
-        joined_tables.add(join_ds_name)
+        pending_relationships = remaining_relationships
 
     # Handle tables not yet joined (no relationships)
     for dataset in datasets:
@@ -595,13 +613,15 @@ def build_metrics(
     target_dialect: Optional[str],
     dataset_aliases: Dict[str, str],
     strip_prefixes: bool = True,
+    fact_table_name: Optional[str] = None,
 ) -> List[SupersetMetricDefinition]:
     """
     Convert OSI metrics to Superset metric format with dialect translation.
 
     When strip_prefixes is True (default for denormalized datasets), dataset
-    prefixes like "store_sales." are removed from expressions since the virtual
-    dataset subquery doesn't have table aliases.
+    prefixes are removed or rewritten to match the denormalized column names.
+    Fact table prefixes are stripped (order_id), while dimension prefixes are
+    rewritten to dataset__column (customers__id).
     """
     superset_metrics: List[SupersetMetricDefinition] = []
 
@@ -618,8 +638,11 @@ def build_metrics(
         # Strip dataset prefixes for denormalized virtual datasets
         # e.g., "SUM(store_sales.ss_ext_sales_price)" -> "SUM(ss_ext_sales_price)"
         if strip_prefixes:
-            for alias in dataset_aliases:
-                translated = re.sub(rf"\b{re.escape(alias)}\.", "", translated)
+            translated = rewrite_metric_expression(
+                translated,
+                dataset_aliases,
+                fact_table_name,
+            )
 
         superset_metric: SupersetMetricDefinition = {
             "metric_name": name,
@@ -635,6 +658,29 @@ def build_metrics(
         superset_metrics.append(superset_metric)
 
     return superset_metrics
+
+
+def rewrite_metric_expression(
+    expression: str,
+    dataset_aliases: Dict[str, str],
+    fact_table_name: Optional[str],
+) -> str:
+    """
+    Rewrite dataset prefixes to match denormalized column aliases.
+    """
+    for dataset_name, alias in dataset_aliases.items():
+        is_fact = (
+            fact_table_name is None
+            or dataset_name == fact_table_name
+            or alias == fact_table_name
+        )
+        replacement = "" if is_fact else f"{alias}__"
+        expression = re.sub(
+            rf"\b{re.escape(alias)}\.",
+            replacement,
+            expression,
+        )
+    return expression
 
 
 def compute_metrics(
@@ -790,12 +836,17 @@ def get_or_create_denormalized_dataset(  # pylint: disable=too-many-arguments,to
     # Build dataset aliases for metric translation
     dataset_aliases = {ds["name"]: ds["name"] for ds in datasets}
 
-    # Build metrics from OSI
-    superset_metrics = build_metrics(metrics, target_dialect, dataset_aliases)
-
     # Build column metadata from OSI fields (with prefixed names for dimensions)
     fact_table = _identify_fact_table(datasets, relationships) if datasets else None
     fact_table_name = fact_table["name"] if fact_table else None
+
+    # Build metrics from OSI
+    superset_metrics = build_metrics(
+        metrics,
+        target_dialect,
+        dataset_aliases,
+        fact_table_name=fact_table_name,
+    )
     column_metadata = build_columns_from_fields(
         datasets,
         target_dialect,

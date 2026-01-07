@@ -396,7 +396,12 @@ def test_build_metrics() -> None:
     aliases = {"orders": "orders", "customers": "customers"}
 
     # Default: strip_prefixes=True for denormalized virtual datasets
-    metrics = build_metrics(osi_metrics, "postgres", aliases)
+    metrics = build_metrics(
+        osi_metrics,
+        "postgres",
+        aliases,
+        fact_table_name="orders",
+    )
 
     assert len(metrics) == 2
     assert metrics[0]["metric_name"] == "total_revenue"
@@ -405,8 +410,8 @@ def test_build_metrics() -> None:
     # Prefix should be stripped: "SUM(orders.amount)" -> "SUM(amount)"
     assert metrics[0]["expression"] == "SUM(amount)"
     assert metrics[1]["metric_name"] == "customer_count"
-    # Prefix should be stripped: "COUNT(DISTINCT customers.id)" -> "COUNT(DISTINCT id)"
-    assert metrics[1]["expression"] == "COUNT(DISTINCT id)"
+    # Dimension prefix should be rewritten: "customers.id" -> "customers__id"
+    assert metrics[1]["expression"] == "COUNT(DISTINCT customers__id)"
 
     # With strip_prefixes=False, prefixes are preserved
     metrics_with_prefix = build_metrics(
@@ -414,9 +419,66 @@ def test_build_metrics() -> None:
         "postgres",
         aliases,
         strip_prefixes=False,
+        fact_table_name="orders",
     )
     assert "orders.amount" in metrics_with_prefix[0]["expression"]
     assert "customers.id" in metrics_with_prefix[1]["expression"]
+
+
+def test_build_metrics_with_dimension_aliases() -> None:
+    """
+    Metrics should target prefixed dimension columns in denormalized datasets.
+    """
+    datasets = [
+        {
+            "name": "orders",
+            "source": "db.public.orders",
+            "fields": [
+                {"name": "order_id"},
+                {"name": "customer_id"},
+            ],
+        },
+        {
+            "name": "customers",
+            "source": "db.public.customers",
+            "fields": [
+                {"name": "id"},
+            ],
+        },
+    ]
+    relationships = [
+        {
+            "name": "orders_to_customers",
+            "from": "orders",
+            "to": "customers",
+            "from_columns": ["customer_id"],
+            "to_columns": ["id"],
+        },
+    ]
+    join_sql = build_join_sql(datasets, relationships)
+    assert "customers.id AS customers__id" in join_sql
+
+    osi_metrics = [
+        {
+            "name": "customer_count",
+            "expression": {
+                "dialects": [
+                    {
+                        "dialect": "ANSI_SQL",
+                        "expression": "COUNT(DISTINCT customers.id)",
+                    },
+                ],
+            },
+        },
+    ]
+    metrics = build_metrics(
+        osi_metrics,
+        "postgres",
+        {"orders": "orders", "customers": "customers"},
+        fact_table_name="orders",
+    )
+
+    assert metrics[0]["expression"] == "COUNT(DISTINCT customers__id)"
 
 
 def test_get_referenced_datasets() -> None:
@@ -987,6 +1049,38 @@ def test_build_join_sql_reverse_relationship() -> None:
     # Should still generate valid SQL
     assert "SELECT" in sql
     assert "FROM" in sql
+
+
+def test_build_join_sql_relationship_order_independent() -> None:
+    """
+    Test JOIN SQL when relationships are not in joinable order.
+    """
+    datasets = [
+        {"name": "orders", "source": "db.public.orders"},
+        {"name": "customers", "source": "db.public.customers"},
+        {"name": "regions", "source": "db.public.regions"},
+    ]
+    relationships = [
+        {
+            "name": "customers_to_regions",
+            "from": "customers",
+            "to": "regions",
+            "from_columns": ["region_id"],
+            "to_columns": ["id"],
+        },
+        {
+            "name": "orders_to_customers",
+            "from": "orders",
+            "to": "customers",
+            "from_columns": ["customer_id"],
+            "to_columns": ["id"],
+        },
+    ]
+
+    sql = build_join_sql(datasets, relationships)
+
+    assert sql.count("LEFT JOIN") == 2
+    assert "CROSS JOIN" not in sql
 
 
 def test_build_join_sql_unrelated_tables() -> None:
