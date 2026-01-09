@@ -1608,6 +1608,124 @@ def test_update_dashboard(mocker: MockerFixture) -> None:
     update_resource.assert_called_with("dashboard", 1, dashboard_name="my_other_db")
 
 
+def test_delete_resource(requests_mock: Mocker) -> None:
+    """
+    Test the generic ``delete_resource`` method.
+    """
+    requests_mock.delete(
+        "https://superset.example.org/api/v1/database/1",
+        json={},
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+
+    client.delete_resource(resource_name="database", resource_id=1)
+    assert (
+        requests_mock.last_request.headers["Referer"] == "https://superset.example.org/"
+    )
+
+
+def test_update_chart(mocker: MockerFixture) -> None:
+    """
+    Test the ``update_chart`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    update_resource = mocker.patch.object(client, "update_resource")
+
+    client.update_chart(1, slice_name="my_chart")
+    update_resource.assert_called_with("chart", 1, slice_name="my_chart")
+
+
+def test_delete_chart(mocker: MockerFixture) -> None:
+    """
+    Test the ``delete_chart`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    delete_resource = mocker.patch.object(client, "delete_resource")
+
+    client.delete_chart(1)
+    delete_resource.assert_called_with("chart", 1)
+
+
+def test_delete_dashboard(mocker: MockerFixture) -> None:
+    """
+    Test the ``delete_dashboard`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    delete_resource = mocker.patch.object(client, "delete_resource")
+
+    client.delete_dashboard(1)
+    delete_resource.assert_called_with("dashboard", 1)
+
+
+def test_get_users(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_users`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    get_resources = mocker.patch.object(client, "get_resources")
+
+    client.get_users()
+    get_resources.assert_called_with("security/users", "id")
+    client.get_users(username="john")
+    get_resources.assert_called_with("security/users", "id", username="john")
+
+
+def test_get_report(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_report`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    get_resource = mocker.patch.object(client, "get_resource")
+
+    client.get_report(1)
+    get_resource.assert_called_with("report", 1)
+
+
+def test_get_reports(mocker: MockerFixture) -> None:
+    """
+    Test the ``get_reports`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    get_resources = mocker.patch.object(client, "get_resources")
+
+    client.get_reports()
+    get_resources.assert_called_with("report")
+    client.get_reports(name="my_report")
+    get_resources.assert_called_with("report", name="my_report")
+
+
+def test_create_report(mocker: MockerFixture) -> None:
+    """
+    Test the ``create_report`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    create_resource = mocker.patch.object(client, "create_resource")
+
+    client.create_report(name="my_report", type="Report")
+    create_resource.assert_called_with("report", name="my_report", type="Report")
+
+
+def test_update_report(mocker: MockerFixture) -> None:
+    """
+    Test the ``update_report`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    update_resource = mocker.patch.object(client, "update_resource")
+
+    client.update_report(1, name="updated_report")
+    update_resource.assert_called_with("report", 1, name="updated_report")
+
+
 def test_export_zip(requests_mock: Mocker) -> None:
     """
     Test the ``export_zip`` method.
