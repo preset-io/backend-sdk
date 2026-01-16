@@ -294,7 +294,7 @@ def test_export_resource_with_ids(
     )
 
     client.get_resources.assert_not_called()
-    client.export_zip.assert_called_once_with("database", [1, 2, 3])
+    client.export_zip.assert_called_once_with("database", {1, 2, 3})
 
 
 def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
