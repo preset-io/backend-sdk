@@ -28,3 +28,5 @@ dev-requirements.txt: dev-requirements.in setup.cfg
 
 check:
 	pre-commit run --all-files
+
+pr: check test
