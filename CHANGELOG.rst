@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.3.10 - 2026-01-16
+==========================
+
+- Performance for the ``export-assets`` command when passing asset IDs is now improved (`#368 <https://github.com/preset-io/backend-sdk/pull/368>`_).
+- The ``export-ownership`` command now supports filtering by asset IDs (`#369 <https://github.com/preset-io/backend-sdk/pull/369>`_).
+
 Version 0.3.9 - 2025-11-06
 ==========================
 
