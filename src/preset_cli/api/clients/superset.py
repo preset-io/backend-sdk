@@ -33,6 +33,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     TypedDict,
     Union,
@@ -49,7 +50,7 @@ from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.api.clients.preset import PresetClient
-from preset_cli.api.operators import Equal, Operator
+from preset_cli.api.operators import Equal, In, Operator
 from preset_cli.auth.main import Auth
 from preset_cli.lib import remove_root, validate_response
 from preset_cli.typing import UserType
@@ -792,17 +793,28 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return buf
 
-    def get_uuids(self, resource_name: str) -> Dict[int, UUID]:
+    def get_uuids(
+        self,
+        resource_name: str,
+        ids: Set[int] | None = None,
+    ) -> Dict[int, UUID]:
         """
-        Get UUID of a list of resources.
+        Get UUID of a list of resources, possibly filtering by IDs.
 
-        Still method is very inneficient, but it's the only way to get the mapping
+        This method is very inneficient, but it's the only way to get the mapping
         between IDs and UUIDs in older versions of Superset.
+
+        #TODO: Rely on UUIDs from API responses
         """
         url = self.baseurl / "api/v1" / resource_name / "export/"
 
         uuids: Dict[int, UUID] = {}
-        for resource in self.get_resources(resource_name):
+        resources = (
+            self.get_resources(resource_name, id=In(list(ids)))
+            if ids
+            else self.get_resources(resource_name)
+        )
+        for resource in resources:
             id_ = resource["id"]
             params = {"q": prison.dumps([id_])}
             _logger.debug("GET %s", url % params)
@@ -1233,20 +1245,26 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
     def export_ownership(
         self,
         resource_name: str,
+        requested_ids: Set[int],
         users: Dict[int, str],
         exclude_old_users: bool,
     ) -> Iterator[OwnershipType]:
         """
         Return information about resource ownership.
         """
-        uuids = self.get_uuids(resource_name)
+        uuids = self.get_uuids(resource_name, requested_ids)
         name_key = {
             "dataset": "table_name",
             "chart": "slice_name",
             "dashboard": "dashboard_title",
         }[resource_name]
 
-        for resource in self.get_resources(resource_name):
+        resources = (
+            self.get_resources(resource_name, id=In(list(requested_ids)))
+            if requested_ids
+            else self.get_resources(resource_name)
+        )
+        for resource in resources:
             info: OwnershipType = {
                 "name": resource[name_key],
                 "uuid": uuids[resource["id"]],

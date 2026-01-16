@@ -294,7 +294,7 @@ def test_export_resource_with_ids(
     )
 
     client.get_resources.assert_not_called()
-    client.export_zip.assert_called_once_with("database", {1, 2, 3})
+    client.export_zip.assert_called_once_with("database", [1, 2, 3])
 
 
 def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -802,9 +802,9 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     # Verify export_ownership was called with users dict and exclude_old_users=False
     expected_users = {1: "adoe@example.com", 2: "bdoe@example.com"}
     assert client.export_ownership.call_count == 3
-    client.export_ownership.assert_any_call("dataset", expected_users, False)
-    client.export_ownership.assert_any_call("chart", expected_users, False)
-    client.export_ownership.assert_any_call("dashboard", expected_users, False)
+    client.export_ownership.assert_any_call("dataset", set(), expected_users, False)
+    client.export_ownership.assert_any_call("chart", set(), expected_users, False)
+    client.export_ownership.assert_any_call("dashboard", set(), expected_users, False)
 
     with open("ownership.yaml", encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -915,8 +915,8 @@ def test_export_ownership_by_asset_type(
     # Verify that export_ownership was called only for chart and dashboard, not dataset
     expected_users = {1: "adoe@example.com", 2: "bdoe@example.com"}
     assert client.export_ownership.call_count == 2
-    client.export_ownership.assert_any_call("chart", expected_users, False)
-    client.export_ownership.assert_any_call("dashboard", expected_users, False)
+    client.export_ownership.assert_any_call("chart", set(), expected_users, False)
+    client.export_ownership.assert_any_call("dashboard", set(), expected_users, False)
 
     with open("ownership.yaml", encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -975,7 +975,12 @@ def test_export_ownership_single_asset_type(
     # Verify that export_ownership was called only once for dataset
     expected_users = {3: "cdoe@example.com"}
     assert client.export_ownership.call_count == 1
-    client.export_ownership.assert_called_once_with("dataset", expected_users, False)
+    client.export_ownership.assert_called_once_with(
+        "dataset",
+        set(),
+        expected_users,
+        False,
+    )
 
     with open("ownership.yaml", encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -1886,3 +1891,132 @@ def test_build_local_uuid_mapping_empty_dirs(fs: FakeFilesystem) -> None:
     assert mapping["charts"] == {}
     assert mapping["datasets"] == {}
     assert mapping["databases"] == {}
+
+
+def test_export_ownership_by_ids(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command with ID filters.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+    ]
+    client.export_ownership.side_effect = [
+        [
+            {
+                "name": "Dataset 1",
+                "uuid": UUID("11111111-1111-1111-1111-111111111111"),
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        [
+            {
+                "name": "Chart 5",
+                "uuid": UUID("55555555-5555-5555-5555-555555555555"),
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        [],
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-ownership",
+            "--dataset-ids",
+            "1,2",
+            "--chart-ids",
+            "5",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    expected_users = {1: "adoe@example.com"}
+    assert client.export_ownership.call_count == 2
+    client.export_ownership.assert_any_call("dataset", {1, 2}, expected_users, False)
+    client.export_ownership.assert_any_call("chart", {5}, expected_users, False)
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "dataset": [
+            {
+                "name": "Dataset 1",
+                "uuid": "11111111-1111-1111-1111-111111111111",
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        "chart": [
+            {
+                "name": "Chart 5",
+                "uuid": "55555555-5555-5555-5555-555555555555",
+                "owners": ["adoe@example.com"],
+            },
+        ],
+    }
+
+
+def test_export_ownership_by_ids_and_asset_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command with both ID and asset-type filters.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+    ]
+    client.export_ownership.return_value = [
+        {
+            "name": "Dashboard 10",
+            "uuid": UUID("10101010-1010-1010-1010-101010101010"),
+            "owners": ["adoe@example.com"],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-ownership",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "10,20",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    expected_users = {1: "adoe@example.com"}
+    assert client.export_ownership.call_count == 1
+    client.export_ownership.assert_called_once_with(
+        "dashboard",
+        {10, 20},
+        expected_users,
+        False,
+    )
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "dashboard": [
+            {
+                "name": "Dashboard 10",
+                "uuid": "10101010-1010-1010-1010-101010101010",
+                "owners": ["adoe@example.com"],
+            },
+        ],
+    }
