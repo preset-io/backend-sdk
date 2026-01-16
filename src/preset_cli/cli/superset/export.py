@@ -230,12 +230,11 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
     """
     Export a given resource and unzip it in a directory.
     """
-    resources = client.get_resources(resource_name)
-    ids = [
-        resource["id"]
-        for resource in resources
-        if resource["id"] in requested_ids or not requested_ids
-    ]
+    if requested_ids:
+        ids = list(requested_ids)
+    else:
+        resources = client.get_resources(resource_name)
+        ids = [resource["id"] for resource in resources]
     buf = client.export_zip(resource_name, ids)
 
     with ZipFile(buf) as bundle:

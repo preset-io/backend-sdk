@@ -132,6 +132,8 @@ def test_export_resource(
     with open(root / "databases/gsheets.yaml", encoding="utf-8") as input_:
         assert input_.read() == "database_name: GSheets\nsqlalchemy_uri: gsheets://\n"
 
+    client.get_resources.assert_called_once_with("database")
+
     # check that Jinja2 was escaped
     export_resource(
         resource_name="dataset",
@@ -265,6 +267,34 @@ def test_export_resource_overwrite(
         disable_jinja_escaping=False,
         force_unix_eol=False,
     )
+
+
+def test_export_resource_with_ids(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    chart_export: BytesIO,
+) -> None:
+    """
+    Test ``export_resource`` with ``requested_ids``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    client = mocker.MagicMock()
+    client.export_zip.return_value = chart_export
+
+    export_resource(
+        resource_name="database",
+        requested_ids={1, 2, 3},
+        root=root,
+        client=client,
+        overwrite=False,
+        disable_jinja_escaping=False,
+        force_unix_eol=False,
+    )
+
+    client.get_resources.assert_not_called()
+    client.export_zip.assert_called_once_with("database", [1, 2, 3])
 
 
 def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
