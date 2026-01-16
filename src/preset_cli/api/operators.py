@@ -32,3 +32,11 @@ class OneToMany(Operator):
     """
 
     operator = "rel_o_m"
+
+
+class In(Operator):
+    """
+    Operator for In filters.
+    """
+
+    operator = "in"

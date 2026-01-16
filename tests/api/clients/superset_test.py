@@ -2715,7 +2715,9 @@ def test_export_ownership(mocker: MockerFixture) -> None:
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
     users = {1: "admin@example.com", 2: "adoe@example.com"}
-    assert list(client.export_ownership("chart", users, exclude_old_users=False)) == [
+    assert list(
+        client.export_ownership("chart", set(), users, exclude_old_users=False),
+    ) == [
         {
             "name": "My chart",
             "owners": ["admin@example.com", "adoe@example.com"],
@@ -2760,7 +2762,7 @@ def test_export_ownership_user_not_found_raises_exception(
         Exception,
         match="User Missing User owns the chart My chart but is not a member in the team",
     ):
-        list(client.export_ownership("chart", users, exclude_old_users=False))
+        list(client.export_ownership("chart", set(), users, exclude_old_users=False))
 
 
 def test_export_ownership_user_not_found_with_exclude_flag(
@@ -2796,7 +2798,9 @@ def test_export_ownership_user_not_found_with_exclude_flag(
     users = {1: "admin@example.com"}  # User 999 is not in the dict
 
     # Should not raise exception, and should exclude the missing user
-    result = list(client.export_ownership("chart", users, exclude_old_users=True))
+    result = list(
+        client.export_ownership("chart", set(), users, exclude_old_users=True),
+    )
 
     assert result == [
         {

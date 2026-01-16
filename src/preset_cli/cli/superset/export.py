@@ -461,6 +461,21 @@ def export_rls(
     multiple=True,
 )
 @click.option(
+    "--dataset-ids",
+    callback=split_comma,
+    help="Comma separated list of dataset IDs to export ownership config",
+)
+@click.option(
+    "--chart-ids",
+    callback=split_comma,
+    help="Comma separated list of chart IDs to export ownership config",
+)
+@click.option(
+    "--dashboard-ids",
+    callback=split_comma,
+    help="Comma separated list of dashboard IDs to export ownership config",
+)
+@click.option(
     "--force-unix-eol",
     is_flag=True,
     default=False,
@@ -473,10 +488,13 @@ def export_rls(
     help="Exclude users that are no longer a member in the team from the generated file",
 )
 @click.pass_context
-def export_ownership(
+def export_ownership(  # pylint: disable=too-many-locals, too-many-arguments
     ctx: click.core.Context,
     path: str,
     asset_type: Tuple[str, ...],
+    dataset_ids: List[str],
+    chart_ids: List[str],
+    dashboard_ids: List[str],
     force_unix_eol: bool = False,
     exclude_old_users: bool = False,
 ) -> None:
@@ -488,27 +506,33 @@ def export_ownership(
     client = SupersetClient(url, auth)
 
     users = {user["id"]: user["email"] for user in client.export_users()}
-    asset_types = set(asset_type) if asset_type else set()
-    resources_to_export = (
-        [r for r in ["dataset", "chart", "dashboard"] if r in asset_types]
-        if asset_types
-        else ["dataset", "chart", "dashboard"]
-    )
+
+    asset_types = set(asset_type)
+    ids = {
+        "dataset": {int(id_) for id_ in dataset_ids},
+        "chart": {int(id_) for id_ in chart_ids},
+        "dashboard": {int(id_) for id_ in dashboard_ids},
+    }
+    ids_requested = any([dataset_ids, chart_ids, dashboard_ids])
 
     ownership = defaultdict(list)
-    for resource_name in resources_to_export:
-        for resource in client.export_ownership(
-            resource_name,
-            users,
-            exclude_old_users,
+    for resource_name in ["dataset", "chart", "dashboard"]:
+        if (not asset_types or resource_name in asset_types) and (
+            ids[resource_name] or not ids_requested
         ):
-            ownership[resource_name].append(
-                {
-                    "name": resource["name"],
-                    "uuid": str(resource["uuid"]),
-                    "owners": resource["owners"],
-                },
-            )
+            for resource in client.export_ownership(
+                resource_name,
+                ids[resource_name],
+                users,
+                exclude_old_users,
+            ):
+                ownership[resource_name].append(
+                    {
+                        "name": resource["name"],
+                        "uuid": str(resource["uuid"]),
+                        "owners": resource["owners"],
+                    },
+                )
 
     with open(
         path,
