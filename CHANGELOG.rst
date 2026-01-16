@@ -8,6 +8,8 @@ Next
 Version 0.3.10 - 2026-01-16
 ==========================
 
+- It's now possible to sync from ``dj`` using the ``sync dj`` command (`#355 <https://github.com/preset-io/backend-sdk/pull/355>`_).
+- New methods were added to the ``SupersetClient`` (`#362 <https://github.com/preset-io/backend-sdk/pull/362>`_).
 - Performance for the ``export-assets`` command when passing asset IDs is now improved (`#368 <https://github.com/preset-io/backend-sdk/pull/368>`_).
 - The ``export-ownership`` command now supports filtering by asset IDs (`#369 <https://github.com/preset-io/backend-sdk/pull/369>`_).
 
