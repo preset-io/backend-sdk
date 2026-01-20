@@ -4,18 +4,21 @@ A command to sync DJ cubes into a Superset instance.
 
 from __future__ import annotations
 
-import logging
 from uuid import UUID
 
 import click
-from datajunction import DJClient  # pylint: disable=no-name-in-module
+
+try:
+    from datajunction import DJClient  # pylint: disable=no-name-in-module
+except ModuleNotFoundError:  # pragma: no cover
+    DJClient = None  # pylint: disable=invalid-name
+
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.cli.superset.sync.dj.lib import sync_cube
-from preset_cli.lib import split_comma
-
-_logger = logging.getLogger(__name__)
+from preset_cli.exceptions import CLIError
+from preset_cli.lib import raise_cli_errors, split_comma
 
 
 @click.command()
@@ -57,6 +60,7 @@ _logger = logging.getLogger(__name__)
 )
 @click.option("--external-url-prefix", default="", help="Base URL for resources")
 @click.pass_context
+@raise_cli_errors
 def dj(  # pylint: disable=invalid-name,too-many-arguments
     ctx: click.core.Context,
     database_uuid: str,
@@ -70,6 +74,13 @@ def dj(  # pylint: disable=invalid-name,too-many-arguments
     """
     Sync DJ cubes to Superset.
     """
+    if DJClient is None:
+        error_message = (
+            "Missing required dependencies for DJ Sync."
+            " Please run ``pip install --upgrade preset-cli[dj]``"
+        )
+        raise CLIError(error_message, 1)
+
     superset_auth = ctx.obj["AUTH"]
     superset_url = URL(ctx.obj["INSTANCE"])
     superset_client = SupersetClient(superset_url, superset_auth)
