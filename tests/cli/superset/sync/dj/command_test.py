@@ -59,3 +59,32 @@ def test_dj_command(mocker: MockerFixture) -> None:
         "default.repair_orders_cube",
         None,
     )
+
+
+def test_dj_command_missing_dependency(mocker: MockerFixture) -> None:
+    """
+    Test that the DJ command raises an error when datajunction is not installed.
+    """
+    mocker.patch("preset_cli.cli.superset.sync.dj.command.DJClient", None)
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "dj",
+            "--cubes",
+            "default.repair_orders_cube",
+            "--database-uuid",
+            "a1ad7bd5-b1a3-4d64-afb1-a84c2f4d7715",
+            "--schema",
+            "schema",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "Missing required dependencies for DJ Sync" in result.output
+    assert "pip install --upgrade preset-cli[dj]" in result.output
