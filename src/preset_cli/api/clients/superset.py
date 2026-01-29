@@ -709,6 +709,18 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         self.delete_resource("chart", chart_id)
 
+    def delete_dataset(self, dataset_id: int) -> None:
+        """
+        Delete a dataset.
+        """
+        self.delete_resource("dataset", dataset_id)
+
+    def delete_database(self, database_id: int) -> None:
+        """
+        Delete a database.
+        """
+        self.delete_resource("database", database_id)
+
     def get_dashboard(self, dashboard_id: int) -> Any:
         """
         Return a single dashboard.

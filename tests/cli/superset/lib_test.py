@@ -10,10 +10,15 @@ import yaml
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
+import click
+import pytest
+
 from preset_cli.cli.superset.lib import (
+    DASHBOARD_FILTER_KEYS,
     LogType,
     clean_logs,
     get_logs,
+    parse_filters,
     write_logs_to_file,
 )
 
@@ -225,3 +230,89 @@ def test_clean_logs_keep_file(mocker: MockerFixture, fs: FakeFilesystem) -> None
         content = yaml.load(log, Loader=yaml.SafeLoader)
 
     assert content == {"ownership": [{"status": "SUCCESS", "uuid": "uuid2"}]}
+
+
+def test_parse_filters_single() -> None:
+    """
+    Test ``parse_filters`` with a single filter.
+    """
+    assert parse_filters(("slug=test",), DASHBOARD_FILTER_KEYS) == {"slug": "test"}
+
+
+def test_parse_filters_multiple() -> None:
+    """
+    Test ``parse_filters`` with multiple filters.
+    """
+    assert parse_filters(("slug=test", "id=123"), DASHBOARD_FILTER_KEYS) == {
+        "slug": "test",
+        "id": 123,
+    }
+
+
+def test_parse_filters_bool_coercion() -> None:
+    """
+    Test ``parse_filters`` with boolean coercion.
+    """
+    assert parse_filters(("is_managed_externally=true",), DASHBOARD_FILTER_KEYS) == {
+        "is_managed_externally": True,
+    }
+
+
+def test_parse_filters_bool_false() -> None:
+    """
+    Test ``parse_filters`` with boolean false.
+    """
+    assert parse_filters(("is_managed_externally=false",), DASHBOARD_FILTER_KEYS) == {
+        "is_managed_externally": False,
+    }
+
+
+def test_parse_filters_managed_externally_alias() -> None:
+    """
+    Test ``parse_filters`` with managed_externally alias.
+    """
+    assert parse_filters(("managed_externally=true",), DASHBOARD_FILTER_KEYS) == {
+        "is_managed_externally": True,
+    }
+
+
+def test_parse_filters_invalid_key() -> None:
+    """
+    Test ``parse_filters`` with invalid key.
+    """
+    with pytest.raises(click.BadParameter):
+        parse_filters(("color=red",), DASHBOARD_FILTER_KEYS)
+
+
+def test_parse_filters_invalid_int() -> None:
+    """
+    Test ``parse_filters`` with invalid int.
+    """
+    with pytest.raises(click.BadParameter):
+        parse_filters(("id=abc",), DASHBOARD_FILTER_KEYS)
+
+
+def test_parse_filters_missing_equals() -> None:
+    """
+    Test ``parse_filters`` with missing equals.
+    """
+    with pytest.raises(click.BadParameter):
+        parse_filters(("slugtest",), DASHBOARD_FILTER_KEYS)
+
+
+def test_parse_filters_empty_value() -> None:
+    """
+    Test ``parse_filters`` with empty value.
+    """
+    assert parse_filters(("certified_by=",), DASHBOARD_FILTER_KEYS) == {
+        "certified_by": "",
+    }
+
+
+def test_parse_filters_value_with_equals() -> None:
+    """
+    Test ``parse_filters`` with value containing equals.
+    """
+    assert parse_filters(("dashboard_title=A=B",), DASHBOARD_FILTER_KEYS) == {
+        "dashboard_title": "A=B",
+    }
