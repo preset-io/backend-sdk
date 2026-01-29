@@ -218,6 +218,11 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     help="Continue the import if an asset fails to import (imports assets individually)",
 )
 @click.option(
+    "--cascade/--no-cascade",
+    default=True,
+    help="When disabled, import dependencies without overwriting them",
+)
+@click.option(
     "--asset-type",
     type=click.Choice([rt.resource_name for rt in ResourceType], case_sensitive=False),
     callback=normalize_to_enum,
@@ -244,6 +249,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     load_env: bool = False,
     split: bool = False,
     continue_on_error: bool = False,
+    cascade: bool = True,
     db_password: Tuple[str, ...] | None = None,
 ) -> None:
     """
@@ -256,7 +262,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
     # The ``--continue-on-error`` flag should force the split option
-    split = split or continue_on_error
+    split = split or continue_on_error or not cascade
 
     # collecting existing database UUIDs so we know if we're creating or updating
     # newer versions expose the DB UUID in the API response,
@@ -328,6 +334,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
             overwrite,
             asset_type,
             continue_on_error,
+            cascade=cascade,
         )
     else:
         contents = {str(k): yaml.dump(v) for k, v in configs.items()}
@@ -340,6 +347,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     overwrite: bool,
     asset_type: ResourceType,
     continue_on_error: bool = False,
+    cascade: bool = True,
 ) -> None:
     """
     Import contents individually.
@@ -382,16 +390,17 @@ def import_resources_individually(  # pylint: disable=too-many-locals
                         asset_configs.update(related_configs[uuid])
                     related_configs[config["uuid"]] = asset_configs
 
-                    if path in assets_to_skip or (
-                        asset_type != ResourceType.ASSET
-                        and asset_type.resource_name not in resource_name
-                    ):
+                    is_primary = asset_type == ResourceType.ASSET or (
+                        asset_type.resource_name in resource_name
+                    )
+                    if path in assets_to_skip or (cascade and not is_primary):
                         continue
 
                     _logger.info("Importing %s", path.relative_to("bundle"))
 
                     contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                    import_resources(contents, client, overwrite, asset_type)
+                    effective_overwrite = overwrite if (cascade or is_primary) else False
+                    import_resources(contents, client, effective_overwrite, asset_type)
                 except Exception:  # pylint: disable=broad-except
                     if not continue_on_error:
                         raise

@@ -4,9 +4,10 @@ A command to export Superset resources into a directory.
 
 import json
 import re
+import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 from zipfile import ZipFile
 
 import click
@@ -14,11 +15,15 @@ import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.cli.superset.lib import DASHBOARD_FILTER_KEYS, parse_filters
 from preset_cli.lib import remove_root, split_comma
 
 JINJA2_OPEN_MARKER = "__JINJA2_OPEN__"
 JINJA2_CLOSE_MARKER = "__JINJA2_CLOSE__"
 assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
+
+SIMPLE_FILE_NAMES_ENABLED = False
+SIMPLE_FILE_NAME_REGISTRY: Dict[Path, Set[str]] = {}
 
 
 def get_newline_char(force_unix_eol: bool = False) -> Union[str, None]:
@@ -42,6 +47,173 @@ def extract_uuid_from_asset(
 
     data = yaml.load(file_content, Loader=yaml.SafeLoader)
     return data.get("uuid")
+
+
+def simplify_filename(file_name: str) -> str:
+    """
+    Remove trailing numeric ID suffix from YAML filenames.
+    """
+    return re.sub(r"_\d+(?=\.ya?ml$)", "", file_name)
+
+
+def _unique_simple_name(parent: Path, file_name: str) -> str:
+    """
+    Return a unique file name within the given directory.
+    """
+    used = SIMPLE_FILE_NAME_REGISTRY.setdefault(parent, set())
+    if file_name not in used:
+        used.add(file_name)
+        return file_name
+
+    base, ext = (file_name.rsplit(".", 1) + [""])[:2]
+    ext = f".{ext}" if ext else ""
+    index = 2
+    while True:
+        candidate = f"{base}_{index}{ext}"
+        if candidate not in used:
+            used.add(candidate)
+            return candidate
+        index += 1
+
+
+def apply_simple_filename(file_name: str, root: Path) -> str:
+    """
+    Apply simple filename rules and handle collisions.
+    """
+    path = Path(file_name)
+    simple_name = simplify_filename(path.name)
+    parent = root / path.parent
+    unique_name = _unique_simple_name(parent, simple_name)
+    return str(path.parent / unique_name) if path.parent != Path(".") else unique_name
+
+
+def _load_yaml(path: Path) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as input_:
+        return yaml.load(input_, Loader=yaml.SafeLoader) or {}
+
+
+def _get_dashboard_chart_uuids(config: Dict[str, Any]) -> Iterable[str]:
+    for child in config.get("position", {}).values():
+        if (
+            isinstance(child, dict)
+            and child.get("type") == "CHART"
+            and "uuid" in child.get("meta", {})
+        ):
+            yield child["meta"]["uuid"]
+
+
+def _get_dashboard_dataset_filter_uuids(config: Dict[str, Any]) -> Set[str]:
+    dataset_uuids = set()
+    for filter_config in config.get("metadata", {}).get(
+        "native_filter_configuration",
+        [],
+    ):
+        for target in filter_config.get("targets", {}):
+            if uuid := target.get("datasetUuid"):
+                dataset_uuids.add(uuid)
+    return dataset_uuids
+
+
+def restructure_per_asset_folder(root: Path) -> None:
+    """
+    Reorganize flat export into per-dashboard subfolders.
+    """
+    dashboards_dir = root / "dashboards"
+    if not dashboards_dir.exists():
+        return
+
+    chart_map: Dict[str, Path] = {}
+    dataset_map: Dict[str, Path] = {}
+    database_map: Dict[str, Path] = {}
+
+    charts_dir = root / "charts"
+    if charts_dir.exists():
+        for chart_file in charts_dir.glob("*.yaml"):
+            if uuid := extract_uuid_from_asset(file_path=chart_file):
+                chart_map[uuid] = chart_file
+
+    datasets_dir = root / "datasets"
+    if datasets_dir.exists():
+        for dataset_file in datasets_dir.rglob("*.yaml"):
+            if uuid := extract_uuid_from_asset(file_path=dataset_file):
+                dataset_map[uuid] = dataset_file
+
+    databases_dir = root / "databases"
+    if databases_dir.exists():
+        for database_file in databases_dir.glob("*.yaml"):
+            if uuid := extract_uuid_from_asset(file_path=database_file):
+                database_map[uuid] = database_file
+
+    for dashboard_file in dashboards_dir.glob("*.yaml"):
+        config = _load_yaml(dashboard_file)
+        dashboard_dir = dashboards_dir / dashboard_file.stem
+        dashboard_dir.mkdir(parents=True, exist_ok=True)
+
+        moved_dashboard = dashboard_dir / dashboard_file.name
+        dashboard_file.rename(moved_dashboard)
+
+        chart_uuids = set(_get_dashboard_chart_uuids(config))
+        dataset_uuids = _get_dashboard_dataset_filter_uuids(config)
+
+        for chart_uuid in chart_uuids:
+            chart_path = chart_map.get(chart_uuid)
+            if not chart_path:
+                continue
+            chart_config = _load_yaml(chart_path)
+            if dataset_uuid := chart_config.get("dataset_uuid"):
+                dataset_uuids.add(dataset_uuid)
+            rel_path = chart_path.relative_to(root)
+            target = dashboard_dir / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(chart_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+        database_uuids: Set[str] = set()
+        for dataset_uuid in dataset_uuids:
+            dataset_path = dataset_map.get(dataset_uuid)
+            if not dataset_path:
+                continue
+            dataset_config = _load_yaml(dataset_path)
+            if database_uuid := dataset_config.get("database_uuid"):
+                database_uuids.add(database_uuid)
+            rel_path = dataset_path.relative_to(root)
+            target = dashboard_dir / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                dataset_path.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+        for database_uuid in database_uuids:
+            database_path = database_map.get(database_uuid)
+            if not database_path:
+                continue
+            rel_path = database_path.relative_to(root)
+            target = dashboard_dir / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                database_path.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+    for resource_dir in [charts_dir, datasets_dir, databases_dir]:
+        if resource_dir.exists():
+            for path in sorted(resource_dir.rglob("*"), reverse=True):
+                if path.is_file():
+                    path.unlink()
+                elif path.is_dir():
+                    path.rmdir()
+            resource_dir.rmdir()
+
+
+def zip_directory(source_dir: Path, output_path: Path) -> None:
+    """
+    Create a ZIP file from a directory tree.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with ZipFile(output_path, "w") as bundle:
+        for file_path in sorted(source_dir.rglob("*")):
+            if file_path.is_file():
+                bundle.write(file_path, file_path.relative_to(source_dir))
 
 
 def build_local_uuid_mapping(root: Path) -> Dict[str, Dict[str, Path]]:
@@ -128,7 +300,12 @@ def check_asset_uniqueness(  # pylint: disable=too-many-arguments
 
 
 @click.command()
-@click.argument("directory", type=click.Path(exists=True, resolve_path=True))
+@click.argument(
+    "directory",
+    type=click.Path(resolve_path=True),
+    required=False,
+    default=None,
+)
 @click.option(
     "--overwrite",
     is_flag=True,
@@ -172,15 +349,46 @@ def check_asset_uniqueness(  # pylint: disable=too-many-arguments
     callback=split_comma,
     help="Comma separated list of dashboard IDs to export",
 )
+@click.option(
+    "--filter",
+    "-t",
+    "filters",
+    multiple=True,
+    help="Filter key=value (repeatable, ANDed). Dashboard fields only.",
+)
+@click.option(
+    "--output-zip",
+    "-z",
+    type=click.Path(resolve_path=True),
+    default=None,
+    help="Export to ZIP file instead of directory",
+)
+@click.option(
+    "--per-asset-folder",
+    is_flag=True,
+    default=False,
+    help="Create subfolder per exported dashboard with its dependencies",
+)
+@click.option(
+    "--simple-file-names",
+    "-s",
+    is_flag=True,
+    default=False,
+    help="Remove numeric suffixes from exported YAML filenames",
+)
 @click.pass_context
 def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     ctx: click.core.Context,
-    directory: str,
+    directory: Optional[str],
     asset_type: Tuple[str, ...],
     database_ids: List[str],
     dataset_ids: List[str],
     chart_ids: List[str],
     dashboard_ids: List[str],
+    filters: Tuple[str, ...],
+    output_zip: Optional[str],
+    per_asset_folder: bool,
+    simple_file_names: bool,
     overwrite: bool = False,
     disable_jinja_escaping: bool = False,
     force_unix_eol: bool = False,
@@ -191,7 +399,15 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
-    root = Path(directory)
+    if directory and output_zip:
+        raise click.UsageError(
+            "Provide either a directory or --output-zip, not both.",
+        )
+    if not directory and not output_zip:
+        raise click.UsageError(
+            "Provide a directory or --output-zip.",
+        )
+
     asset_types = set(asset_type)
     ids = {
         "database": {int(id_) for id_ in database_ids},
@@ -201,20 +417,71 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     }
     ids_requested = any([database_ids, dataset_ids, chart_ids, dashboard_ids])
 
-    for resource_name in ["database", "dataset", "chart", "dashboard"]:
-        if (not asset_types or resource_name in asset_types) and (
-            ids[resource_name] or not ids_requested
-        ):
-            export_resource(
-                resource_name,
-                ids[resource_name],
-                root,
-                client,
-                overwrite,
-                disable_jinja_escaping,
-                skip_related=not ids_requested,
-                force_unix_eol=force_unix_eol,
+    if filters:
+        if asset_types and asset_types != {"dashboard"}:
+            raise click.UsageError(
+                "Filters are only supported for dashboard assets.",
             )
+        asset_types = {"dashboard"}
+        parsed_filters = parse_filters(filters, DASHBOARD_FILTER_KEYS)
+        try:
+            dashboards = client.get_dashboards(**parsed_filters)
+        except Exception as exc:  # pylint: disable=broad-except
+            filter_keys = ", ".join(parsed_filters.keys())
+            raise click.ClickException(
+                "Filter key(s) "
+                f"{filter_keys} may not be supported by this Superset version. "
+                "Supported fields vary by version.",
+            ) from exc
+
+        if not dashboards:
+            click.echo("No dashboards match the specified filters.")
+            return
+        ids["dashboard"].update({dashboard["id"] for dashboard in dashboards})
+        ids_requested = True
+
+    if directory:
+        root = Path(directory)
+        if not root.exists():
+            raise click.UsageError(f"Directory does not exist: {root}")
+    else:
+        root = None
+
+    SIMPLE_FILE_NAME_REGISTRY.clear()
+    global SIMPLE_FILE_NAMES_ENABLED
+    SIMPLE_FILE_NAMES_ENABLED = simple_file_names
+
+    temp_root = None
+    if output_zip:
+        temp_root = tempfile.TemporaryDirectory()
+        root = Path(temp_root.name)
+
+    try:
+        for resource_name in ["database", "dataset", "chart", "dashboard"]:
+            if (not asset_types or resource_name in asset_types) and (
+                ids[resource_name] or not ids_requested
+            ):
+                export_resource(
+                    resource_name,
+                    ids[resource_name],
+                    root,
+                    client,
+                    overwrite,
+                    disable_jinja_escaping,
+                    skip_related=not ids_requested,
+                    force_unix_eol=force_unix_eol,
+                )
+
+        if per_asset_folder:
+            restructure_per_asset_folder(root)
+
+        if output_zip:
+            zip_directory(root, Path(output_zip))
+    finally:
+        SIMPLE_FILE_NAMES_ENABLED = False
+        SIMPLE_FILE_NAME_REGISTRY.clear()
+        if temp_root:
+            temp_root.cleanup()
 
 
 def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
@@ -251,11 +518,16 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
         if skip_related and not file_name.startswith(resource_name):
             continue
 
-        target = root / file_name
+        output_name = (
+            apply_simple_filename(file_name, root)
+            if SIMPLE_FILE_NAMES_ENABLED
+            else file_name
+        )
+        target = root / output_name
         check_asset_uniqueness(
             overwrite,
             file_content,
-            file_name,
+            output_name,
             target,
             uuid_mapping,
             files_to_delete,

@@ -114,6 +114,7 @@ Options:
   --help  Show this message and exit.
 
 Commands:
+  delete-assets
   export
   export-assets
   export-ownership
@@ -133,7 +134,7 @@ Commands:
     assert result.exit_code == 0
     assert (
         result.output
-        == """Usage: superset export [OPTIONS] DIRECTORY
+        == """Usage: superset export [OPTIONS] [DIRECTORY]
 
 Options:
   --overwrite               Overwrite existing resources
@@ -145,6 +146,12 @@ Options:
   --dataset-ids TEXT        Comma separated list of dataset IDs to export
   --chart-ids TEXT          Comma separated list of chart IDs to export
   --dashboard-ids TEXT      Comma separated list of dashboard IDs to export
+  -t, --filter TEXT         Filter key=value (repeatable, ANDed). Dashboard
+                            fields only.
+  -z, --output-zip PATH     Export to ZIP file instead of directory
+  --per-asset-folder        Create subfolder per exported dashboard with its
+                            dependencies
+  -s, --simple-file-names   Remove numeric suffixes from exported YAML filenames
   --help                    Show this message and exit.
 """
     )

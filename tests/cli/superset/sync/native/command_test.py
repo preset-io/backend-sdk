@@ -2202,6 +2202,144 @@ def test_native_split_asset_types(
         any_order=True,
     )
     client.get_uuids.assert_not_called()
+
+
+def test_native_cascade_default(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test default cascade behavior uses overwrite for all resources.
+    """
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    client = mocker.MagicMock()
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    configs = {
+        Path("bundle/databases/db.yaml"): {
+            "uuid": "db-uuid",
+            "database_name": "db",
+            "sqlalchemy_uri": "sqlite://",
+        },
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+            "table_name": "test",
+        },
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.ASSET,
+        continue_on_error=False,
+        cascade=True,
+    )
+
+    assert import_resources.call_count == 2
+    for call in import_resources.mock_calls:
+        assert call.args[2] is True
+
+
+def test_native_no_cascade(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test no-cascade imports dependencies without overwrite.
+    """
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    client = mocker.MagicMock()
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    configs = {
+        Path("bundle/databases/db.yaml"): {
+            "uuid": "db-uuid",
+            "database_name": "db",
+            "sqlalchemy_uri": "sqlite://",
+        },
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+            "table_name": "test",
+        },
+        Path("bundle/charts/chart.yaml"): {
+            "uuid": "chart-uuid",
+            "dataset_uuid": "ds-uuid",
+        },
+        Path("bundle/dashboards/dash.yaml"): {
+            "uuid": "dash-uuid",
+            "position": {},
+            "metadata": {},
+        },
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.DASHBOARD,
+        continue_on_error=False,
+        cascade=False,
+    )
+
+    overwrite_by_resource = {}
+    for call in import_resources.mock_calls:
+        contents = call.args[0]
+        resource = next(iter(contents)).split("/")[1]
+        overwrite_by_resource[resource] = call.args[2]
+
+    assert overwrite_by_resource["dashboards"] is True
+    assert overwrite_by_resource["charts"] is False
+    assert overwrite_by_resource["datasets"] is False
+    assert overwrite_by_resource["databases"] is False
+
+
+def test_native_no_cascade_forces_split(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test no-cascade forces split imports.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    fs.create_dir(root / "databases")
+    fs.create_file(
+        root / "databases/db.yaml",
+        contents=yaml.dump(
+            {
+                "database_name": "db",
+                "sqlalchemy_uri": "sqlite://",
+                "uuid": "db-uuid",
+            },
+        ),
+    )
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.sync.native.command.SupersetClient")
+    client = SupersetClient()
+    client.get_databases.return_value = [{"uuid": "db-uuid"}]
+    import_resources_individually_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources_individually",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--no-cascade",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    import_resources_individually_mock.assert_called_once()
+    assert import_resources_individually_mock.call_args.kwargs["cascade"] is False
     assert not Path("progress.log").exists()
 
 
