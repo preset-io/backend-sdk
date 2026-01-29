@@ -2239,7 +2239,6 @@ def test_export_assets_output_zip(mocker: MockerFixture, fs: FakeFilesystem) -> 
     """
     Test ``export_assets`` with ``--output-zip``.
     """
-    fs.create_dir("/tmp")
     output_zip = Path("/path/to/output.zip")
     fs.create_dir(output_zip.parent)
 
@@ -2299,7 +2298,6 @@ def test_export_assets_output_zip_and_directory_error(
     root = Path("/path/to/root")
     fs.create_dir(root)
     output_zip = Path("/path/to/output.zip")
-    fs.create_dir(output_zip.parent)
 
     mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
@@ -2505,8 +2503,8 @@ def test_export_assets_per_asset_folder_with_simple_names(
 
     dashboard_dir = root / "dashboards/quarterly_sales"
     assert (dashboard_dir / "quarterly_sales.yaml").exists()
-    assert (dashboard_dir / "charts/sales_chart_456.yaml").exists()
-    assert (dashboard_dir / "datasets/db1/sales_dataset_789.yaml").exists()
+    assert (dashboard_dir / "charts/sales_chart.yaml").exists()
+    assert (dashboard_dir / "datasets/db1/sales_dataset.yaml").exists()
     assert (dashboard_dir / "databases/db1.yaml").exists()
 
 
@@ -2517,7 +2515,6 @@ def test_export_assets_output_zip_with_per_asset_folder(
     """
     Test ``export_assets`` with ``--output-zip`` and ``--per-asset-folder``.
     """
-    fs.create_dir("/tmp")
     output_zip = Path("/path/to/output.zip")
     fs.create_dir(output_zip.parent)
 
