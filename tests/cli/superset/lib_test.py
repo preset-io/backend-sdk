@@ -13,6 +13,7 @@ from pytest_mock import MockerFixture
 import click
 import pytest
 
+from preset_cli.api.operators import Contains
 from preset_cli.cli.superset.lib import (
     DASHBOARD_FILTER_KEYS,
     LogType,
@@ -313,6 +314,23 @@ def test_parse_filters_value_with_equals() -> None:
     """
     Test ``parse_filters`` with value containing equals.
     """
-    assert parse_filters(("dashboard_title=A=B",), DASHBOARD_FILTER_KEYS) == {
-        "dashboard_title": "A=B",
-    }
+    result = parse_filters(("dashboard_title=A=B",), DASHBOARD_FILTER_KEYS)
+    assert isinstance(result["dashboard_title"], Contains)
+    assert result["dashboard_title"].value == "A=B"
+
+
+def test_parse_filters_dashboard_title_uses_contains() -> None:
+    """
+    Test ``parse_filters`` wraps dashboard_title with Contains operator.
+    """
+    result = parse_filters(("dashboard_title=Sales",), DASHBOARD_FILTER_KEYS)
+    assert isinstance(result["dashboard_title"], Contains)
+    assert result["dashboard_title"].value == "Sales"
+
+
+def test_parse_filters_slug_uses_exact_match() -> None:
+    """
+    Test ``parse_filters`` passes slug as raw value (exact match).
+    """
+    result = parse_filters(("slug=test",), DASHBOARD_FILTER_KEYS)
+    assert result["slug"] == "test"  # raw value, not an Operator
