@@ -479,3 +479,28 @@ def test_delete_assets_skip_shared_check(mocker: MockerFixture) -> None:
     client.delete_resource.assert_any_call("chart", 1)
     client.delete_resource.assert_any_call("dataset", 2)
     client.delete_resource.assert_any_call("database", 3)
+
+
+def test_delete_assets_filter_api_error(mocker: MockerFixture) -> None:
+    """
+    Test delete assets handles filter API error gracefully.
+    """
+    SupersetClient = mocker.patch("preset_cli.cli.superset.delete.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.side_effect = Exception("400 Bad Request")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "delete-assets",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "dashboard_title=test",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "may not be supported" in result.output
