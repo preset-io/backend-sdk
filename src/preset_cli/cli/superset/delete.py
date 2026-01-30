@@ -135,27 +135,33 @@ def _echo_summary(
 
     if cascade_flags["charts"]:
         click.echo(f"\nCharts ({len(chart_ids)}):")
+        for cid in sorted(chart_ids):
+            click.echo(f"  - [ID: {cid}]")
     else:
         click.echo("\nCharts (0): (not cascading)")
 
     if cascade_flags["datasets"]:
         click.echo(f"\nDatasets ({len(dataset_ids)}):")
+        for did in sorted(dataset_ids):
+            click.echo(f"  - [ID: {did}]")
     else:
         click.echo("\nDatasets (0): (not cascading)")
 
     if cascade_flags["databases"]:
         click.echo(f"\nDatabases ({len(database_ids)}):")
+        for bid in sorted(database_ids):
+            click.echo(f"  - [ID: {bid}]")
     else:
         click.echo("\nDatabases (0): (not cascading)")
 
     if any(shared.values()):
         click.echo("\nShared (skipped):")
         if shared["charts"]:
-            click.echo(f"  Charts: {len(shared['charts'])}")
+            click.echo(f"  Charts ({len(shared['charts'])}): {', '.join(sorted(shared['charts']))}")
         if shared["datasets"]:
-            click.echo(f"  Datasets: {len(shared['datasets'])}")
+            click.echo(f"  Datasets ({len(shared['datasets'])}): {', '.join(sorted(shared['datasets']))}")
         if shared["databases"]:
-            click.echo(f"  Databases: {len(shared['databases'])}")
+            click.echo(f"  Databases ({len(shared['databases'])}): {', '.join(sorted(shared['databases']))}")
 
     if dry_run:
         click.echo(
