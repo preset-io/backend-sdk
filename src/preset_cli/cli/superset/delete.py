@@ -258,9 +258,9 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
     except Exception as exc:  # pylint: disable=broad-except
         filter_keys = ", ".join(parsed_filters.keys())
         raise click.ClickException(
-            "Filter key(s) "
-            f"{filter_keys} may not be supported by this Superset version. "
-            "Supported fields vary by version.",
+            f"Failed to fetch dashboards ({exc}). "
+            f"This may indicate that filter key(s) {filter_keys} "
+            "may not be supported by this Superset version.",
         ) from exc
     if not dashboards:
         click.echo("No dashboards match the specified filters.")
