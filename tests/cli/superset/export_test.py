@@ -385,6 +385,8 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dataset",
@@ -395,6 +397,8 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "chart",
@@ -405,6 +409,8 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -415,6 +421,8 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -457,6 +465,8 @@ def test_export_assets_by_id(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=False,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -501,6 +511,8 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -511,6 +523,8 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -547,6 +561,8 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dataset",
@@ -557,6 +573,8 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "chart",
@@ -567,6 +585,8 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -577,6 +597,8 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -1134,6 +1156,8 @@ def test_export_resource_jinja_escaping_disabled_command(
                 True,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dataset",
@@ -1144,6 +1168,8 @@ def test_export_resource_jinja_escaping_disabled_command(
                 True,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "chart",
@@ -1154,6 +1180,8 @@ def test_export_resource_jinja_escaping_disabled_command(
                 True,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -1164,6 +1192,8 @@ def test_export_resource_jinja_escaping_disabled_command(
                 True,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -1238,6 +1268,8 @@ def test_export_resource_force_unix_eol_command(
                 False,
                 skip_related=True,
                 force_unix_eol=True,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dataset",
@@ -1248,6 +1280,8 @@ def test_export_resource_force_unix_eol_command(
                 False,
                 skip_related=True,
                 force_unix_eol=True,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "chart",
@@ -1258,6 +1292,8 @@ def test_export_resource_force_unix_eol_command(
                 False,
                 skip_related=True,
                 force_unix_eol=True,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -1268,6 +1304,8 @@ def test_export_resource_force_unix_eol_command(
                 False,
                 skip_related=True,
                 force_unix_eol=True,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -2117,6 +2155,8 @@ def test_export_assets_with_filter(mocker: MockerFixture, fs: FakeFilesystem) ->
         False,
         skip_related=False,
         force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry={},
     )
 
 
@@ -2166,6 +2206,8 @@ def test_export_assets_with_multiple_filters(
         False,
         skip_related=False,
         force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry={},
     )
 
 
@@ -2255,6 +2297,8 @@ def test_export_assets_output_zip(mocker: MockerFixture, fs: FakeFilesystem) -> 
         disable_jinja_escaping,
         skip_related=True,
         force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry=None,
     ):
         target = root / "dashboards" / "test_123.yaml"
         target.parent.mkdir(parents=True, exist_ok=True)

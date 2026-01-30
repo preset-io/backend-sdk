@@ -22,10 +22,6 @@ JINJA2_OPEN_MARKER = "__JINJA2_OPEN__"
 JINJA2_CLOSE_MARKER = "__JINJA2_CLOSE__"
 assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
 
-SIMPLE_FILE_NAMES_ENABLED = False
-SIMPLE_FILE_NAME_REGISTRY: Dict[Path, Set[str]] = {}
-
-
 def get_newline_char(force_unix_eol: bool = False) -> Union[str, None]:
     """Returns the newline character used by the open function"""
     return "\n" if force_unix_eol else None
@@ -56,11 +52,15 @@ def simplify_filename(file_name: str) -> str:
     return re.sub(r"_\d+(?=\.ya?ml$)", "", file_name)
 
 
-def _unique_simple_name(parent: Path, file_name: str) -> str:
+def _unique_simple_name(
+    parent: Path,
+    file_name: str,
+    registry: Dict[Path, Set[str]],
+) -> str:
     """
     Return a unique file name within the given directory.
     """
-    used = SIMPLE_FILE_NAME_REGISTRY.setdefault(parent, set())
+    used = registry.setdefault(parent, set())
     if file_name not in used:
         used.add(file_name)
         return file_name
@@ -76,14 +76,18 @@ def _unique_simple_name(parent: Path, file_name: str) -> str:
         index += 1
 
 
-def apply_simple_filename(file_name: str, root: Path) -> str:
+def apply_simple_filename(
+    file_name: str,
+    root: Path,
+    registry: Dict[Path, Set[str]],
+) -> str:
     """
     Apply simple filename rules and handle collisions.
     """
     path = Path(file_name)
     simple_name = simplify_filename(path.name)
     parent = root / path.parent
-    unique_name = _unique_simple_name(parent, simple_name)
+    unique_name = _unique_simple_name(parent, simple_name, registry)
     return str(path.parent / unique_name) if path.parent != Path(".") else unique_name
 
 
@@ -447,9 +451,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     else:
         root = None
 
-    SIMPLE_FILE_NAME_REGISTRY.clear()
-    global SIMPLE_FILE_NAMES_ENABLED
-    SIMPLE_FILE_NAMES_ENABLED = simple_file_names
+    simple_name_registry: Dict[Path, Set[str]] = {}
 
     temp_root = None
     if output_zip:
@@ -470,6 +472,8 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
                     disable_jinja_escaping,
                     skip_related=not ids_requested,
                     force_unix_eol=force_unix_eol,
+                    simple_file_names=simple_file_names,
+                    simple_name_registry=simple_name_registry,
                 )
 
         if per_asset_folder:
@@ -478,8 +482,6 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
         if output_zip:
             zip_directory(root, Path(output_zip))
     finally:
-        SIMPLE_FILE_NAMES_ENABLED = False
-        SIMPLE_FILE_NAME_REGISTRY.clear()
         if temp_root:
             temp_root.cleanup()
 
@@ -493,6 +495,8 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
     disable_jinja_escaping: bool,
     skip_related: bool = True,
     force_unix_eol: bool = False,
+    simple_file_names: bool = False,
+    simple_name_registry: Optional[Dict[Path, Set[str]]] = None,
 ) -> None:
     """
     Export a given resource and unzip it in a directory.
@@ -519,8 +523,8 @@ def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
             continue
 
         output_name = (
-            apply_simple_filename(file_name, root)
-            if SIMPLE_FILE_NAMES_ENABLED
+            apply_simple_filename(file_name, root, simple_name_registry)
+            if simple_file_names and simple_name_registry is not None
             else file_name
         )
         target = root / output_name
