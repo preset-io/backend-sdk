@@ -504,3 +504,36 @@ def test_delete_assets_filter_api_error(mocker: MockerFixture) -> None:
     )
     assert result.exit_code != 0
     assert "may not be supported" in result.output
+
+
+def test_delete_assets_dry_run_shows_cascade_ids(mocker: MockerFixture) -> None:
+    """
+    Test that dry-run summary shows individual cascade IDs.
+    """
+    SupersetClient = mocker.patch("preset_cli.cli.superset.delete.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [{"id": 1}]
+    client.export_zip.return_value = make_export_zip()
+    client.get_resources.side_effect = [
+        [{"id": 1}],
+        [{"id": 1, "uuid": "chart-uuid"}],
+    ]
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "delete-assets",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+            "--cascade-charts",
+            "--skip-shared-check",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "[ID: 1]" in result.output
