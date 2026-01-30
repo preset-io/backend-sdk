@@ -40,3 +40,11 @@ class In(Operator):
     """
 
     operator = "in"
+
+
+class Contains(Operator):
+    """
+    Operator for substring/contains filters.
+    """
+
+    operator = "ct"

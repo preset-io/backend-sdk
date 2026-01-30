@@ -11,9 +11,11 @@ from typing import IO, Any, Dict, Tuple
 import click
 import yaml
 
+from preset_cli.api.operators import Contains
 from preset_cli.lib import dict_merge
 
 LOG_FILE_PATH = Path("progress.log")
+CONTAINS_FILTER_KEYS = {"dashboard_title"}
 DASHBOARD_FILTER_KEYS: Dict[str, type] = {
     "id": int,
     "slug": str,
@@ -139,6 +141,10 @@ def parse_filters(
             )
 
         value_type = allowed_keys[key]
-        parsed[key] = _coerce_filter_value(value, value_type, key)
+        coerced = _coerce_filter_value(value, value_type, key)
+        if key in CONTAINS_FILTER_KEYS:
+            parsed[key] = Contains(coerced)
+        else:
+            parsed[key] = coerced
 
     return parsed
