@@ -4,6 +4,7 @@ Delete Superset assets.
 
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 from typing import Any, Dict, Iterable, List, Set, Tuple
 from zipfile import ZipFile
@@ -392,6 +393,22 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
         dry_run=False,
     )
 
+    # Pre-delete backup — always-on, near-zero cost (reuses cascade export)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = f"/tmp/preset-cli-backup-delete-{timestamp}.zip"
+    if cascade_charts:
+        buf.seek(0)
+        backup_data = buf.read()
+    else:
+        backup_buf = client.export_zip("dashboard", list(dashboard_ids))
+        backup_data = backup_buf.read()
+    with open(backup_path, "wb") as backup_file:
+        backup_file.write(backup_data)
+    click.echo(f"\nBackup saved to: {backup_path}")
+    click.echo(
+        f"To restore, run: preset-cli superset import-assets {backup_path} --overwrite\n",
+    )
+
     failures: List[str] = []
 
     def _delete(resource_name: str, resource_ids: Iterable[int]) -> None:
@@ -410,3 +427,7 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
         click.echo("Some deletions failed:")
         for failure in failures:
             click.echo(f"  {failure}")
+        click.echo(f"\nA backup was saved before deletion: {backup_path}")
+        click.echo(
+            f"To restore, run: preset-cli superset import-assets {backup_path} --overwrite",
+        )

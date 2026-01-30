@@ -166,6 +166,7 @@ def test_delete_assets_execute(mocker: MockerFixture) -> None:
     client.get_dashboards.return_value = [
         {"id": 1, "dashboard_title": "Test", "slug": "test"},
     ]
+    client.export_zip.return_value = make_export_zip()
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
     runner = CliRunner()
@@ -381,6 +382,7 @@ def test_delete_assets_deletion_error_partial(mocker: MockerFixture) -> None:
         {"id": 1, "dashboard_title": "One", "slug": "one"},
         {"id": 2, "dashboard_title": "Two", "slug": "two"},
     ]
+    client.export_zip.return_value = make_export_zip()
     client.delete_resource.side_effect = [Exception("boom"), None]
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
@@ -402,7 +404,43 @@ def test_delete_assets_deletion_error_partial(mocker: MockerFixture) -> None:
     )
     assert result.exit_code == 0
     assert "some deletions failed" in result.output.lower()
+    assert "backup was saved before deletion" in result.output.lower()
+    assert "import-assets" in result.output
     assert client.delete_resource.call_count == 2
+
+
+def test_delete_assets_backup_created(mocker: MockerFixture) -> None:
+    """
+    Test pre-delete backup is always created.
+    """
+    SupersetClient = mocker.patch("preset_cli.cli.superset.delete.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [
+        {"id": 1, "dashboard_title": "Test", "slug": "test"},
+    ]
+    client.export_zip.return_value = make_export_zip()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "delete-assets",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+            "--no-dry-run",
+            "--confirm",
+            "DELETE",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "backup saved to:" in result.output.lower()
+    assert "import-assets" in result.output
+    assert "--overwrite" in result.output
 
 
 def test_delete_assets_shared_dep_skipped(mocker: MockerFixture) -> None:
