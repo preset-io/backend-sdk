@@ -18,27 +18,13 @@ from preset_cli.lib import remove_root
 
 
 def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
-    uuids = {"charts": set(), "datasets": set(), "databases": set()}
-    with ZipFile(buf) as bundle:
-        for file_name in bundle.namelist():
-            relative = remove_root(file_name)
-            if not relative.endswith((".yaml", ".yml")):
-                continue
-            if not (
-                relative.startswith("charts/")
-                or relative.startswith("datasets/")
-                or relative.startswith("databases/")
-            ):
-                continue
-            config = yaml.load(bundle.read(file_name), Loader=yaml.SafeLoader) or {}
-            if uuid := config.get("uuid"):
-                if relative.startswith("charts/"):
-                    uuids["charts"].add(uuid)
-                elif relative.startswith("datasets/"):
-                    uuids["datasets"].add(uuid)
-                elif relative.startswith("databases/"):
-                    uuids["databases"].add(uuid)
-    return uuids
+    """Extract UUID sets from a dashboard export ZIP."""
+    chart_uuids, dataset_uuids, database_uuids, _, _ = _extract_dependency_maps(buf)
+    return {
+        "charts": chart_uuids,
+        "datasets": dataset_uuids,
+        "databases": database_uuids,
+    }
 
 
 def _extract_dependency_maps(buf: BytesIO) -> Tuple[Set[str], Set[str], Set[str], Dict[str, str], Dict[str, str]]:
