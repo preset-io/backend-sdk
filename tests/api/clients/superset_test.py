@@ -1662,6 +1662,30 @@ def test_delete_dashboard(mocker: MockerFixture) -> None:
     delete_resource.assert_called_with("dashboard", 1)
 
 
+def test_delete_dataset(mocker: MockerFixture) -> None:
+    """
+    Test the ``delete_dataset`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    delete_resource = mocker.patch.object(client, "delete_resource")
+
+    client.delete_dataset(1)
+    delete_resource.assert_called_with("dataset", 1)
+
+
+def test_delete_database(mocker: MockerFixture) -> None:
+    """
+    Test the ``delete_database`` method.
+    """
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    delete_resource = mocker.patch.object(client, "delete_resource")
+
+    client.delete_database(1)
+    delete_resource.assert_called_with("database", 1)
+
+
 def test_get_users(mocker: MockerFixture) -> None:
     """
     Test the ``get_users`` method.

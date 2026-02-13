@@ -4,8 +4,10 @@ Delete Superset assets.
 
 from __future__ import annotations
 
+import tempfile
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Set, Tuple
 from zipfile import ZipFile
 
@@ -14,7 +16,15 @@ import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
-from preset_cli.cli.superset.lib import DASHBOARD_FILTER_KEYS, parse_filters
+from preset_cli.api.operators import In
+from preset_cli.cli.superset.lib import (
+    DELETE_FILTER_KEYS,
+    coerce_bool_option,
+    fetch_with_filter_fallback,
+    filter_resources_locally,
+    is_filter_not_allowed_error,
+    parse_filters,
+)
 from preset_cli.lib import remove_root
 
 
@@ -28,7 +38,9 @@ def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
     }
 
 
-def _extract_dependency_maps(buf: BytesIO) -> Tuple[Set[str], Set[str], Set[str], Dict[str, str], Dict[str, str]]:
+def _extract_dependency_maps(
+    buf: BytesIO,
+) -> Tuple[Set[str], Set[str], Set[str], Dict[str, str], Dict[str, str]]:
     chart_uuids: Set[str] = set()
     dataset_uuids: Set[str] = set()
     database_uuids: Set[str] = set()
@@ -64,6 +76,64 @@ def _extract_dependency_maps(buf: BytesIO) -> Tuple[Set[str], Set[str], Set[str]
         chart_dataset_map,
         dataset_database_map,
     )
+
+
+def _parse_db_passwords(db_password: Tuple[str, ...]) -> Dict[str, str]:
+    passwords: Dict[str, str] = {}
+    for pair in db_password:
+        if "=" not in pair:
+            raise click.ClickException(
+                "Invalid --db-password value. Use the format uuid=password.",
+            )
+        uuid, password = pair.split("=", 1)
+        passwords[uuid] = password
+    return passwords
+
+
+def _write_backup(backup_data: bytes) -> str:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = (
+        Path(tempfile.gettempdir()) / f"preset-cli-backup-delete-{timestamp}.zip"
+    )
+    backup_path.write_bytes(backup_data)
+    return str(backup_path)
+
+
+def _apply_db_passwords_to_backup(
+    backup_data: bytes,
+    db_passwords: Dict[str, str],
+) -> BytesIO:
+    if not db_passwords:
+        buf = BytesIO(backup_data)
+        buf.seek(0)
+        return buf
+
+    input_buf = BytesIO(backup_data)
+    output_buf = BytesIO()
+    with ZipFile(input_buf) as src, ZipFile(output_buf, "w") as dest:
+        for file_name in src.namelist():
+            data = src.read(file_name)
+            relative = remove_root(file_name)
+            if relative.startswith("databases/") and file_name.endswith(
+                (".yaml", ".yml"),
+            ):
+                config = yaml.load(data, Loader=yaml.SafeLoader) or {}
+                if uuid := config.get("uuid"):
+                    if uuid in db_passwords:
+                        config["password"] = db_passwords[uuid]
+                        data = yaml.dump(config).encode()
+            dest.writestr(file_name, data)
+    output_buf.seek(0)
+    return output_buf
+
+
+def _dataset_db_id(dataset: Dict[str, Any]) -> int | None:
+    if "database_id" in dataset:
+        return dataset["database_id"]
+    database = dataset.get("database")
+    if isinstance(database, dict):
+        return database.get("id")
+    return None
 
 
 def _build_uuid_map(
@@ -116,7 +186,54 @@ def _format_dashboard_summary(dashboards: Iterable[Dict[str, Any]]) -> List[str]
     return lines
 
 
-def _echo_summary(
+RESOURCE_NAME_KEYS = {
+    "chart": ("slice_name", "name"),
+    "dataset": ("table_name", "name"),
+    "database": ("database_name", "name"),
+}
+
+
+def _format_resource_summary(
+    resource_name: str,
+    resources: Iterable[Dict[str, Any]],
+) -> List[str]:
+    lines = []
+    keys = RESOURCE_NAME_KEYS.get(resource_name, ("name",))
+    for resource in resources:
+        label = next(
+            (resource.get(key) for key in keys if resource.get(key)),
+            None,
+        )
+        if label:
+            lines.append(f"- [ID: {resource['id']}] {label}")
+        else:
+            lines.append(f"- [ID: {resource['id']}]")
+    return lines
+
+
+def _echo_resource_summary(
+    resource_name: str,
+    resources: List[Dict[str, Any]],
+    dry_run: bool,
+) -> None:
+    if dry_run:
+        click.echo("No changes will be made. Assets to be deleted:\n")
+    else:
+        click.echo("Assets to be deleted:\n")
+
+    title = f"{resource_name.title()}s"
+    click.echo(f"{title} ({len(resources)}):")
+    for line in _format_resource_summary(resource_name, resources):
+        click.echo(f"  {line}")
+
+    if dry_run:
+        click.echo(
+            "\nTo proceed with deletion, run with: "
+            "--no-dry-run or --dry-run=false --confirm=DELETE",
+        )
+
+
+def _echo_summary(  # pylint: disable=too-many-arguments, too-many-branches
     dashboards: List[Dict[str, Any]],
     chart_ids: Set[int],
     dataset_ids: Set[int],
@@ -158,15 +275,25 @@ def _echo_summary(
     if any(shared.values()):
         click.echo("\nShared (skipped):")
         if shared["charts"]:
-            click.echo(f"  Charts ({len(shared['charts'])}): {', '.join(sorted(shared['charts']))}")
+            charts = ", ".join(sorted(shared["charts"]))
+            click.echo(
+                f"  Charts ({len(shared['charts'])}): {charts}",
+            )
         if shared["datasets"]:
-            click.echo(f"  Datasets ({len(shared['datasets'])}): {', '.join(sorted(shared['datasets']))}")
+            datasets = ", ".join(sorted(shared["datasets"]))
+            click.echo(
+                f"  Datasets ({len(shared['datasets'])}): {datasets}",
+            )
         if shared["databases"]:
-            click.echo(f"  Databases ({len(shared['databases'])}): {', '.join(sorted(shared['databases']))}")
+            databases = ", ".join(sorted(shared["databases"]))
+            click.echo(
+                f"  Databases ({len(shared['databases'])}): {databases}",
+            )
 
     if dry_run:
         click.echo(
-            "\nTo proceed with deletion, run with: --no-dry-run --confirm=DELETE",
+            "\nTo proceed with deletion, run with: "
+            "--no-dry-run or --dry-run=false --confirm=DELETE",
         )
 
 
@@ -174,7 +301,10 @@ def _echo_summary(
 @click.option(
     "--asset-type",
     required=True,
-    type=click.Choice(["dashboard"], case_sensitive=False),
+    type=click.Choice(
+        ["dashboard", "chart", "dataset", "database"],
+        case_sensitive=False,
+    ),
     help="Asset type to delete",
 )
 @click.option(
@@ -207,10 +337,17 @@ def _echo_summary(
     help="Also delete associated databases (requires --cascade-datasets)",
 )
 @click.option(
-    "--dry-run/--no-dry-run",
+    "--dry-run",
     "-r",
-    default=True,
-    help="Preview without making changes (default: dry-run)",
+    default=None,
+    help="Preview without making changes (default: true)",
+)
+@click.option(
+    "--no-dry-run",
+    "dry_run",
+    flag_value="false",
+    default=None,
+    help="Alias for --dry-run=false",
 )
 @click.option(
     "--skip-shared-check",
@@ -223,8 +360,18 @@ def _echo_summary(
     default=None,
     help='Must be "DELETE" to proceed with actual deletion',
 )
+@click.option(
+    "--rollback/--no-rollback",
+    default=True,
+    help="Attempt rollback if any deletion fails",
+)
+@click.option(
+    "--db-password",
+    multiple=True,
+    help="Password for DB connections during rollback (eg, uuid1=my_db_password)",
+)
 @click.pass_context
-def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches
+def delete_assets(  # pylint: disable=too-many-arguments, too-many-locals
     ctx: click.core.Context,
     asset_type: str,
     filters: Tuple[str, ...],
@@ -234,12 +381,28 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
     dry_run: bool,
     skip_shared_check: bool,
     confirm: str | None,
+    rollback: bool,
+    db_password: Tuple[str, ...],
 ) -> None:
     """
     Delete assets by filters.
     """
-    if asset_type.lower() != "dashboard":
-        raise click.UsageError("Only dashboard assets are supported.")
+    resource_name = asset_type.lower()
+    if dry_run is None:
+        dry_run = True
+    dry_run = coerce_bool_option(dry_run, "dry_run")
+    db_passwords: Dict[str, str] = {}
+
+    if resource_name != "dashboard":
+        rollback = False
+        if any(
+            [cascade_charts, cascade_datasets, cascade_databases, skip_shared_check],
+        ):
+            raise click.UsageError(
+                "Cascade options are only supported for dashboard assets.",
+            )
+    else:
+        db_passwords = _parse_db_passwords(db_password)
     if cascade_datasets and not cascade_charts:
         raise click.UsageError(
             "--cascade-datasets requires --cascade-charts.",
@@ -253,16 +416,98 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
-    parsed_filters = parse_filters(filters, DASHBOARD_FILTER_KEYS)
-    try:
-        dashboards = client.get_dashboards(**parsed_filters)
-    except Exception as exc:  # pylint: disable=broad-except
-        filter_keys = ", ".join(parsed_filters.keys())
-        raise click.ClickException(
-            f"Failed to fetch dashboards ({exc}). "
-            f"This may indicate that filter key(s) {filter_keys} "
-            "may not be supported by this Superset version.",
-        ) from exc
+    parsed_filters = parse_filters(filters, DELETE_FILTER_KEYS[resource_name])
+    if resource_name != "dashboard":
+        _delete_non_dashboard_assets(
+            client,
+            resource_name,
+            parsed_filters,
+            dry_run,
+            confirm,
+        )
+        return
+
+    _delete_dashboard_assets(
+        client,
+        parsed_filters,
+        dry_run,
+        confirm,
+        cascade_charts,
+        cascade_datasets,
+        cascade_databases,
+        skip_shared_check,
+        rollback,
+        db_passwords,
+    )
+
+
+def _delete_non_dashboard_assets(
+    client: SupersetClient,
+    resource_name: str,
+    parsed_filters: Dict[str, Any],
+    dry_run: bool,
+    confirm: str | None,
+) -> None:
+    if resource_name == "database":
+        resources = filter_resources_locally(
+            client.get_resources(resource_name),
+            parsed_filters,
+        )
+    else:
+        resources = fetch_with_filter_fallback(
+            lambda **kw: client.get_resources(resource_name, **kw),
+            lambda: client.get_resources(resource_name),
+            parsed_filters,
+            f"{resource_name}s",
+        )
+    if not resources:
+        click.echo(f"No {resource_name}s match the specified filters.")
+        return
+
+    resource_ids = {resource["id"] for resource in resources}
+    if dry_run:
+        _echo_resource_summary(resource_name, resources, dry_run=True)
+        return
+
+    if confirm != "DELETE":
+        click.echo(
+            "Deletion aborted. Pass --confirm=DELETE to proceed with deletion.",
+        )
+        return
+
+    _echo_resource_summary(resource_name, resources, dry_run=False)
+    resource_failures: List[str] = []
+
+    for resource_id in resource_ids:
+        try:
+            client.delete_resource(resource_name, resource_id)
+        except Exception as exc:  # pylint: disable=broad-except
+            resource_failures.append(f"{resource_name}:{resource_id} ({exc})")
+
+    if resource_failures:
+        click.echo("Some deletions failed:")
+        for failure in resource_failures:
+            click.echo(f"  {failure}")
+
+
+def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-locals, too-many-branches, too-many-statements
+    client: SupersetClient,
+    parsed_filters: Dict[str, Any],
+    dry_run: bool,
+    confirm: str | None,
+    cascade_charts: bool,
+    cascade_datasets: bool,
+    cascade_databases: bool,
+    skip_shared_check: bool,
+    rollback: bool,
+    db_passwords: Dict[str, str],
+) -> None:
+    dashboards = fetch_with_filter_fallback(
+        client.get_dashboards,
+        client.get_dashboards,
+        parsed_filters,
+        "dashboards",
+    )
     if not dashboards:
         click.echo("No dashboards match the specified filters.")
         return
@@ -273,16 +518,17 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
     database_uuids: Set[str] = set()
     chart_dataset_map: Dict[str, str] = {}
     dataset_database_map: Dict[str, str] = {}
+    cascade_buf: BytesIO | None = None
 
     if cascade_charts:
-        buf = client.export_zip("dashboard", list(dashboard_ids))
+        cascade_buf = client.export_zip("dashboard", list(dashboard_ids))
         (
             chart_uuids,
             dataset_uuids,
             database_uuids,
             chart_dataset_map,
             dataset_database_map,
-        ) = _extract_dependency_maps(buf)
+        ) = _extract_dependency_maps(cascade_buf)
 
         if not cascade_datasets:
             dataset_uuids = set()
@@ -290,7 +536,11 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
         if not cascade_databases:
             database_uuids = set()
 
-    shared_uuids = {"charts": set(), "datasets": set(), "databases": set()}
+    shared_uuids: Dict[str, Set[str]] = {
+        "charts": set(),
+        "datasets": set(),
+        "databases": set(),
+    }
     if cascade_charts and not skip_shared_check:
         all_dashboards = client.get_resources("dashboard")
         other_ids = {d["id"] for d in all_dashboards} - dashboard_ids
@@ -379,9 +629,57 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
 
     if confirm != "DELETE":
         click.echo(
-            'Deletion aborted. Pass --confirm=DELETE to proceed with deletion.',
+            "Deletion aborted. Pass --confirm=DELETE to proceed with deletion.",
         )
         return
+
+    if rollback and cascade_databases and database_ids and not db_passwords:
+        raise click.ClickException(
+            "Rollback requires a DB password (--db-password) when deleting databases.",
+        )
+
+    if cascade_databases and database_ids:
+        filtered_by_db = False
+        try:
+            datasets = client.get_resources(
+                "dataset",
+                database_id=In(list(database_ids)),
+            )
+            filtered_by_db = True
+        except Exception as exc:  # pylint: disable=broad-except
+            if is_filter_not_allowed_error(exc):
+                datasets = client.get_resources("dataset")
+            else:
+                raise click.ClickException(
+                    f"Failed to preflight datasets ({exc}).",
+                ) from exc
+
+        if not filtered_by_db:
+            filtered_datasets = []
+            missing_db_info = False
+            for dataset in datasets:
+                db_id = _dataset_db_id(dataset)
+                if db_id is None:
+                    missing_db_info = True
+                    continue
+                if db_id in database_ids:
+                    filtered_datasets.append(dataset)
+            if missing_db_info:
+                click.echo(
+                    "Warning: Cannot verify all datasets for target databases; "
+                    "skipping preflight check.",
+                )
+            datasets = filtered_datasets
+
+        extra = [
+            dataset for dataset in datasets if dataset.get("id") not in dataset_ids
+        ]
+        if extra:
+            extra_ids = ", ".join(str(dataset.get("id")) for dataset in extra)
+            raise click.ClickException(
+                "Aborting deletion: databases have datasets not in cascade set. "
+                f"Extra dataset IDs: {extra_ids}",
+            )
 
     _echo_summary(
         dashboards,
@@ -394,27 +692,27 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
     )
 
     # Pre-delete backup — always-on, near-zero cost (reuses cascade export)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_path = f"/tmp/preset-cli-backup-delete-{timestamp}.zip"
-    if cascade_charts:
-        buf.seek(0)
-        backup_data = buf.read()
+    if cascade_buf is not None:
+        cascade_buf.seek(0)
+        backup_data = cascade_buf.read()
     else:
         backup_buf = client.export_zip("dashboard", list(dashboard_ids))
         backup_data = backup_buf.read()
-    with open(backup_path, "wb") as backup_file:
-        backup_file.write(backup_data)
+    backup_path = _write_backup(backup_data)
     click.echo(f"\nBackup saved to: {backup_path}")
     click.echo(
         f"To restore, run: preset-cli superset import-assets {backup_path} --overwrite\n",
     )
 
     failures: List[str] = []
+    deleted_any = False
 
     def _delete(resource_name: str, resource_ids: Iterable[int]) -> None:
+        nonlocal deleted_any
         for resource_id in resource_ids:
             try:
                 client.delete_resource(resource_name, resource_id)
+                deleted_any = True
             except Exception as exc:  # pylint: disable=broad-except
                 failures.append(f"{resource_name}:{resource_id} ({exc})")
 
@@ -427,7 +725,19 @@ def delete_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
         click.echo("Some deletions failed:")
         for failure in failures:
             click.echo(f"  {failure}")
-        click.echo(f"\nA backup was saved before deletion: {backup_path}")
-        click.echo(
-            f"To restore, run: preset-cli superset import-assets {backup_path} --overwrite",
-        )
+
+        if rollback and deleted_any:
+            click.echo("\nRollback attempted...")
+            try:
+                rollback_buf = _apply_db_passwords_to_backup(
+                    backup_data,
+                    db_passwords,
+                )
+                client.import_zip("dashboard", rollback_buf, overwrite=True)
+                click.echo("Rollback succeeded.")
+            except Exception as exc:  # pylint: disable=broad-except
+                click.echo(f"Rollback failed: {exc}")
+                raise click.ClickException(
+                    "Rollback failed. A backup zip is available for manual restore.",
+                ) from exc
+        return

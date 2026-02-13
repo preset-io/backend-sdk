@@ -15,12 +15,17 @@ import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
-from preset_cli.cli.superset.lib import DASHBOARD_FILTER_KEYS, parse_filters
+from preset_cli.cli.superset.lib import (
+    DASHBOARD_FILTER_KEYS,
+    fetch_with_filter_fallback,
+    parse_filters,
+)
 from preset_cli.lib import remove_root, split_comma
 
 JINJA2_OPEN_MARKER = "__JINJA2_OPEN__"
 JINJA2_CLOSE_MARKER = "__JINJA2_CLOSE__"
 assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
+
 
 def get_newline_char(force_unix_eol: bool = False) -> Union[str, None]:
     """Returns the newline character used by the open function"""
@@ -118,7 +123,9 @@ def _get_dashboard_dataset_filter_uuids(config: Dict[str, Any]) -> Set[str]:
     return dataset_uuids
 
 
-def restructure_per_asset_folder(root: Path) -> None:
+def restructure_per_asset_folder(  # pylint: disable=too-many-locals, too-many-branches, too-many-statements
+    root: Path,
+) -> None:
     """
     Reorganize flat export into per-dashboard subfolders.
     """
@@ -153,7 +160,7 @@ def restructure_per_asset_folder(root: Path) -> None:
         dashboard_dir = dashboards_dir / dashboard_file.stem
         dashboard_dir.mkdir(parents=True, exist_ok=True)
 
-        moved_dashboard = dashboard_dir / dashboard_file.name
+        moved_dashboard = dashboard_dir / "dashboard.yaml"
         dashboard_file.rename(moved_dashboard)
 
         chart_uuids = set(_get_dashboard_chart_uuids(config))
@@ -381,7 +388,7 @@ def check_asset_uniqueness(  # pylint: disable=too-many-arguments
     help="Remove numeric suffixes from exported YAML filenames",
 )
 @click.pass_context
-def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
+def export_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches, too-many-statements
     ctx: click.core.Context,
     directory: Optional[str],
     asset_type: Tuple[str, ...],
@@ -428,15 +435,12 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
             )
         asset_types = {"dashboard"}
         parsed_filters = parse_filters(filters, DASHBOARD_FILTER_KEYS)
-        try:
-            dashboards = client.get_dashboards(**parsed_filters)
-        except Exception as exc:  # pylint: disable=broad-except
-            filter_keys = ", ".join(parsed_filters.keys())
-            raise click.ClickException(
-                f"Failed to fetch dashboards ({exc}). "
-                f"This may indicate that filter key(s) {filter_keys} "
-                "may not be supported by this Superset version.",
-            ) from exc
+        dashboards = fetch_with_filter_fallback(
+            client.get_dashboards,
+            client.get_dashboards,
+            parsed_filters,
+            "dashboards",
+        )
 
         if not dashboards:
             click.echo("No dashboards match the specified filters.")
@@ -453,37 +457,53 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
 
     simple_name_registry: Dict[Path, Set[str]] = {}
 
-    temp_root = None
     if output_zip:
-        temp_root = tempfile.TemporaryDirectory()
-        root = Path(temp_root.name)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            export_root = Path(temp_dir)
+            for resource_name in ["database", "dataset", "chart", "dashboard"]:
+                if (not asset_types or resource_name in asset_types) and (
+                    ids[resource_name] or not ids_requested
+                ):
+                    export_resource(
+                        resource_name,
+                        ids[resource_name],
+                        export_root,
+                        client,
+                        overwrite,
+                        disable_jinja_escaping,
+                        skip_related=not ids_requested,
+                        force_unix_eol=force_unix_eol,
+                        simple_file_names=simple_file_names,
+                        simple_name_registry=simple_name_registry,
+                    )
 
-    try:
-        for resource_name in ["database", "dataset", "chart", "dashboard"]:
-            if (not asset_types or resource_name in asset_types) and (
-                ids[resource_name] or not ids_requested
-            ):
-                export_resource(
-                    resource_name,
-                    ids[resource_name],
-                    root,
-                    client,
-                    overwrite,
-                    disable_jinja_escaping,
-                    skip_related=not ids_requested,
-                    force_unix_eol=force_unix_eol,
-                    simple_file_names=simple_file_names,
-                    simple_name_registry=simple_name_registry,
-                )
+            if per_asset_folder:
+                restructure_per_asset_folder(export_root)
 
-        if per_asset_folder:
-            restructure_per_asset_folder(root)
+            zip_directory(export_root, Path(output_zip))
+        return
 
-        if output_zip:
-            zip_directory(root, Path(output_zip))
-    finally:
-        if temp_root:
-            temp_root.cleanup()
+    assert root is not None
+
+    for resource_name in ["database", "dataset", "chart", "dashboard"]:
+        if (not asset_types or resource_name in asset_types) and (
+            ids[resource_name] or not ids_requested
+        ):
+            export_resource(
+                resource_name,
+                ids[resource_name],
+                root,
+                client,
+                overwrite,
+                disable_jinja_escaping,
+                skip_related=not ids_requested,
+                force_unix_eol=force_unix_eol,
+                simple_file_names=simple_file_names,
+                simple_name_registry=simple_name_registry,
+            )
+
+    if per_asset_folder:
+        restructure_per_asset_folder(root)
 
 
 def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
