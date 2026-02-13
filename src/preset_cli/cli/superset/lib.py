@@ -6,22 +6,30 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import IO, Any, Dict, Tuple
+from typing import IO, Any, Callable, Dict, List, Tuple
 
 import click
 import yaml
 
 from preset_cli.api.operators import Contains
+from preset_cli.exceptions import SupersetError
 from preset_cli.lib import dict_merge
 
 LOG_FILE_PATH = Path("progress.log")
 CONTAINS_FILTER_KEYS = {"dashboard_title"}
+LOCAL_FILTER_KEYS = {"certified_by", "is_managed_externally"}
 DASHBOARD_FILTER_KEYS: Dict[str, type] = {
     "id": int,
     "slug": str,
     "dashboard_title": str,
     "certified_by": str,
     "is_managed_externally": bool,
+}
+DELETE_FILTER_KEYS: Dict[str, Dict[str, type]] = {
+    "dashboard": DASHBOARD_FILTER_KEYS,
+    "chart": {"id": int},
+    "dataset": {"id": int},
+    "database": {"id": int},
 }
 
 
@@ -90,6 +98,20 @@ def clean_logs(log_type: LogType, logs: Dict[LogType, Any]) -> None:
         LOG_FILE_PATH.unlink()
 
 
+def _normalize_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    if isinstance(value, int):
+        return bool(value)
+    return None
+
+
 def _coerce_filter_value(
     value: str,
     value_type: type,
@@ -99,14 +121,12 @@ def _coerce_filter_value(
     Coerce a filter value to the desired type.
     """
     if value_type is bool:
-        normalized = value.strip().lower()
-        if normalized == "true":
-            return True
-        if normalized == "false":
-            return False
-        raise click.BadParameter(
-            f"Invalid value for {key}. Expected true or false.",
-        )
+        result = _normalize_bool(value)
+        if result is None:
+            raise click.BadParameter(
+                f"Invalid value for {key}. Expected true or false.",
+            )
+        return result
 
     try:
         return value_type(value)
@@ -114,6 +134,83 @@ def _coerce_filter_value(
         raise click.BadParameter(
             f"Invalid value for {key}. Expected {value_type.__name__}.",
         ) from exc
+
+
+def coerce_bool_option(
+    value: Any,
+    key: str,
+) -> bool:
+    """
+    Coerce an option value to bool.
+    """
+    if isinstance(value, (bool, str)):
+        result = _normalize_bool(value)
+        if result is not None:
+            return result
+
+    raise click.BadParameter(
+        f"Invalid value for {key}. Expected true or false.",
+    )
+
+
+def is_filter_not_allowed_error(exc: Exception) -> bool:
+    """
+    Return True if a Superset error indicates filters are not supported.
+    """
+    if not isinstance(exc, SupersetError):
+        return False
+
+    for error in exc.errors:
+        message = str(error.get("message", "")).lower()
+        if "filter column" in message and "not allowed to filter" in message:
+            return True
+
+    return False
+
+
+def filter_resources_locally(  # pylint: disable=too-many-return-statements
+    resources: list[dict[str, Any]],
+    filters: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    Apply parsed filters to a list of resources locally.
+    """
+
+    def matches(resource: dict[str, Any]) -> bool:
+        for key, expected in filters.items():
+            actual = resource.get(key)
+
+            if isinstance(expected, Contains):
+                actual_text = "" if actual is None else str(actual)
+                if str(expected.value).lower() not in actual_text.lower():
+                    return False
+                continue
+
+            if isinstance(expected, bool):
+                actual_bool = _normalize_bool(actual)
+                if actual_bool is None or actual_bool != expected:
+                    return False
+                continue
+
+            if expected == "" and (actual is None or actual == ""):
+                continue
+
+            if isinstance(expected, int):
+                try:
+                    if actual is None:
+                        return False
+                    if int(str(actual)) != expected:
+                        return False
+                except (TypeError, ValueError):
+                    return False
+                continue
+
+            if str(actual) != str(expected):
+                return False
+
+        return True
+
+    return [resource for resource in resources if matches(resource)]
 
 
 def parse_filters(
@@ -148,3 +245,32 @@ def parse_filters(
             parsed[key] = coerced
 
     return parsed
+
+
+def fetch_with_filter_fallback(
+    fetch_filtered: Callable[..., List[Dict[str, Any]]],
+    fetch_all: Callable[[], List[Dict[str, Any]]],
+    parsed_filters: Dict[str, Any],
+    resource_label: str,
+) -> List[Dict[str, Any]]:
+    """
+    Try fetching with server-side filters; fall back to local filtering.
+
+    If any filter key is in LOCAL_FILTER_KEYS the local path is used immediately.
+    On a ``filter not allowed`` API error, results are fetched unfiltered and
+    filtered locally.  Any other exception is wrapped in a click.ClickException.
+    """
+    if set(parsed_filters) & LOCAL_FILTER_KEYS:
+        return filter_resources_locally(fetch_all(), parsed_filters)
+
+    try:
+        return fetch_filtered(**parsed_filters)
+    except Exception as exc:  # pylint: disable=broad-except
+        if is_filter_not_allowed_error(exc):
+            return filter_resources_locally(fetch_all(), parsed_filters)
+        filter_keys = ", ".join(parsed_filters.keys())
+        raise click.ClickException(
+            f"Failed to fetch {resource_label} ({exc}). "
+            f"This may indicate that filter key(s) {filter_keys} "
+            "may not be supported by this Superset version.",
+        ) from exc

@@ -20,15 +20,18 @@ from pytest_mock import MockerFixture
 
 from preset_cli.auth.main import Auth
 from preset_cli.cli.superset.export import (
+    _unique_simple_name,
     build_local_uuid_mapping,
     check_asset_uniqueness,
     export_resource,
     extract_uuid_from_asset,
+    restructure_per_asset_folder,
 )
 from preset_cli.cli.superset.main import superset_cli
+from preset_cli.exceptions import SupersetError
 
 
-def make_dashboard_export_zip(
+def make_dashboard_export_zip(  # pylint: disable=too-many-arguments
     dashboard_file: str = "dashboards/quarterly_sales_123.yaml",
     chart_file: str = "charts/sales_chart_456.yaml",
     dataset_file: str = "datasets/db1/sales_dataset_789.yaml",
@@ -2160,6 +2163,55 @@ def test_export_assets_with_filter(mocker: MockerFixture, fs: FakeFilesystem) ->
     )
 
 
+def test_export_assets_with_certified_by_local_filter(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` uses local filtering for certified_by.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [
+        {"id": 11, "certified_by": "Alice"},
+        {"id": 12, "certified_by": "Bob"},
+    ]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "certified_by=Alice",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    client.get_dashboards.assert_called_once_with()
+    export_resource.assert_called_once_with(
+        "dashboard",
+        {11},
+        Path("/path/to/root"),
+        client,
+        False,
+        False,
+        skip_related=False,
+        force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry={},
+    )
+
+
 def test_export_assets_with_multiple_filters(
     mocker: MockerFixture,
     fs: FakeFilesystem,
@@ -2172,7 +2224,9 @@ def test_export_assets_with_multiple_filters(
 
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.get_dashboards.return_value = [{"id": 22, "slug": "test"}]
+    client.get_dashboards.return_value = [
+        {"id": 22, "slug": "test", "certified_by": "Data Team"},
+    ]
     export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
@@ -2193,10 +2247,7 @@ def test_export_assets_with_multiple_filters(
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    client.get_dashboards.assert_called_once_with(
-        slug="test",
-        certified_by="Data Team",
-    )
+    client.get_dashboards.assert_called_once_with()
     export_resource.assert_called_once_with(
         "dashboard",
         {22},
@@ -2284,11 +2335,10 @@ def test_export_assets_output_zip(mocker: MockerFixture, fs: FakeFilesystem) -> 
     output_zip = Path("/path/to/output.zip")
     fs.create_dir(output_zip.parent)
 
-    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
-    client = SupersetClient()
+    mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
 
-    def _fake_export_resource(  # pylint: disable=unused-argument
+    def _fake_export_resource(  # pylint: disable=unused-argument, too-many-arguments
         resource_name,
         requested_ids,
         root,
@@ -2501,7 +2551,7 @@ def test_export_assets_per_asset_folder(
     assert result.exit_code == 0
 
     dashboard_dir = root / "dashboards/quarterly_sales_123"
-    assert (dashboard_dir / "quarterly_sales_123.yaml").exists()
+    assert (dashboard_dir / "dashboard.yaml").exists()
     assert (dashboard_dir / "charts/sales_chart_456.yaml").exists()
     assert (dashboard_dir / "datasets/db1/sales_dataset_789.yaml").exists()
     assert (dashboard_dir / "databases/db1.yaml").exists()
@@ -2546,7 +2596,7 @@ def test_export_assets_per_asset_folder_with_simple_names(
     assert result.exit_code == 0
 
     dashboard_dir = root / "dashboards/quarterly_sales"
-    assert (dashboard_dir / "quarterly_sales.yaml").exists()
+    assert (dashboard_dir / "dashboard.yaml").exists()
     assert (dashboard_dir / "charts/sales_chart.yaml").exists()
     assert (dashboard_dir / "datasets/db1/sales_dataset.yaml").exists()
     assert (dashboard_dir / "databases/db1.yaml").exists()
@@ -2588,5 +2638,161 @@ def test_export_assets_output_zip_with_per_asset_folder(
 
     with ZipFile(output_zip) as bundle:
         names = bundle.namelist()
-    assert "dashboards/quarterly_sales_123/quarterly_sales_123.yaml" in names
+    assert "dashboards/quarterly_sales_123/dashboard.yaml" in names
     assert "dashboards/quarterly_sales_123/charts/sales_chart_456.yaml" in names
+
+
+def test_unique_simple_name_multiple_collisions() -> None:
+    """
+    Test ``_unique_simple_name`` when base and suffixed names already exist.
+    """
+    parent = Path("/tmp/test")
+    registry = {parent: {"sales.yaml", "sales_2.yaml"}}
+
+    assert _unique_simple_name(parent, "sales.yaml", registry) == "sales_3.yaml"
+
+
+def test_restructure_per_asset_folder_missing_dashboards_dir(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``restructure_per_asset_folder`` returns when dashboards dir is absent.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    restructure_per_asset_folder(root)
+    assert not (root / "dashboards").exists()
+
+
+def test_restructure_per_asset_folder_missing_dependencies(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``restructure_per_asset_folder`` handles missing chart/dataset/database refs.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root / "dashboards")
+    fs.create_dir(root / "charts")
+    fs.create_dir(root / "datasets/db")
+    fs.create_dir(root / "databases")
+
+    dashboard = {
+        "uuid": "dash-uuid",
+        "position": {
+            "CHART_MISSING": {"type": "CHART", "meta": {"uuid": "chart-missing"}},
+            "CHART_PRESENT": {"type": "CHART", "meta": {"uuid": "chart-present"}},
+        },
+        "metadata": {
+            "native_filter_configuration": [
+                {"targets": [{"datasetUuid": "dataset-missing"}]},
+            ],
+        },
+    }
+    chart = {"uuid": "chart-present", "dataset_uuid": "dataset-present"}
+    dataset = {"uuid": "dataset-present", "database_uuid": "database-missing"}
+
+    (root / "dashboards/dash_1.yaml").write_text(yaml.dump(dashboard), encoding="utf-8")
+    (root / "charts/chart_1.yaml").write_text(yaml.dump(chart), encoding="utf-8")
+    (root / "datasets/db/ds_1.yaml").write_text(yaml.dump(dataset), encoding="utf-8")
+
+    restructure_per_asset_folder(root)
+
+    dashboard_dir = root / "dashboards/dash_1"
+    assert (dashboard_dir / "dashboard.yaml").exists()
+    assert (dashboard_dir / "charts/chart_1.yaml").exists()
+    assert (dashboard_dir / "datasets/db/ds_1.yaml").exists()
+
+
+def test_export_assets_filter_fallback_on_not_allowed_error(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` falls back to local filtering on unsupported API filters.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.side_effect = [
+        SupersetError(
+            errors=[{"message": "Filter column: slug not allowed to filter"}],
+        ),
+        [{"id": 9, "slug": "test"}],
+    ]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert client.get_dashboards.call_count == 2
+    export_resource.assert_called_once()
+
+
+def test_export_assets_filter_unexpected_error_raises(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` raises a ClickException for unexpected filter errors.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.side_effect = Exception("boom")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "may not be supported" in result.output
+
+
+def test_export_assets_missing_directory_error(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test ``export_assets`` fails when directory argument does not exist.
+    """
+    mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/does/not/exist",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "does not exist" in result.output.lower()

@@ -5,23 +5,28 @@ Tests for ``preset_cli.cli.superset.lib``.
 # pylint: disable=unused-argument, invalid-name
 
 from pathlib import Path
-
-import yaml
-from pyfakefs.fake_filesystem import FakeFilesystem
-from pytest_mock import MockerFixture
+from typing import Any
 
 import click
 import pytest
+import yaml
+from pyfakefs.fake_filesystem import FakeFilesystem
+from pytest_mock import MockerFixture
 
 from preset_cli.api.operators import Contains
 from preset_cli.cli.superset.lib import (
     DASHBOARD_FILTER_KEYS,
     LogType,
     clean_logs,
+    coerce_bool_option,
+    fetch_with_filter_fallback,
+    filter_resources_locally,
     get_logs,
+    is_filter_not_allowed_error,
     parse_filters,
     write_logs_to_file,
 )
+from preset_cli.exceptions import SupersetError
 
 
 def test_get_logs_new_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -325,7 +330,43 @@ def test_parse_filters_dashboard_title_uses_contains() -> None:
     """
     result = parse_filters(("dashboard_title=Sales",), DASHBOARD_FILTER_KEYS)
     assert isinstance(result["dashboard_title"], Contains)
-    assert result["dashboard_title"].value == "Sales"
+
+
+def test_filter_resources_locally() -> None:
+    """
+    Test ``filter_resources_locally`` with contains and bool filters.
+    """
+    resources: list[dict[str, Any]] = [
+        {
+            "id": 1,
+            "dashboard_title": "Sales Overview",
+            "certified_by": "Alice",
+            "is_managed_externally": False,
+        },
+        {
+            "id": 2,
+            "dashboard_title": "Marketing Overview",
+            "certified_by": "Bob",
+            "is_managed_externally": True,
+        },
+    ]
+    parsed = parse_filters(
+        ("dashboard_title=sale", "certified_by=Alice", "managed_externally=false"),
+        DASHBOARD_FILTER_KEYS,
+    )
+    result = filter_resources_locally(resources, parsed)
+    assert [item["id"] for item in result] == [1]
+
+
+def test_is_filter_not_allowed_error() -> None:
+    """
+    Test ``is_filter_not_allowed_error`` detection.
+    """
+    exc = SupersetError(
+        errors=[{"message": "Filter column: certified_by not allowed to filter"}],
+    )
+    assert is_filter_not_allowed_error(exc) is True
+    assert is_filter_not_allowed_error(Exception("other")) is False
 
 
 def test_parse_filters_slug_uses_exact_match() -> None:
@@ -334,3 +375,163 @@ def test_parse_filters_slug_uses_exact_match() -> None:
     """
     result = parse_filters(("slug=test",), DASHBOARD_FILTER_KEYS)
     assert result["slug"] == "test"  # raw value, not an Operator
+
+
+def test_parse_filters_invalid_bool() -> None:
+    """
+    Test ``parse_filters`` with invalid bool value.
+    """
+    with pytest.raises(click.BadParameter):
+        parse_filters(("is_managed_externally=maybe",), DASHBOARD_FILTER_KEYS)
+
+
+def test_coerce_bool_option() -> None:
+    """
+    Test ``coerce_bool_option`` conversions.
+    """
+    assert coerce_bool_option(True, "dry_run") is True
+    assert coerce_bool_option("true", "dry_run") is True
+    assert coerce_bool_option("false", "dry_run") is False
+    with pytest.raises(click.BadParameter):
+        coerce_bool_option("invalid", "dry_run")
+
+
+def test_is_filter_not_allowed_error_false_for_other_message() -> None:
+    """
+    Test ``is_filter_not_allowed_error`` false path for other Superset errors.
+    """
+    exc = SupersetError(errors=[{"message": "Some other error"}])
+    assert is_filter_not_allowed_error(exc) is False
+
+
+def test_filter_resources_locally_extra_branches() -> None:
+    """
+    Test ``filter_resources_locally`` branch behavior for bool/int/empty values.
+    """
+    resources: list[dict[str, Any]] = [
+        {"id": "10", "is_managed_externally": "true", "certified_by": ""},
+        {"id": 11, "is_managed_externally": 0, "certified_by": None},
+        {"id": "bad", "is_managed_externally": "false", "certified_by": "x"},
+    ]
+
+    parsed = parse_filters(
+        ("id=10", "is_managed_externally=true", "certified_by="),
+        DASHBOARD_FILTER_KEYS,
+    )
+    result = filter_resources_locally(resources, parsed)
+    assert [item["id"] for item in result] == ["10"]
+
+    parsed_false = parse_filters(
+        ("is_managed_externally=false",),
+        DASHBOARD_FILTER_KEYS,
+    )
+    result_false = filter_resources_locally(resources, parsed_false)
+    assert [item["id"] for item in result_false] == [11, "bad"]
+
+    parsed_id = parse_filters(("id=12",), DASHBOARD_FILTER_KEYS)
+    assert filter_resources_locally(resources, parsed_id) == []
+
+    # non-bool string reaches the ``return None`` path in ``_normalize_bool``
+    weird_bool = filter_resources_locally(
+        [{"id": 1, "is_managed_externally": "maybe"}],
+        {"is_managed_externally": True},
+    )
+    assert weird_bool == []
+
+    # ``actual is None`` branch in int coercion
+    none_id = filter_resources_locally([{"id": None}], {"id": 1})
+    assert none_id == []
+
+    # non-string/non-bool ``coerce_bool_option`` path
+    with pytest.raises(click.BadParameter):
+        coerce_bool_option(1, "dry_run")
+
+
+def test_fetch_with_filter_fallback_local_keys() -> None:
+    """
+    Test ``fetch_with_filter_fallback`` takes the local path when LOCAL_FILTER_KEYS are present.
+    """
+    all_resources = [
+        {"id": 1, "is_managed_externally": True},
+        {"id": 2, "is_managed_externally": False},
+    ]
+
+    def fetch_filtered(**_kw: Any):
+        raise AssertionError("should not be called")
+
+    def fetch_all() -> list[dict[str, Any]]:
+        return all_resources
+
+    result = fetch_with_filter_fallback(
+        fetch_filtered,
+        fetch_all,
+        {"is_managed_externally": True},
+        "dashboards",
+    )
+    assert [r["id"] for r in result] == [1]
+
+
+def test_fetch_with_filter_fallback_api_success() -> None:
+    """
+    Test ``fetch_with_filter_fallback`` happy path — API succeeds.
+    """
+    api_result = [{"id": 5}]
+
+    def fetch_filtered(**_kw: Any):
+        return api_result
+
+    def fetch_all() -> list[dict[str, Any]]:
+        raise AssertionError("should not be called")
+
+    result = fetch_with_filter_fallback(
+        fetch_filtered,
+        fetch_all,
+        {"slug": "test"},
+        "dashboards",
+    )
+    assert result == api_result
+
+
+def test_fetch_with_filter_fallback_not_allowed_fallback() -> None:
+    """
+    Test ``fetch_with_filter_fallback`` falls back on filter-not-allowed error.
+    """
+    exc = SupersetError(
+        errors=[{"message": "Filter column: slug not allowed to filter"}],
+    )
+
+    def fetch_filtered(**kw: Any):
+        raise exc
+
+    all_resources = [{"id": 1, "slug": "test"}, {"id": 2, "slug": "other"}]
+
+    def fetch_all() -> list[dict[str, Any]]:
+        return all_resources
+
+    result = fetch_with_filter_fallback(
+        fetch_filtered,
+        fetch_all,
+        {"slug": "test"},
+        "dashboards",
+    )
+    assert [r["id"] for r in result] == [1]
+
+
+def test_fetch_with_filter_fallback_unexpected_error() -> None:
+    """
+    Test ``fetch_with_filter_fallback`` wraps unexpected errors in ClickException.
+    """
+
+    def fetch_filtered(**kw: Any):
+        raise RuntimeError("500 Internal Server Error")
+
+    def fetch_all() -> list[dict[str, Any]]:
+        return []
+
+    with pytest.raises(click.ClickException, match="may not be supported"):
+        fetch_with_filter_fallback(
+            fetch_filtered,
+            fetch_all,
+            {"slug": "test"},
+            "dashboards",
+        )

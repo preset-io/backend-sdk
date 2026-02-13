@@ -14,7 +14,7 @@ from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 from zipfile import ZipFile
 
 import backoff
@@ -34,7 +34,7 @@ from preset_cli.cli.superset.lib import (
     get_logs,
     write_logs_to_file,
 )
-from preset_cli.exceptions import SupersetError
+from preset_cli.exceptions import CLIError, SupersetError
 from preset_cli.lib import dict_merge
 
 _logger = logging.getLogger(__name__)
@@ -261,7 +261,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     root = Path(directory)
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
-    # The ``--continue-on-error`` flag should force the split option
+    # The ``--continue-on-error`` and ``--no-cascade`` flags force split mode.
     split = split or continue_on_error or not cascade
 
     # collecting existing database UUIDs so we know if we're creating or updating
@@ -335,19 +335,21 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
             asset_type,
             continue_on_error,
             cascade=cascade,
+            existing_databases=existing_databases,
         )
     else:
         contents = {str(k): yaml.dump(v) for k, v in configs.items()}
         import_resources(contents, client, overwrite, asset_type)
 
 
-def import_resources_individually(  # pylint: disable=too-many-locals
+def import_resources_individually(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches, too-many-statements
     configs: Dict[Path, AssetConfig],
     client: SupersetClient,
     overwrite: bool,
     asset_type: ResourceType,
     continue_on_error: bool = False,
     cascade: bool = True,
+    existing_databases: Set[str] | None = None,
 ) -> None:
     """
     Import contents individually.
@@ -366,11 +368,18 @@ def import_resources_individually(  # pylint: disable=too-many-locals
         ("charts", lambda config: [config["dataset_uuid"]]),
         ("dashboards", get_dashboard_related_uuids),
     ]
+    resource_type_map = {
+        "databases": ResourceType.DATABASE,
+        "datasets": ResourceType.DATASET,
+        "charts": ResourceType.CHART,
+        "dashboards": ResourceType.DASHBOARD,
+    }
     asset_configs: Dict[Path, AssetConfig]
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
 
     log_file_path, logs = get_logs(LogType.ASSETS)
     assets_to_skip = {Path(log["path"]) for log in logs[LogType.ASSETS]}
+    existing_databases = existing_databases or set()
 
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, get_related_uuids in imports:
@@ -387,20 +396,79 @@ def import_resources_individually(  # pylint: disable=too-many-locals
                 }
                 try:
                     for uuid in get_related_uuids(config):
-                        asset_configs.update(related_configs[uuid])
-                    related_configs[config["uuid"]] = asset_configs
+                        if uuid in related_configs:
+                            asset_configs.update(related_configs[uuid])
+
+                    skip_database_import = (
+                        resource_name == "databases"
+                        and asset_type != ResourceType.DATABASE
+                        and config["uuid"] in existing_databases
+                    )
+                    if resource_name == "databases":
+                        # Always keep database configs so dependent assets (datasets/charts)
+                        # can include the database YAML even when the DB already exists.
+                        related_configs[config["uuid"]] = asset_configs
+                    elif not skip_database_import:
+                        related_configs[config["uuid"]] = asset_configs
 
                     is_primary = asset_type == ResourceType.ASSET or (
                         asset_type.resource_name in resource_name
                     )
-                    if path in assets_to_skip or (cascade and not is_primary):
+                    if path in assets_to_skip:
                         continue
+                    if skip_database_import:
+                        _logger.info(
+                            "Skipping database import for existing database %s",
+                            path.relative_to("bundle"),
+                        )
+                        continue
+
+                    if not cascade and not is_primary:
+                        uuid_value = config.get("uuid")
+                        resource_type = resource_type_map[resource_name].resource_name
+                        if uuid_value and _resolve_uuid_to_id(
+                            client,
+                            resource_type,
+                            uuid_value,
+                        ):
+                            _logger.info(
+                                "Skipping existing %s %s (cascade disabled)",
+                                resource_name[:-1],
+                                uuid_value,
+                            )
+                            continue
 
                     _logger.info("Importing %s", path.relative_to("bundle"))
 
+                    if (
+                        resource_name == "charts"
+                        and asset_type == ResourceType.CHART
+                        and not cascade
+                    ):
+                        _update_chart_no_cascade(
+                            path,
+                            config,
+                            configs,
+                            client,
+                            overwrite,
+                        )
+                        continue
+
                     contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
-                    effective_overwrite = overwrite if (cascade or is_primary) else False
-                    import_resources(contents, client, effective_overwrite, asset_type)
+                    effective_overwrite = (
+                        overwrite if (cascade or is_primary) else False
+                    )
+                    if (
+                        resource_name == "databases"
+                        and asset_type != ResourceType.DATABASE
+                    ):
+                        effective_overwrite = False
+                    import_resources(
+                        contents,
+                        client,
+                        effective_overwrite,
+                        resource_type_map[resource_name],
+                    )
                 except Exception:  # pylint: disable=broad-except
                     if not continue_on_error:
                         raise
@@ -494,6 +562,327 @@ def add_password_to_config(
             f"Please provide the password for {path}: ",
         )
         verify_db_connectivity(config)
+
+
+def _resolve_uuid_to_id(
+    client: SupersetClient,
+    resource_name: str,
+    uuid_value: Any,
+    resources: List[Dict[str, Any]] | None = None,
+) -> Optional[int]:
+    """
+    Resolve a UUID to a resource ID using the API, with fallbacks for older versions.
+    """
+    if not uuid_value:
+        return None
+
+    uuid_str = str(uuid_value)
+    if resources is None:
+        resources = client.get_resources(resource_name)
+    for resource in resources:
+        if str(resource.get("uuid")) == uuid_str:
+            return resource["id"]
+
+    # fallback for older versions that don't expose UUIDs in the API
+    ids = {resource["id"] for resource in resources}
+    if not ids:
+        return None
+
+    uuid_map = client.get_uuids(resource_name, ids)
+    for resource_id, resource_uuid in uuid_map.items():
+        if str(resource_uuid) == uuid_str:
+            return resource_id
+
+    return None
+
+
+def _find_config_by_uuid(
+    configs: Dict[Path, AssetConfig],
+    resource_dir: str,
+    uuid_value: Any,
+) -> Optional[Tuple[Path, AssetConfig]]:
+    """
+    Find a config by UUID in the given resource directory.
+    """
+    if not uuid_value:
+        return None
+    uuid_str = str(uuid_value)
+    for path, config in configs.items():
+        if len(path.parts) > 1 and path.parts[1] == resource_dir:
+            if str(config.get("uuid")) == uuid_str:
+                return path, config
+    return None
+
+
+def _build_dataset_contents(
+    configs: Dict[Path, AssetConfig],
+    dataset_uuid: Any,
+) -> Optional[Dict[str, str]]:
+    """
+    Build a minimal bundle for a dataset (dataset + database).
+    """
+    dataset_entry = _find_config_by_uuid(configs, "datasets", dataset_uuid)
+    if not dataset_entry:
+        return None
+    dataset_path, dataset_config = dataset_entry
+    database_uuid = dataset_config.get("database_uuid")
+    database_entry = _find_config_by_uuid(configs, "databases", database_uuid)
+    if not database_entry:
+        return None
+    database_path, database_config = database_entry
+
+    return {
+        str(dataset_path): yaml.dump(dataset_config),
+        str(database_path): yaml.dump(database_config),
+    }
+
+
+def _build_chart_contents(
+    configs: Dict[Path, AssetConfig],
+    chart_uuid: Any,
+) -> Optional[Dict[str, str]]:
+    """
+    Build a minimal bundle for a chart (chart + dataset + database).
+    """
+    chart_entry = _find_config_by_uuid(configs, "charts", chart_uuid)
+    if not chart_entry:
+        return None
+    chart_path, chart_config = chart_entry
+
+    dataset_uuid = chart_config.get("dataset_uuid")
+    dataset_contents = _build_dataset_contents(configs, dataset_uuid)
+    if not dataset_contents:
+        return None
+
+    contents = {str(chart_path): yaml.dump(chart_config)}
+    contents.update(dataset_contents)
+    return contents
+
+
+def _safe_json_loads(value: Any, label: str) -> Optional[Dict[str, Any]]:
+    """
+    Safely parse JSON content that may be a dict or string.
+    """
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            _logger.warning("Unable to parse %s as JSON", label)
+            return None
+    return None
+
+
+def _update_chart_datasource_refs(
+    params: Optional[Dict[str, Any]],
+    query_context: Optional[Dict[str, Any]],
+    datasource_id: int,
+    datasource_type: str,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """
+    Update datasource references in chart params/query_context.
+    """
+    dataset_uid = f"{datasource_id}__{datasource_type}"
+
+    if params is not None:
+        params["datasource"] = dataset_uid
+
+    if query_context is not None:
+        query_context["datasource"] = {"id": datasource_id, "type": datasource_type}
+        form_data = query_context.get("form_data")
+        if isinstance(form_data, dict):
+            form_data["datasource"] = dataset_uid
+        queries = query_context.get("queries")
+        if isinstance(queries, list):
+            for query in queries:
+                if isinstance(query, dict) and "datasource" in query:
+                    query["datasource"] = query_context["datasource"]
+
+    return params, query_context
+
+
+def _filter_payload_to_schema(
+    client: SupersetClient,
+    resource_name: str,
+    payload: Dict[str, Any],
+    fallback_allowed: Set[str],
+) -> Dict[str, Any]:
+    """
+    Filter payload keys based on API schema info when available.
+    """
+    try:
+        info = client.get_resource_endpoint_info(resource_name, keys=["edit_columns"])
+        allowed = {column["name"] for column in info.get("edit_columns", [])}
+        if allowed:
+            return {key: value for key, value in payload.items() if key in allowed}
+    except SupersetError:
+        pass
+
+    return {key: value for key, value in payload.items() if key in fallback_allowed}
+
+
+def _prepare_chart_update_payload(  # pylint: disable=too-many-branches
+    config: AssetConfig,
+    datasource_id: int,
+    datasource_type: str,
+    client: SupersetClient,
+) -> Dict[str, Any]:
+    """
+    Build a chart update payload from export config.
+    """
+    payload: Dict[str, Any] = {}
+
+    for key in [
+        "slice_name",
+        "description",
+        "viz_type",
+        "cache_timeout",
+        "certified_by",
+        "certification_details",
+        "is_managed_externally",
+        "external_url",
+    ]:
+        if key in config:
+            payload[key] = config[key]
+
+    owners = config.get("owners")
+    if owners:
+        if all(isinstance(owner, int) for owner in owners):
+            payload["owners"] = owners
+        else:
+            _logger.warning("Skipping owners update for chart; owner IDs not available")
+
+    tags = config.get("tags")
+    if tags:
+        if all(isinstance(tag, int) for tag in tags):
+            payload["tags"] = tags
+        else:
+            _logger.warning("Skipping tags update for chart; tag IDs not available")
+
+    params_value = config.get("params")
+    params = _safe_json_loads(params_value, "chart params")
+
+    query_context_value = config.get("query_context")
+    query_context = _safe_json_loads(query_context_value, "chart query_context")
+
+    if params is not None or query_context is not None:
+        params, query_context = _update_chart_datasource_refs(
+            params,
+            query_context,
+            datasource_id,
+            datasource_type,
+        )
+
+    if params is not None:
+        payload["params"] = json.dumps(params)
+    elif isinstance(params_value, str):
+        payload["params"] = params_value
+
+    if query_context is not None:
+        payload["query_context"] = json.dumps(query_context)
+    elif isinstance(query_context_value, str):
+        payload["query_context"] = query_context_value
+
+    payload["datasource_id"] = datasource_id
+    payload["datasource_type"] = datasource_type
+
+    safe_allowlist = {
+        "slice_name",
+        "description",
+        "viz_type",
+        "owners",
+        "params",
+        "query_context",
+        "cache_timeout",
+        "datasource_id",
+        "datasource_type",
+        "dashboards",
+        "certified_by",
+        "certification_details",
+        "is_managed_externally",
+        "external_url",
+        "tags",
+    }
+    return _filter_payload_to_schema(client, "chart", payload, safe_allowlist)
+
+
+def _update_chart_no_cascade(
+    path: Path,
+    config: AssetConfig,
+    configs: Dict[Path, AssetConfig],
+    client: SupersetClient,
+    overwrite: bool,
+) -> None:
+    """
+    Update a chart via API without cascading to dependencies.
+    """
+    chart_uuid = config.get("uuid")
+    if not chart_uuid:
+        raise CLIError(f"Chart config missing UUID: {path}", 1)
+
+    chart_id = _resolve_uuid_to_id(client, "chart", chart_uuid)
+    if chart_id is None:
+        _logger.info("Chart %s not found; attempting to create it", chart_uuid)
+        contents = _build_chart_contents(configs, chart_uuid)
+        if not contents:
+            raise CLIError(
+                f"Chart {chart_uuid} not found and no dataset/database configs available.",
+                1,
+            )
+        import_resources(
+            contents,
+            client,
+            overwrite=False,
+            asset_type=ResourceType.CHART,
+        )
+        chart_id = _resolve_uuid_to_id(client, "chart", chart_uuid)
+        if chart_id is None:
+            raise CLIError(f"Unable to create chart {chart_uuid}", 1)
+        if not overwrite:
+            _logger.info("Chart created; skipping update because overwrite=false")
+            return
+
+    if not overwrite:
+        _logger.info("Skipping existing chart %s (overwrite=false)", chart_uuid)
+        return
+
+    dataset_uuid = config.get("dataset_uuid")
+    if not dataset_uuid:
+        raise CLIError(f"Chart {chart_uuid} missing dataset_uuid", 1)
+
+    dataset_id = _resolve_uuid_to_id(client, "dataset", dataset_uuid)
+    if dataset_id is None:
+        _logger.info("Dataset %s not found; attempting to create it", dataset_uuid)
+        contents = _build_dataset_contents(configs, dataset_uuid)
+        if not contents:
+            raise CLIError(
+                f"Dataset {dataset_uuid} not found and no dataset/database configs available.",
+                1,
+            )
+        import_resources(
+            contents,
+            client,
+            overwrite=False,
+            asset_type=ResourceType.DATASET,
+        )
+        dataset_id = _resolve_uuid_to_id(client, "dataset", dataset_uuid)
+        if dataset_id is None:
+            raise CLIError(f"Unable to create dataset {dataset_uuid}", 1)
+
+    dataset = client.get_dataset(dataset_id)
+    datasource_type = dataset.get("kind") or dataset.get("datasource_type") or "table"
+
+    payload = _prepare_chart_update_payload(
+        config,
+        dataset_id,
+        datasource_type,
+        client,
+    )
+    _logger.info("Updating chart %s via API (no-cascade)", chart_uuid)
+    client.update_chart(chart_id, **payload)
 
 
 @backoff.on_exception(

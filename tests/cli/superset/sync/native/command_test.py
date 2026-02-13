@@ -6,7 +6,7 @@ Tests for the native import command.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from unittest import mock
 from zipfile import ZipFile
 
@@ -23,6 +23,9 @@ from sqlalchemy.engine.url import URL
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     ResourceType,
+    _resolve_uuid_to_id,
+    _safe_json_loads,
+    _update_chart_no_cascade,
     add_password_to_config,
     import_resources,
     import_resources_individually,
@@ -1073,7 +1076,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DATABASE,
             ),
             mock.call(
                 {
@@ -1084,7 +1087,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DATASET,
             ),
             mock.call(
                 {
@@ -1093,7 +1096,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DATASET,
             ),
             mock.call(
                 {
@@ -1103,7 +1106,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.CHART,
             ),
             mock.call(
                 {
@@ -1113,7 +1116,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DASHBOARD,
             ),
             mock.call(
                 {
@@ -1123,7 +1126,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DASHBOARD,
             ),
             mock.call(
                 {
@@ -1138,7 +1141,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DASHBOARD,
             ),
             mock.call(
                 {
@@ -1149,7 +1152,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DASHBOARD,
             ),
             mock.call(
                 {
@@ -1163,7 +1166,7 @@ def test_native_split(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DASHBOARD,
             ),
         ],
         any_order=True,
@@ -1284,6 +1287,12 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
+
+    def import_resources_side_effect(contents, *_args, **_kwargs):
+        if "bundle/dashboards/dashboard_deleted_chart.yaml" in contents:
+            raise Exception("An error occurred!")
+
+    import_resources.side_effect = import_resources_side_effect
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
 
@@ -1311,7 +1320,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DATABASE,
             ),
             mock.call(
                 {
@@ -1320,7 +1329,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DATASET,
             ),
             mock.call(
                 {
@@ -1330,7 +1339,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.CHART,
             ),
             mock.call(
                 {
@@ -1340,7 +1349,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DASHBOARD,
             ),
             mock.call(
                 {
@@ -1351,7 +1360,7 @@ def test_native_split_continue(  # pylint: disable=too-many-locals
                 },
                 client,
                 False,
-                ResourceType.ASSET,
+                ResourceType.DASHBOARD,
             ),
         ],
         any_order=True,
@@ -1456,7 +1465,7 @@ def test_import_resources_individually_retries(
         requests.exceptions.ConnectionError("Connection aborted."),
         None,
     ]
-    configs = {
+    configs: Dict[Path, Dict[str, Any]] = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
     }
     import_resources_individually(configs, client, True, ResourceType.ASSET)
@@ -1473,6 +1482,76 @@ def test_import_resources_individually_retries(
     assert str(excinfo.value) == "Connection aborted."
 
 
+def test_import_resources_individually_resource_endpoints(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,  # pylint: disable=unused-argument
+) -> None:
+    """
+    Test ``import_resources_individually`` uses per-resource endpoints.
+    """
+    client = mocker.MagicMock()
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {"uuid": "db1"},
+        Path("bundle/datasets/ds.yaml"): {"uuid": "ds1", "database_uuid": "db1"},
+        Path("bundle/charts/chart.yaml"): {"uuid": "chart1", "dataset_uuid": "ds1"},
+    }
+
+    import_resources_individually(configs, client, True, ResourceType.ASSET)
+
+    types = [call.args[3] for call in import_resources.call_args_list]
+    assert types == [
+        ResourceType.DATABASE,
+        ResourceType.DATASET,
+        ResourceType.CHART,
+    ]
+    assert import_resources.call_count == 3
+
+
+def test_import_resources_individually_skips_existing_database(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,  # pylint: disable=unused-argument
+) -> None:
+    """
+    Test existing databases are skipped when importing dashboards.
+    """
+    client = mocker.MagicMock()
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {"uuid": "db1"},
+        Path("bundle/datasets/ds.yaml"): {"uuid": "ds1", "database_uuid": "db1"},
+        Path("bundle/charts/chart.yaml"): {"uuid": "chart1", "dataset_uuid": "ds1"},
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        True,
+        ResourceType.DASHBOARD,
+        existing_databases={"db1"},
+    )
+
+    types = {call.args[3] for call in import_resources.call_args_list}
+    assert ResourceType.DATABASE not in types
+    assert ResourceType.DATASET in types
+    assert ResourceType.CHART in types
+    dataset_calls = [
+        call
+        for call in import_resources.call_args_list
+        if call.args[3] == ResourceType.DATASET
+    ]
+    assert dataset_calls
+    for call in dataset_calls:
+        contents = call.args[0]
+        assert "bundle/databases/db.yaml" in contents
+
+
 def test_import_resources_individually_checkpoint(
     mocker: MockerFixture,
     fs: FakeFilesystem,  # pylint: disable=unused-argument
@@ -1482,7 +1561,7 @@ def test_import_resources_individually_checkpoint(
     """
     client = mocker.MagicMock()
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
-    configs = {
+    configs: Dict[Path, Dict[str, Any]] = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
         Path("bundle/databases/psql.yaml"): {
             "name": "my other database",
@@ -1507,8 +1586,8 @@ def test_import_resources_individually_checkpoint(
                     ),
                 },
                 client,
-                True,
-                ResourceType.ASSET,
+                False,
+                ResourceType.DATABASE,
             ),
             mocker.call(
                 {
@@ -1517,8 +1596,8 @@ def test_import_resources_individually_checkpoint(
                     ),
                 },
                 client,
-                True,
-                ResourceType.ASSET,
+                False,
+                ResourceType.DATABASE,
             ),
         ],
     )
@@ -1547,8 +1626,8 @@ def test_import_resources_individually_checkpoint(
             ),
         },
         client,
-        True,
-        ResourceType.ASSET,
+        False,
+        ResourceType.DATABASE,
     )
 
     assert not Path("progress.log").exists()
@@ -1632,8 +1711,8 @@ def test_import_resources_individually_continue(
                     ),
                 },
                 client,
-                True,
-                ResourceType.ASSET,
+                False,
+                ResourceType.DATABASE,
             ),
             mocker.call(
                 {
@@ -1642,8 +1721,8 @@ def test_import_resources_individually_continue(
                     ),
                 },
                 client,
-                True,
-                ResourceType.ASSET,
+                False,
+                ResourceType.DATABASE,
             ),
             mocker.call(
                 {
@@ -1652,8 +1731,8 @@ def test_import_resources_individually_continue(
                     ),
                 },
                 client,
-                True,
-                ResourceType.ASSET,
+                False,
+                ResourceType.DATABASE,
             ),
             mocker.call(
                 {
@@ -1662,8 +1741,8 @@ def test_import_resources_individually_continue(
                     ),
                 },
                 client,
-                True,
-                ResourceType.ASSET,
+                False,
+                ResourceType.DATABASE,
             ),
         ],
     )
@@ -1745,9 +1824,12 @@ def test_import_resources_individually_debug(mocker: MockerFixture) -> None:
             mock.call("Processing %s for import", Path("charts/test_01.yaml")),
         ],
     )
-    _logger.info.assert_called_once_with(
-        "Importing %s",
-        Path("charts/test_01.yaml"),
+    _logger.info.assert_has_calls(
+        [
+            mock.call("Importing %s", Path("databases/gsheets.yaml")),
+            mock.call("Importing %s", Path("datasets/gsheets/test.yaml")),
+            mock.call("Importing %s", Path("charts/test_01.yaml")),
+        ],
     )
 
 
@@ -2132,61 +2214,93 @@ def test_native_split_asset_types(
     )
     assert result.exit_code == 0
 
-    expected_contents: List[Dict[str, str]] = []
+    expected_calls: List[Tuple[Dict[str, str], ResourceType]] = []
 
     if resource_type in {ResourceType.DATABASE, ResourceType.ASSET}:
-        expected_contents += [
-            {
-                "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
-            },
-            {
-                "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
-            },
+        expected_calls += [
+            (
+                {
+                    "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
+                },
+                ResourceType.DATABASE,
+            ),
+            (
+                {
+                    "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
+                },
+                ResourceType.DATABASE,
+            ),
         ]
     if resource_type in {ResourceType.DATASET, ResourceType.ASSET}:
-        expected_contents += [
-            {
-                "bundle/datasets/gsheets/test.yaml": yaml.dump(first_dataset_config),
-                "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
-            },
-            {
-                "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
-                    second_dataset_config,
-                ),
-                "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
-            },
+        expected_calls += [
+            (
+                {
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(
+                        first_dataset_config,
+                    ),
+                    "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
+                },
+                ResourceType.DATASET,
+            ),
+            (
+                {
+                    "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
+                        second_dataset_config,
+                    ),
+                    "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
+                },
+                ResourceType.DATASET,
+            ),
         ]
     if resource_type in {ResourceType.CHART, ResourceType.ASSET}:
-        expected_contents += [
-            {
-                "bundle/charts/test_01.yaml": yaml.dump(first_chart_config),
-                "bundle/datasets/gsheets/test.yaml": yaml.dump(first_dataset_config),
-                "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
-            },
-            {
-                "bundle/charts/test_other_07.yaml": yaml.dump(second_chart_config),
-                "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
-                    second_dataset_config,
-                ),
-                "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
-            },
+        expected_calls += [
+            (
+                {
+                    "bundle/charts/test_01.yaml": yaml.dump(first_chart_config),
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(
+                        first_dataset_config,
+                    ),
+                    "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
+                },
+                ResourceType.CHART,
+            ),
+            (
+                {
+                    "bundle/charts/test_other_07.yaml": yaml.dump(second_chart_config),
+                    "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
+                        second_dataset_config,
+                    ),
+                    "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
+                },
+                ResourceType.CHART,
+            ),
         ]
     if resource_type in {ResourceType.DASHBOARD, ResourceType.ASSET}:
-        expected_contents += [
-            {
-                "bundle/dashboards/dashboard.yaml": yaml.dump(first_dash_config),
-                "bundle/charts/test_01.yaml": yaml.dump(first_chart_config),
-                "bundle/datasets/gsheets/test.yaml": yaml.dump(first_dataset_config),
-                "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
-            },
-            {
-                "bundle/dashboards/other_dashboard.yaml": yaml.dump(second_dash_config),
-                "bundle/charts/test_other_07.yaml": yaml.dump(second_chart_config),
-                "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
-                    second_dataset_config,
-                ),
-                "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
-            },
+        expected_calls += [
+            (
+                {
+                    "bundle/dashboards/dashboard.yaml": yaml.dump(first_dash_config),
+                    "bundle/charts/test_01.yaml": yaml.dump(first_chart_config),
+                    "bundle/datasets/gsheets/test.yaml": yaml.dump(
+                        first_dataset_config,
+                    ),
+                    "bundle/databases/gsheets.yaml": yaml.dump(first_db_config),
+                },
+                ResourceType.DASHBOARD,
+            ),
+            (
+                {
+                    "bundle/dashboards/other_dashboard.yaml": yaml.dump(
+                        second_dash_config,
+                    ),
+                    "bundle/charts/test_other_07.yaml": yaml.dump(second_chart_config),
+                    "bundle/datasets/Other_DB/test_new.yaml": yaml.dump(
+                        second_dataset_config,
+                    ),
+                    "bundle/databases/Other_DB.yaml": yaml.dump(second_db_config),
+                },
+                ResourceType.DASHBOARD,
+            ),
         ]
 
     import_resources.assert_has_calls(
@@ -2195,9 +2309,9 @@ def test_native_split_asset_types(
                 content,
                 client,
                 False,
-                resource_type,
+                call_type,
             )
-            for content in expected_contents
+            for content, call_type in expected_calls
         ],
         any_order=True,
     )
@@ -2215,7 +2329,7 @@ def test_native_cascade_default(mocker: MockerFixture, fs: FakeFilesystem) -> No
     root = Path("/path/to/root")
     fs.create_dir(root)
 
-    configs = {
+    configs: Dict[Path, Dict[str, Any]] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -2239,7 +2353,15 @@ def test_native_cascade_default(mocker: MockerFixture, fs: FakeFilesystem) -> No
 
     assert import_resources.call_count == 2
     for call in import_resources.mock_calls:
-        assert call.args[2] is True
+        contents = call.args[0]
+        if "bundle/datasets/ds.yaml" in contents:
+            assert call.args[2] is True
+            assert call.args[3] is ResourceType.DATASET
+        elif "bundle/databases/db.yaml" in contents:
+            assert call.args[2] is False
+            assert call.args[3] is ResourceType.DATABASE
+        else:
+            assert False, "Unexpected import_resources call"
 
 
 def test_native_no_cascade(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -2253,7 +2375,7 @@ def test_native_no_cascade(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     root = Path("/path/to/root")
     fs.create_dir(root)
 
-    configs = {
+    configs: Dict[Path, Dict[str, Any]] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -2317,7 +2439,9 @@ def test_native_no_cascade_forces_split(
         ),
     )
 
-    SupersetClient = mocker.patch("preset_cli.cli.superset.sync.native.command.SupersetClient")
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
     client = SupersetClient()
     client.get_databases.return_value = [{"uuid": "db-uuid"}]
     import_resources_individually_mock = mocker.patch(
@@ -2341,6 +2465,333 @@ def test_native_no_cascade_forces_split(
     import_resources_individually_mock.assert_called_once()
     assert import_resources_individually_mock.call_args.kwargs["cascade"] is False
     assert not Path("progress.log").exists()
+
+
+def test_native_cascade_chart_does_not_force_split(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test cascade chart imports do not force split mode.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    fs.create_dir(root / "databases")
+    fs.create_file(
+        root / "databases/db.yaml",
+        contents=yaml.dump(
+            {
+                "database_name": "db",
+                "sqlalchemy_uri": "sqlite://",
+                "uuid": "db-uuid",
+            },
+        ),
+    )
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_databases.return_value = [{"uuid": "db-uuid"}]
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "sync",
+            "native",
+            str(root),
+            "--asset-type",
+            "chart",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    import_resources_mock.assert_called_once()
+    assert not Path("progress.log").exists()
+
+
+def test_update_chart_no_cascade_updates_chart(mocker: MockerFixture) -> None:
+    """
+    Test updating a chart via the no-cascade path.
+    """
+    client = mocker.MagicMock()
+    client.get_dataset.return_value = {"kind": "table"}
+    client.get_resource_endpoint_info.return_value = {
+        "edit_columns": [
+            {"name": "slice_name"},
+            {"name": "viz_type"},
+            {"name": "params"},
+            {"name": "query_context"},
+            {"name": "datasource_id"},
+            {"name": "datasource_type"},
+        ],
+    }
+
+    def resolve_side_effect(_client, resource_name, _uuid):
+        if resource_name == "chart":
+            return 11
+        if resource_name == "dataset":
+            return 24
+        return None
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=resolve_side_effect,
+    )
+
+    chart_config = {
+        "uuid": "chart-uuid",
+        "dataset_uuid": "ds-uuid",
+        "slice_name": "Chart Name",
+        "viz_type": "table",
+        "params": {"datasource": "1__table"},
+        "query_context": json.dumps(
+            {
+                "datasource": {"id": 1, "type": "table"},
+                "queries": [{"datasource": {"id": 1, "type": "table"}}],
+                "form_data": {"datasource": "1__table"},
+            },
+        ),
+    }
+    configs = {Path("bundle/charts/chart.yaml"): chart_config}
+
+    _update_chart_no_cascade(
+        Path("bundle/charts/chart.yaml"),
+        chart_config,
+        configs,
+        client,
+        overwrite=True,
+    )
+
+    client.update_chart.assert_called_once()
+    chart_id = client.update_chart.call_args.args[0]
+    payload = client.update_chart.call_args.kwargs
+    assert chart_id == 11
+
+    params = json.loads(payload["params"])
+    query_context = json.loads(payload["query_context"])
+    assert params["datasource"] == "24__table"
+    assert query_context["datasource"]["id"] == 24
+    assert query_context["queries"][0]["datasource"]["id"] == 24
+    assert query_context["form_data"]["datasource"] == "24__table"
+
+
+def test_update_chart_no_cascade_skips_when_overwrite_false(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade update skips when overwrite is false.
+    """
+    client = mocker.MagicMock()
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        return_value=11,
+    )
+
+    chart_config = {
+        "uuid": "chart-uuid",
+        "dataset_uuid": "ds-uuid",
+        "slice_name": "Chart Name",
+        "viz_type": "table",
+        "params": {"datasource": "1__table"},
+    }
+    configs = {Path("bundle/charts/chart.yaml"): chart_config}
+
+    _update_chart_no_cascade(
+        Path("bundle/charts/chart.yaml"),
+        chart_config,
+        configs,
+        client,
+        overwrite=False,
+    )
+
+    client.update_chart.assert_not_called()
+
+
+def test_update_chart_no_cascade_creates_missing_dataset(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dataset creation fallback for no-cascade chart updates.
+    """
+    client = mocker.MagicMock()
+    client.get_dataset.return_value = {"kind": "table"}
+    client.get_resource_endpoint_info.return_value = {"edit_columns": []}
+
+    call_state = {"dataset_calls": 0}
+
+    def resolve_side_effect(_client, resource_name, _uuid):
+        if resource_name == "chart":
+            return 11
+        if resource_name == "dataset":
+            call_state["dataset_calls"] += 1
+            return None if call_state["dataset_calls"] == 1 else 24
+        return None
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=resolve_side_effect,
+    )
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+
+    chart_config = {
+        "uuid": "chart-uuid",
+        "dataset_uuid": "ds-uuid",
+        "slice_name": "Chart Name",
+        "viz_type": "table",
+        "params": {"datasource": "1__table"},
+    }
+    dataset_config = {
+        "uuid": "ds-uuid",
+        "database_uuid": "db-uuid",
+        "params": {},
+    }
+    database_config = {
+        "uuid": "db-uuid",
+        "sqlalchemy_uri": "sqlite://",
+        "database_name": "db",
+    }
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/charts/chart.yaml"): chart_config,
+        Path("bundle/datasets/db/ds.yaml"): dataset_config,
+        Path("bundle/databases/db.yaml"): database_config,
+    }
+
+    _update_chart_no_cascade(
+        Path("bundle/charts/chart.yaml"),
+        chart_config,
+        configs,
+        client,
+        overwrite=True,
+    )
+
+    import_resources_mock.assert_called_once()
+    assert import_resources_mock.call_args.kwargs["asset_type"] == ResourceType.DATASET
+    client.update_chart.assert_called_once()
+
+
+def test_update_chart_no_cascade_creates_missing_chart(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test chart creation fallback for no-cascade chart updates.
+    """
+    client = mocker.MagicMock()
+    client.get_dataset.return_value = {"kind": "table"}
+    client.get_resource_endpoint_info.return_value = {"edit_columns": []}
+
+    call_state = {"chart_calls": 0}
+
+    def resolve_side_effect(_client, resource_name, _uuid):
+        if resource_name == "chart":
+            call_state["chart_calls"] += 1
+            return None if call_state["chart_calls"] == 1 else 11
+        if resource_name == "dataset":
+            return 24
+        return None
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=resolve_side_effect,
+    )
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+
+    chart_config = {
+        "uuid": "chart-uuid",
+        "dataset_uuid": "ds-uuid",
+        "slice_name": "Chart Name",
+        "viz_type": "table",
+        "params": {"datasource": "1__table"},
+    }
+    dataset_config = {
+        "uuid": "ds-uuid",
+        "database_uuid": "db-uuid",
+        "params": {},
+    }
+    database_config = {
+        "uuid": "db-uuid",
+        "sqlalchemy_uri": "sqlite://",
+        "database_name": "db",
+    }
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/charts/chart.yaml"): chart_config,
+        Path("bundle/datasets/db/ds.yaml"): dataset_config,
+        Path("bundle/databases/db.yaml"): database_config,
+    }
+
+    _update_chart_no_cascade(
+        Path("bundle/charts/chart.yaml"),
+        chart_config,
+        configs,
+        client,
+        overwrite=True,
+    )
+
+    import_resources_mock.assert_called_once()
+    assert import_resources_mock.call_args.kwargs["asset_type"] == ResourceType.CHART
+    client.update_chart.assert_called_once()
+
+
+def test_no_cascade_skips_existing_dependencies(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade skips imports for existing dependent assets.
+    """
+    client = mocker.MagicMock()
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._update_chart_no_cascade",
+    )
+
+    def resolve_side_effect(_client, resource_name, _uuid):
+        if resource_name in {"dataset", "chart", "database"}:
+            return 1
+        return None
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=resolve_side_effect,
+    )
+
+    configs = {
+        Path("bundle/databases/db.yaml"): {
+            "uuid": "db-uuid",
+        },
+        Path("bundle/datasets/db/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+        },
+        Path("bundle/charts/chart.yaml"): {
+            "uuid": "chart-uuid",
+            "dataset_uuid": "ds-uuid",
+        },
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.CHART,
+        continue_on_error=False,
+        cascade=False,
+        existing_databases={"db-uuid"},
+    )
+
+    import_resources_mock.assert_not_called()
 
 
 def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -2535,3 +2986,34 @@ def test_native_with_db_passwords(mocker: MockerFixture, fs: FakeFilesystem) -> 
     getpass.getpass.assert_called_once_with(
         "Please provide the password for databases/other_db_config_masked_no_password.yaml: ",
     )
+
+
+def test_resolve_uuid_to_id_with_prefetched_resources() -> None:
+    """
+    Test ``_resolve_uuid_to_id`` skips the API fetch when resources are provided.
+    """
+    client = mock.MagicMock()
+    resources = [
+        {"id": 10, "uuid": "aaa-bbb"},
+        {"id": 20, "uuid": "ccc-ddd"},
+    ]
+
+    result = _resolve_uuid_to_id(client, "chart", "ccc-ddd", resources=resources)
+    assert result == 20
+    client.get_resources.assert_not_called()
+
+    # Not found in prefetched, falls back to UUID map
+    client.get_uuids.return_value = {30: "eee-fff"}
+    result = _resolve_uuid_to_id(client, "chart", "eee-fff", resources=resources)
+    assert result == 30
+
+
+def test_safe_json_loads_decode_failure() -> None:
+    """
+    Test ``_safe_json_loads`` returns None for invalid JSON strings.
+    """
+    assert _safe_json_loads(None, "test") is None
+    assert _safe_json_loads({"key": "val"}, "test") == {"key": "val"}
+    assert _safe_json_loads('{"valid": true}', "test") == {"valid": True}
+    assert _safe_json_loads("not-json", "test") is None
+    assert _safe_json_loads(12345, "test") is None
