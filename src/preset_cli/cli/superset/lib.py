@@ -289,8 +289,12 @@ def fetch_with_filter_fallback(
         return resources
 
     # Verify filtered responses locally to avoid broad results when an API silently
-    # ignores one or more predicates. If keys are not present in the API payload,
-    # keep the server result to avoid false negatives on slim list payloads.
+    # ignores one or more predicates.
     if all(all(key in resource for key in parsed_filters) for resource in resources):
         return filter_resources_locally(resources, parsed_filters)
+
+    # Some endpoints return slim payloads that omit filter keys. For contains
+    # predicates, re-fetch without filters and apply predicates locally.
+    if any(isinstance(value, Contains) for value in parsed_filters.values()):
+        return filter_resources_locally(fetch_all(), parsed_filters)
     return resources

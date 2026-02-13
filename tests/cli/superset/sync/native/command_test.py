@@ -2858,6 +2858,179 @@ def test_no_cascade_skips_existing_dependencies(
     import_resources_mock.assert_not_called()
 
 
+def test_native_no_cascade_dashboard_prunes_existing_dependencies(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test dashboard no-cascade excludes existing dependencies from primary bundle.
+    """
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    client = mocker.MagicMock()
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=lambda _client, resource_name, _uuid: (
+            1 if resource_name in {"chart", "dataset", "database"} else None
+        ),
+    )
+
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {
+            "uuid": "db-uuid",
+            "database_name": "db",
+            "sqlalchemy_uri": "sqlite://",
+        },
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+            "table_name": "test",
+        },
+        Path("bundle/charts/chart.yaml"): {
+            "uuid": "chart-uuid",
+            "dataset_uuid": "ds-uuid",
+            "slice_name": "chart",
+        },
+        Path("bundle/dashboards/dash.yaml"): {
+            "uuid": "dash-uuid",
+            "position": {
+                "CHART-1": {
+                    "type": "CHART",
+                    "meta": {"uuid": "chart-uuid"},
+                },
+            },
+            "metadata": {
+                "native_filter_configuration": [
+                    {"targets": [{"datasetUuid": "ds-uuid"}]},
+                ],
+            },
+        },
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.DASHBOARD,
+        continue_on_error=False,
+        cascade=False,
+    )
+
+    import_resources.assert_called_once()
+    call = import_resources.mock_calls[0]
+    assert call.args[3] is ResourceType.DASHBOARD
+    assert call.args[2] is True
+    assert sorted(call.args[0].keys()) == ["bundle/dashboards/dash.yaml"]
+
+
+def test_native_no_cascade_dataset_prunes_existing_database(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test dataset no-cascade excludes existing databases from primary bundle.
+    """
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    client = mocker.MagicMock()
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=lambda _client, resource_name, _uuid: (
+            1 if resource_name == "database" else None
+        ),
+    )
+
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {
+            "uuid": "db-uuid",
+            "database_name": "db",
+            "sqlalchemy_uri": "sqlite://",
+        },
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+            "table_name": "test",
+        },
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.DATASET,
+        continue_on_error=False,
+        cascade=False,
+    )
+
+    import_resources.assert_called_once()
+    call = import_resources.mock_calls[0]
+    assert call.args[3] is ResourceType.DATASET
+    assert call.args[2] is True
+    assert sorted(call.args[0].keys()) == ["bundle/datasets/ds.yaml"]
+
+
+def test_native_no_cascade_dataset_keeps_missing_database(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test dataset no-cascade keeps missing database configs for creation.
+    """
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    client = mocker.MagicMock()
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        return_value=None,
+    )
+
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {
+            "uuid": "db-uuid",
+            "database_name": "db",
+            "sqlalchemy_uri": "sqlite://",
+        },
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+            "table_name": "test",
+        },
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.DATASET,
+        continue_on_error=False,
+        cascade=False,
+    )
+
+    # First call imports the missing database, second call imports dataset + dependency.
+    assert import_resources.call_count == 2
+    dataset_call = next(
+        call
+        for call in import_resources.mock_calls
+        if call.args[3] is ResourceType.DATASET
+    )
+    assert sorted(dataset_call.args[0].keys()) == [
+        "bundle/databases/db.yaml",
+        "bundle/datasets/ds.yaml",
+    ]
+
+
 def test_native_no_cascade_dataset(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test no-cascade with dataset asset type: database imported without overwrite.

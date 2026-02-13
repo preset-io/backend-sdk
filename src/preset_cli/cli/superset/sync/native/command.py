@@ -17,7 +17,7 @@ from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
 from zipfile import ZipFile
 
 import backoff
@@ -443,12 +443,38 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
         "charts": ResourceType.CHART,
         "dashboards": ResourceType.DASHBOARD,
     }
+    dependency_resource_map = {
+        "dashboards": {
+            "charts": "chart",
+            "datasets": "dataset",
+            "databases": "database",
+        },
+        "datasets": {
+            "databases": "database",
+        },
+    }
     asset_configs: Dict[Path, AssetConfig]
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
 
     log_file_path, logs = get_logs(LogType.ASSETS)
     assets_to_skip = {Path(log["path"]) for log in logs[LogType.ASSETS]}
     existing_databases = existing_databases or set()
+    existing_uuid_cache: Dict[Tuple[str, str], bool] = {}
+
+    def _resource_exists(resource_name: str, config: AssetConfig) -> bool:
+        uuid_value = config.get("uuid")
+        if not uuid_value:
+            return False
+        cache_key = (resource_name, str(uuid_value))
+        if cache_key not in existing_uuid_cache:
+            existing_uuid_cache[cache_key] = bool(
+                _resolve_uuid_to_id(
+                    client,
+                    resource_name,
+                    uuid_value,
+                ),
+            )
+        return existing_uuid_cache[cache_key]
 
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, get_related_uuids in imports:
@@ -493,19 +519,23 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
                         continue
 
                     if not cascade and not is_primary:
-                        uuid_value = config.get("uuid")
                         resource_type = resource_type_map[resource_name].resource_name
-                        if uuid_value and _resolve_uuid_to_id(
-                            client,
-                            resource_type,
-                            uuid_value,
-                        ):
+                        if _resource_exists(resource_type, config):
                             _logger.info(
                                 "Skipping existing %s %s (cascade disabled)",
                                 resource_name[:-1],
-                                uuid_value,
+                                config.get("uuid"),
                             )
                             continue
+
+                    if not cascade and is_primary:
+                        _prune_existing_dependency_configs(
+                            asset_configs,
+                            path,
+                            resource_name,
+                            dependency_resource_map,
+                            _resource_exists,
+                        )
 
                     _logger.info("Importing %s", path.relative_to("bundle"))
 
@@ -561,6 +591,29 @@ def get_dashboard_related_uuids(config: AssetConfig) -> Iterator[str]:
         yield uuid
     for uuid in get_dataset_filter_uuids(config):
         yield uuid
+
+
+def _prune_existing_dependency_configs(
+    asset_configs: Dict[Path, AssetConfig],
+    primary_path: Path,
+    resource_name: str,
+    dependency_resource_map: Dict[str, Dict[str, str]],
+    resource_exists: Callable[[str, AssetConfig], bool],
+) -> None:
+    """
+    Remove dependency configs that already exist when cascade is disabled.
+    """
+    dependency_map = dependency_resource_map.get(resource_name)
+    if not dependency_map:
+        return
+
+    for dep_path, dep_config in list(asset_configs.items()):
+        if dep_path == primary_path or len(dep_path.parts) < 2:
+            continue
+
+        dep_resource = dependency_map.get(dep_path.parts[1])
+        if dep_resource and resource_exists(dep_resource, dep_config):
+            asset_configs.pop(dep_path, None)
 
 
 def get_charts_uuids(config: AssetConfig) -> Iterator[str]:

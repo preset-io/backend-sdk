@@ -533,6 +533,41 @@ def test_fetch_with_filter_fallback_api_success_reverifies_locally() -> None:
     assert [row["id"] for row in result] == [1]
 
 
+def test_fetch_with_filter_fallback_missing_keys_refetches_for_local_filter() -> None:
+    """
+    Test ``fetch_with_filter_fallback`` re-fetches when API payload omits filter keys.
+    """
+    api_result = [
+        {"id": 1, "slug": "sales-overview"},
+        {"id": 2, "slug": "marketing-overview"},
+    ]
+    full_result = [
+        {"id": 1, "slug": "sales-overview", "dashboard_title": "Sales Overview"},
+        {
+            "id": 2,
+            "slug": "marketing-overview",
+            "dashboard_title": "Marketing Overview",
+        },
+    ]
+    called = {"fetch_all": 0}
+
+    def fetch_filtered(**_kw: Any):
+        return api_result
+
+    def fetch_all() -> list[dict[str, Any]]:
+        called["fetch_all"] += 1
+        return full_result
+
+    result = fetch_with_filter_fallback(
+        fetch_filtered,
+        fetch_all,
+        {"dashboard_title": Contains("sales")},
+        "dashboards",
+    )
+    assert called["fetch_all"] == 1
+    assert [row["id"] for row in result] == [1]
+
+
 def test_fetch_with_filter_fallback_not_allowed_fallback() -> None:
     """
     Test ``fetch_with_filter_fallback`` falls back on filter-not-allowed error.
