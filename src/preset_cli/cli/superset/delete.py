@@ -2,8 +2,11 @@
 Delete Superset assets.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 
+import shlex
 import tempfile
 from datetime import datetime
 from io import BytesIO
@@ -30,7 +33,9 @@ from preset_cli.lib import remove_root
 
 def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
     """Extract UUID sets from a dashboard export ZIP."""
-    chart_uuids, dataset_uuids, database_uuids, _, _ = _extract_dependency_maps(buf)
+    chart_uuids, dataset_uuids, database_uuids, _, _, _ = _extract_dependency_maps(
+        buf,
+    )
     return {
         "charts": chart_uuids,
         "datasets": dataset_uuids,
@@ -38,14 +43,89 @@ def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
     }
 
 
-def _extract_dependency_maps(
+def _extract_backup_uuids_by_type(backup_data: bytes) -> Dict[str, Set[str]]:
+    uuids: Dict[str, Set[str]] = {
+        "dashboard": set(),
+        "chart": set(),
+        "dataset": set(),
+        "database": set(),
+    }
+
+    with ZipFile(BytesIO(backup_data)) as bundle:
+        for file_name in bundle.namelist():
+            relative = remove_root(file_name)
+            if not relative.endswith((".yaml", ".yml")):
+                continue
+
+            if relative.startswith("dashboards/"):
+                resource_name = "dashboard"
+            elif relative.startswith("charts/"):
+                resource_name = "chart"
+            elif relative.startswith("datasets/"):
+                resource_name = "dataset"
+            elif relative.startswith("databases/"):
+                resource_name = "database"
+            else:
+                continue
+
+            config = yaml.load(bundle.read(file_name), Loader=yaml.SafeLoader) or {}
+            if uuid := config.get("uuid"):
+                uuids[resource_name].add(str(uuid))
+
+    return uuids
+
+
+def _verify_rollback_restoration(
+    client: SupersetClient,
+    backup_data: bytes,
+    expected_types: Set[str],
+) -> Tuple[List[str], List[str]]:
+    """
+    Verify rollback restored UUIDs for expected resource types.
+
+    Returns:
+      - list of unresolved resource types (cannot verify on this Superset version)
+      - list of resource types with missing UUIDs
+    """
+    backup_uuids = _extract_backup_uuids_by_type(backup_data)
+    unresolved: List[str] = []
+    missing_types: List[str] = []
+
+    for resource_name in sorted(expected_types):
+        expected_uuids = backup_uuids.get(resource_name, set())
+        if not expected_uuids:
+            continue
+
+        _, _, missing_uuids, resolved = _resolve_ids(
+            client,
+            resource_name,
+            expected_uuids,
+        )
+        if not resolved:
+            unresolved.append(resource_name)
+            continue
+        if missing_uuids:
+            missing_types.append(resource_name)
+
+    return unresolved, missing_types
+
+
+def _extract_dependency_maps(  # pylint: disable=too-many-locals, too-many-branches
     buf: BytesIO,
-) -> Tuple[Set[str], Set[str], Set[str], Dict[str, str], Dict[str, str]]:
+) -> Tuple[
+    Set[str],
+    Set[str],
+    Set[str],
+    Dict[str, str],
+    Dict[str, str],
+    Dict[str, Set[str]],
+]:
     chart_uuids: Set[str] = set()
     dataset_uuids: Set[str] = set()
     database_uuids: Set[str] = set()
     chart_dataset_map: Dict[str, str] = {}
     dataset_database_map: Dict[str, str] = {}
+    chart_dashboard_titles: Dict[str, Set[str]] = {}
 
     with ZipFile(buf) as bundle:
         for file_name in bundle.namelist():
@@ -68,6 +148,26 @@ def _extract_dependency_maps(
             elif relative.startswith("databases/"):
                 if uuid := config.get("uuid"):
                     database_uuids.add(uuid)
+            elif relative.startswith("dashboards/"):
+                dashboard_title = (
+                    config.get("dashboard_title") or config.get("title") or "Unknown"
+                )
+                position = config.get("position")
+                if not isinstance(position, dict):
+                    continue
+                for node in position.values():
+                    if not isinstance(node, dict):
+                        continue
+                    if node.get("type") != "CHART":
+                        continue
+                    meta = node.get("meta")
+                    if not isinstance(meta, dict):
+                        continue
+                    chart_uuid = meta.get("uuid")
+                    if chart_uuid:
+                        chart_dashboard_titles.setdefault(str(chart_uuid), set()).add(
+                            str(dashboard_title),
+                        )
 
     return (
         chart_uuids,
@@ -75,6 +175,7 @@ def _extract_dependency_maps(
         database_uuids,
         chart_dataset_map,
         dataset_database_map,
+        chart_dashboard_titles,
     )
 
 
@@ -92,11 +193,30 @@ def _parse_db_passwords(db_password: Tuple[str, ...]) -> Dict[str, str]:
 
 def _write_backup(backup_data: bytes) -> str:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_path = (
-        Path(tempfile.gettempdir()) / f"preset-cli-backup-delete-{timestamp}.zip"
-    )
-    backup_path.write_bytes(backup_data)
+    with tempfile.NamedTemporaryFile(
+        mode="wb",
+        prefix=f"preset-cli-backup-delete-{timestamp}-",
+        suffix=".zip",
+        delete=False,
+        dir=tempfile.gettempdir(),
+    ) as output:
+        output.write(backup_data)
+        backup_path = Path(output.name)
+
+    # Enforce private backup file permissions where supported.
+    try:
+        backup_path.chmod(0o600)
+    except OSError:
+        pass
     return str(backup_path)
+
+
+def _format_restore_command(backup_path: str, asset_type: str) -> str:
+    quoted_path = shlex.quote(backup_path)
+    return (
+        "preset-cli superset import-assets "
+        f"{quoted_path} --overwrite --asset-type {asset_type}"
+    )
 
 
 def _apply_db_passwords_to_backup(
@@ -139,15 +259,27 @@ def _dataset_db_id(dataset: Dict[str, Any]) -> int | None:
 def _build_uuid_map(
     client: SupersetClient,
     resource_name: str,
-) -> Tuple[Dict[str, int], bool]:
+) -> Tuple[Dict[str, int], Dict[int, str], bool]:
     resources = client.get_resources(resource_name)
+    name_keys = RESOURCE_NAME_KEYS.get(resource_name, ("name",))
+    name_map: Dict[int, str] = {}
+    for resource in resources:
+        if "id" not in resource:
+            continue
+        name = next(
+            (resource.get(k) for k in name_keys if resource.get(k)),
+            None,
+        )
+        if name:
+            name_map[resource["id"]] = name
+
     uuid_map = {
         resource["uuid"]: resource["id"]
         for resource in resources
         if "uuid" in resource and "id" in resource
     }
     if uuid_map:
-        return uuid_map, True
+        return uuid_map, name_map, True
 
     ids = {resource["id"] for resource in resources if "id" in resource}
     if ids:
@@ -155,26 +287,26 @@ def _build_uuid_map(
             str(uuid): id_ for id_, uuid in client.get_uuids(resource_name, ids).items()
         }
         if uuid_map:
-            return uuid_map, True
+            return uuid_map, name_map, True
 
-    return {}, False
+    return {}, name_map, False
 
 
 def _resolve_ids(
     client: SupersetClient,
     resource_name: str,
     uuids: Set[str],
-) -> Tuple[Set[int], List[str], bool]:
+) -> Tuple[Set[int], Dict[int, str], List[str], bool]:
     if not uuids:
-        return set(), [], True
+        return set(), {}, [], True
 
-    uuid_map, resolved = _build_uuid_map(client, resource_name)
+    uuid_map, name_map, resolved = _build_uuid_map(client, resource_name)
     if not resolved:
-        return set(), list(uuids), False
+        return set(), {}, list(uuids), False
 
     ids = {uuid_map[uuid] for uuid in uuids if uuid in uuid_map}
     missing = [uuid for uuid in uuids if uuid not in uuid_map]
-    return ids, missing, True
+    return ids, name_map, missing, True
 
 
 def _format_dashboard_summary(dashboards: Iterable[Dict[str, Any]]) -> List[str]:
@@ -228,16 +360,17 @@ def _echo_resource_summary(
 
     if dry_run:
         click.echo(
-            "\nTo proceed with deletion, run with: "
-            "--no-dry-run or --dry-run=false --confirm=DELETE",
+            "\nTo proceed with deletion, run with: --dry-run=false --confirm=DELETE",
         )
 
 
-def _echo_summary(  # pylint: disable=too-many-arguments, too-many-branches
+def _echo_summary(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals
     dashboards: List[Dict[str, Any]],
     chart_ids: Set[int],
     dataset_ids: Set[int],
     database_ids: Set[int],
+    cascade_names: Dict[str, Dict[int, str]],
+    chart_dashboard_context: Dict[int, List[str]],
     shared: Dict[str, Set[str]],
     cascade_flags: Dict[str, bool],
     dry_run: bool,
@@ -254,21 +387,35 @@ def _echo_summary(  # pylint: disable=too-many-arguments, too-many-branches
     if cascade_flags["charts"]:
         click.echo(f"\nCharts ({len(chart_ids)}):")
         for cid in sorted(chart_ids):
-            click.echo(f"  - [ID: {cid}]")
+            name = cascade_names.get("charts", {}).get(cid)
+            label = f" {name}" if name else ""
+            dashboard_titles = chart_dashboard_context.get(cid, [])
+            context = ""
+            if dashboard_titles:
+                if len(dashboard_titles) == 1:
+                    context = f" (dashboard: {dashboard_titles[0]})"
+                else:
+                    joined = ", ".join(dashboard_titles)
+                    context = f" (dashboards: {joined})"
+            click.echo(f"  - [ID: {cid}]{label}{context}")
     else:
         click.echo("\nCharts (0): (not cascading)")
 
     if cascade_flags["datasets"]:
         click.echo(f"\nDatasets ({len(dataset_ids)}):")
         for did in sorted(dataset_ids):
-            click.echo(f"  - [ID: {did}]")
+            name = cascade_names.get("datasets", {}).get(did)
+            label = f" {name}" if name else ""
+            click.echo(f"  - [ID: {did}]{label}")
     else:
         click.echo("\nDatasets (0): (not cascading)")
 
     if cascade_flags["databases"]:
         click.echo(f"\nDatabases ({len(database_ids)}):")
         for bid in sorted(database_ids):
-            click.echo(f"  - [ID: {bid}]")
+            name = cascade_names.get("databases", {}).get(bid)
+            label = f" {name}" if name else ""
+            click.echo(f"  - [ID: {bid}]{label}")
     else:
         click.echo("\nDatabases (0): (not cascading)")
 
@@ -292,8 +439,7 @@ def _echo_summary(  # pylint: disable=too-many-arguments, too-many-branches
 
     if dry_run:
         click.echo(
-            "\nTo proceed with deletion, run with: "
-            "--no-dry-run or --dry-run=false --confirm=DELETE",
+            "\nTo proceed with deletion, run with: --dry-run=false --confirm=DELETE",
         )
 
 
@@ -363,7 +509,7 @@ def _echo_summary(  # pylint: disable=too-many-arguments, too-many-branches
 @click.option(
     "--rollback/--no-rollback",
     default=True,
-    help="Attempt rollback if any deletion fails",
+    help="Attempt best-effort rollback if any deletion fails",
 )
 @click.option(
     "--db-password",
@@ -394,13 +540,20 @@ def delete_assets(  # pylint: disable=too-many-arguments, too-many-locals
     db_passwords: Dict[str, str] = {}
 
     if resource_name != "dashboard":
-        rollback = False
         if any(
             [cascade_charts, cascade_datasets, cascade_databases, skip_shared_check],
         ):
             raise click.UsageError(
                 "Cascade options are only supported for dashboard assets.",
             )
+        if resource_name == "database":
+            db_passwords = _parse_db_passwords(db_password)
+            if rollback and not db_passwords:
+                click.echo(
+                    "Warning: rollback for database deletes requires "
+                    "--db-password; proceeding without rollback.",
+                )
+                rollback = False
     else:
         db_passwords = _parse_db_passwords(db_password)
     if cascade_datasets and not cascade_charts:
@@ -424,6 +577,8 @@ def delete_assets(  # pylint: disable=too-many-arguments, too-many-locals
             parsed_filters,
             dry_run,
             confirm,
+            rollback,
+            db_passwords,
         )
         return
 
@@ -441,12 +596,14 @@ def delete_assets(  # pylint: disable=too-many-arguments, too-many-locals
     )
 
 
-def _delete_non_dashboard_assets(
+def _delete_non_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-locals, too-many-branches
     client: SupersetClient,
     resource_name: str,
     parsed_filters: Dict[str, Any],
     dry_run: bool,
     confirm: str | None,
+    rollback: bool,
+    db_passwords: Dict[str, str],
 ) -> None:
     if resource_name == "database":
         resources = filter_resources_locally(
@@ -476,11 +633,23 @@ def _delete_non_dashboard_assets(
         return
 
     _echo_resource_summary(resource_name, resources, dry_run=False)
-    resource_failures: List[str] = []
 
-    for resource_id in resource_ids:
+    # Pre-delete backup for manual restore (or rollback when enabled).
+    backup_buf = client.export_zip(resource_name, sorted(resource_ids))
+    backup_data = backup_buf.read()
+    backup_path = _write_backup(backup_data)
+    click.echo(f"\nBackup saved to: {backup_path}")
+    click.echo(
+        f"To restore, run: {_format_restore_command(backup_path, resource_name)}\n",
+    )
+
+    resource_failures: List[str] = []
+    deleted_any = False
+
+    for resource_id in sorted(resource_ids):
         try:
             client.delete_resource(resource_name, resource_id)
+            deleted_any = True
         except Exception as exc:  # pylint: disable=broad-except
             resource_failures.append(f"{resource_name}:{resource_id} ({exc})")
 
@@ -488,6 +657,41 @@ def _delete_non_dashboard_assets(
         click.echo("Some deletions failed:")
         for failure in resource_failures:
             click.echo(f"  {failure}")
+        if rollback and deleted_any:
+            click.echo("\nBest-effort rollback attempted...")
+            try:
+                rollback_buf = _apply_db_passwords_to_backup(
+                    backup_data,
+                    db_passwords if resource_name == "database" else {},
+                )
+                client.import_zip(resource_name, rollback_buf, overwrite=True)
+            except Exception as exc:  # pylint: disable=broad-except
+                click.echo(f"Rollback failed: {exc}")
+                raise click.ClickException(
+                    "Rollback failed. A backup zip is available for manual restore.",
+                ) from exc
+
+            unresolved, missing_types = _verify_rollback_restoration(
+                client,
+                backup_data,
+                {resource_name},
+            )
+            if unresolved:
+                labels = ", ".join(unresolved)
+                click.echo(
+                    f"Warning: unable to verify rollback for: {labels}.",
+                )
+            if missing_types:
+                labels = ", ".join(missing_types)
+                raise click.ClickException(
+                    f"Rollback verification failed for: {labels}. "
+                    "A backup zip is available for manual restore.",
+                )
+            click.echo("Rollback succeeded.")
+
+        raise click.ClickException(
+            "Deletion completed with failures. See errors above.",
+        )
 
 
 def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-locals, too-many-branches, too-many-statements
@@ -518,6 +722,7 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
     database_uuids: Set[str] = set()
     chart_dataset_map: Dict[str, str] = {}
     dataset_database_map: Dict[str, str] = {}
+    chart_dashboard_titles_by_uuid: Dict[str, Set[str]] = {}
     cascade_buf: BytesIO | None = None
 
     if cascade_charts:
@@ -528,6 +733,7 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
             database_uuids,
             chart_dataset_map,
             dataset_database_map,
+            chart_dashboard_titles_by_uuid,
         ) = _extract_dependency_maps(cascade_buf)
 
         if not cascade_datasets:
@@ -565,6 +771,11 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
             shared_uuids["databases"] = protected_databases
 
             chart_uuids -= shared_uuids["charts"]
+            chart_dashboard_titles_by_uuid = {
+                uuid: titles
+                for uuid, titles in chart_dashboard_titles_by_uuid.items()
+                if uuid in chart_uuids
+            }
             dataset_uuids -= shared_uuids["datasets"]
             database_uuids -= shared_uuids["databases"]
     elif cascade_charts and skip_shared_check:
@@ -575,6 +786,8 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
     chart_ids: Set[int] = set()
     dataset_ids: Set[int] = set()
     database_ids: Set[int] = set()
+    chart_dashboard_context: Dict[int, List[str]] = {}
+    cascade_names: Dict[str, Dict[int, str]] = {}
 
     cascade_flags = {
         "charts": cascade_charts,
@@ -583,21 +796,47 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
     }
 
     if cascade_charts:
-        chart_ids, missing_chart_uuids, charts_resolved = _resolve_ids(
-            client,
-            "chart",
-            chart_uuids,
+        chart_uuid_map, chart_names, charts_resolved = _build_uuid_map(client, "chart")
+        if charts_resolved:
+            chart_ids = {
+                chart_uuid_map[chart_uuid]
+                for chart_uuid in chart_uuids
+                if chart_uuid in chart_uuid_map
+            }
+            missing_chart_uuids = [
+                chart_uuid
+                for chart_uuid in chart_uuids
+                if chart_uuid not in chart_uuid_map
+            ]
+            for chart_uuid, titles in chart_dashboard_titles_by_uuid.items():
+                chart_id = chart_uuid_map.get(chart_uuid)
+                if chart_id is None:
+                    continue
+                if chart_id not in chart_ids:
+                    continue
+                chart_dashboard_context[chart_id] = sorted(titles)
+        else:
+            chart_ids = set()
+            missing_chart_uuids = list(chart_uuids)
+        dataset_ids, dataset_names, missing_dataset_uuids, datasets_resolved = (
+            _resolve_ids(
+                client,
+                "dataset",
+                dataset_uuids,
+            )
         )
-        dataset_ids, missing_dataset_uuids, datasets_resolved = _resolve_ids(
-            client,
-            "dataset",
-            dataset_uuids,
+        database_ids, database_names, missing_database_uuids, databases_resolved = (
+            _resolve_ids(
+                client,
+                "database",
+                database_uuids,
+            )
         )
-        database_ids, missing_database_uuids, databases_resolved = _resolve_ids(
-            client,
-            "database",
-            database_uuids,
-        )
+        cascade_names = {
+            "charts": chart_names,
+            "datasets": dataset_names,
+            "databases": database_names,
+        }
 
         if not (charts_resolved and datasets_resolved and databases_resolved):
             click.echo(
@@ -621,6 +860,8 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
             chart_ids,
             dataset_ids,
             database_ids,
+            cascade_names,
+            chart_dashboard_context,
             shared_uuids,
             cascade_flags,
             dry_run=True,
@@ -686,6 +927,8 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
         chart_ids,
         dataset_ids,
         database_ids,
+        cascade_names,
+        chart_dashboard_context,
         shared_uuids,
         cascade_flags,
         dry_run=False,
@@ -701,7 +944,7 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
     backup_path = _write_backup(backup_data)
     click.echo(f"\nBackup saved to: {backup_path}")
     click.echo(
-        f"To restore, run: preset-cli superset import-assets {backup_path} --overwrite\n",
+        f"To restore, run: {_format_restore_command(backup_path, 'dashboard')}\n",
     )
 
     failures: List[str] = []
@@ -709,17 +952,18 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
 
     def _delete(resource_name: str, resource_ids: Iterable[int]) -> None:
         nonlocal deleted_any
-        for resource_id in resource_ids:
+        for resource_id in sorted(resource_ids):
             try:
                 client.delete_resource(resource_name, resource_id)
                 deleted_any = True
             except Exception as exc:  # pylint: disable=broad-except
                 failures.append(f"{resource_name}:{resource_id} ({exc})")
 
-    _delete("dashboard", dashboard_ids)
+    # Delete dependencies first, then dashboards.
     _delete("chart", chart_ids)
     _delete("dataset", dataset_ids)
     _delete("database", database_ids)
+    _delete("dashboard", dashboard_ids)
 
     if failures:
         click.echo("Some deletions failed:")
@@ -727,17 +971,44 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
             click.echo(f"  {failure}")
 
         if rollback and deleted_any:
-            click.echo("\nRollback attempted...")
+            click.echo("\nBest-effort rollback attempted...")
             try:
                 rollback_buf = _apply_db_passwords_to_backup(
                     backup_data,
                     db_passwords,
                 )
                 client.import_zip("dashboard", rollback_buf, overwrite=True)
-                click.echo("Rollback succeeded.")
             except Exception as exc:  # pylint: disable=broad-except
                 click.echo(f"Rollback failed: {exc}")
                 raise click.ClickException(
                     "Rollback failed. A backup zip is available for manual restore.",
                 ) from exc
-        return
+
+            expected_types = {"dashboard"}
+            if cascade_charts:
+                expected_types.add("chart")
+            if cascade_datasets:
+                expected_types.add("dataset")
+            if cascade_databases:
+                expected_types.add("database")
+
+            unresolved, missing_types = _verify_rollback_restoration(
+                client,
+                backup_data,
+                expected_types,
+            )
+            if unresolved:
+                labels = ", ".join(unresolved)
+                click.echo(
+                    f"Warning: unable to verify rollback for: {labels}.",
+                )
+            if missing_types:
+                labels = ", ".join(missing_types)
+                raise click.ClickException(
+                    f"Rollback verification failed for: {labels}. "
+                    "A backup zip is available for manual restore.",
+                )
+            click.echo("Rollback succeeded.")
+        raise click.ClickException(
+            "Deletion completed with failures. See errors above.",
+        )

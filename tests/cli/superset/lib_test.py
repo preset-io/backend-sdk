@@ -306,6 +306,23 @@ def test_parse_filters_missing_equals() -> None:
         parse_filters(("slugtest",), DASHBOARD_FILTER_KEYS)
 
 
+def test_parse_filters_duplicate_key_rejected() -> None:
+    """
+    Test ``parse_filters`` rejects duplicate keys.
+    """
+    with pytest.raises(click.BadParameter):
+        parse_filters(("slug=test", "slug=other"), DASHBOARD_FILTER_KEYS)
+
+
+def test_parse_filters_trims_whitespace() -> None:
+    """
+    Test ``parse_filters`` trims surrounding whitespace for key and value.
+    """
+    assert parse_filters((" slug = test ",), DASHBOARD_FILTER_KEYS) == {
+        "slug": "test",
+    }
+
+
 def test_parse_filters_empty_value() -> None:
     """
     Test ``parse_filters`` with empty value.
@@ -475,7 +492,7 @@ def test_fetch_with_filter_fallback_api_success() -> None:
     """
     Test ``fetch_with_filter_fallback`` happy path — API succeeds.
     """
-    api_result = [{"id": 5}]
+    api_result = [{"id": 5, "slug": "test"}]
 
     def fetch_filtered(**_kw: Any):
         return api_result
@@ -490,6 +507,30 @@ def test_fetch_with_filter_fallback_api_success() -> None:
         "dashboards",
     )
     assert result == api_result
+
+
+def test_fetch_with_filter_fallback_api_success_reverifies_locally() -> None:
+    """
+    Test ``fetch_with_filter_fallback`` re-verifies API results locally.
+    """
+    api_result = [
+        {"id": 1, "slug": "test"},
+        {"id": 2, "slug": "other"},
+    ]
+
+    def fetch_filtered(**_kw: Any):
+        return api_result
+
+    def fetch_all() -> list[dict[str, Any]]:
+        raise AssertionError("should not be called")
+
+    result = fetch_with_filter_fallback(
+        fetch_filtered,
+        fetch_all,
+        {"slug": "test"},
+        "dashboards",
+    )
+    assert [row["id"] for row in result] == [1]
 
 
 def test_fetch_with_filter_fallback_not_allowed_fallback() -> None:
