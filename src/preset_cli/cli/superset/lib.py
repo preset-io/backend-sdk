@@ -228,6 +228,12 @@ def parse_filters(
             )
 
         key, value = item.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            raise click.BadParameter(
+                f"Invalid filter '{item}'. Filter key cannot be empty.",
+            )
         if key == "managed_externally":
             key = "is_managed_externally"
 
@@ -235,6 +241,10 @@ def parse_filters(
             allowed = ", ".join(sorted(allowed_keys))
             raise click.BadParameter(
                 f"Invalid filter key '{key}'. Allowed keys: {allowed}.",
+            )
+        if key in parsed:
+            raise click.BadParameter(
+                f"Duplicate filter key '{key}'. " "Pass each filter key at most once.",
             )
 
         value_type = allowed_keys[key]
@@ -264,7 +274,7 @@ def fetch_with_filter_fallback(
         return filter_resources_locally(fetch_all(), parsed_filters)
 
     try:
-        return fetch_filtered(**parsed_filters)
+        resources = fetch_filtered(**parsed_filters)
     except Exception as exc:  # pylint: disable=broad-except
         if is_filter_not_allowed_error(exc):
             return filter_resources_locally(fetch_all(), parsed_filters)
@@ -274,3 +284,13 @@ def fetch_with_filter_fallback(
             f"This may indicate that filter key(s) {filter_keys} "
             "may not be supported by this Superset version.",
         ) from exc
+
+    if not resources:
+        return resources
+
+    # Verify filtered responses locally to avoid broad results when an API silently
+    # ignores one or more predicates. If keys are not present in the API payload,
+    # keep the server result to avoid false negatives on slim list payloads.
+    if all(all(key in resource for key in parsed_filters) for resource in resources):
+        return filter_resources_locally(resources, parsed_filters)
+    return resources

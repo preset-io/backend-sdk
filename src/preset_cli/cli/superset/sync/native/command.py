@@ -2,6 +2,8 @@
 A command to sync Superset exports into a Superset instance.
 """
 
+# pylint: disable=too-many-lines
+
 from __future__ import annotations
 
 import getpass
@@ -9,6 +11,7 @@ import importlib.util
 import json
 import logging
 import os
+import tempfile
 from datetime import datetime, timezone
 from enum import Enum
 from io import BytesIO
@@ -169,6 +172,68 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
     return yaml.load(content, Loader=yaml.SafeLoader)
 
 
+def _is_bundle_root(path: Path) -> bool:
+    return path.is_dir() and any((path / name).is_dir() for name in ASSET_DIRECTORIES)
+
+
+def _safe_extract_zip(zip_path: Path, output_dir: Path) -> None:
+    root = output_dir.resolve()
+    with ZipFile(zip_path) as bundle:
+        for member in bundle.infolist():
+            member_path = Path(member.filename)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise click.ClickException(
+                    f"Unsafe ZIP path detected: {member.filename}",
+                )
+
+            destination = (output_dir / member_path).resolve()
+            if os.path.commonpath([str(root), str(destination)]) != str(root):
+                raise click.ClickException(
+                    f"ZIP entry escapes target directory: {member.filename}",
+                )
+
+            if member.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
+
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with bundle.open(member) as src, open(destination, "wb") as dst:
+                dst.write(src.read())
+
+
+def _resolve_input_root(path: Path) -> Tuple[Path, tempfile.TemporaryDirectory | None]:
+    if path.is_dir():
+        return path, None
+
+    if not path.is_file() or path.suffix.lower() != ".zip":
+        raise click.ClickException(
+            "Input must be a directory or a .zip bundle.",
+        )
+
+    temp_dir = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
+    extract_root = Path(temp_dir.name)
+    _safe_extract_zip(path, extract_root)
+
+    candidates = [extract_root, extract_root / "bundle"]
+    for child in extract_root.iterdir():
+        if child.is_dir():
+            candidates.extend([child, child / "bundle"])
+
+    seen: Set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if _is_bundle_root(candidate):
+            return candidate, temp_dir
+
+    temp_dir.cleanup()
+    raise click.ClickException(
+        "ZIP input does not contain a valid assets bundle.",
+    )
+
+
 @click.command()
 @click.argument("directory", type=click.Path(exists=True, resolve_path=True))
 @click.option(
@@ -258,88 +323,92 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
-    root = Path(directory)
+    root, temp_dir = _resolve_input_root(Path(directory))
     base_url = URL(external_url_prefix) if external_url_prefix else None
 
-    # The ``--continue-on-error`` and ``--no-cascade`` flags force split mode.
-    split = split or continue_on_error or not cascade
-
-    # collecting existing database UUIDs so we know if we're creating or updating
-    # newer versions expose the DB UUID in the API response,
-    # olders only expose it via export
     try:
-        existing_databases = {
-            db_connection["uuid"] for db_connection in client.get_databases()
-        }
-    except KeyError:
-        existing_databases = {
-            str(uuid) for uuid in client.get_uuids("database").values()
-        }
+        # The ``--continue-on-error`` and ``--no-cascade`` flags force split mode.
+        split = split or continue_on_error or not cascade
 
-    # env for Jinja2 templating
-    env = dict(pair.split("=", 1) for pair in option if "=" in pair)  # type: ignore
-    env["instance"] = url
-    env["functions"] = load_user_modules(root / "functions")  # type: ignore
-    env["raise"] = raise_helper  # type: ignore
-    if load_env:
-        env["env"] = os.environ  # type: ignore
+        # collecting existing database UUIDs so we know if we're creating or updating
+        # newer versions expose the DB UUID in the API response,
+        # olders only expose it via export
+        try:
+            existing_databases = {
+                db_connection["uuid"] for db_connection in client.get_databases()
+            }
+        except KeyError:
+            existing_databases = {
+                str(uuid) for uuid in client.get_uuids("database").values()
+            }
 
-    pwds = dict(kv.split("=", 1) for kv in db_password or [])
+        # env for Jinja2 templating
+        env = dict(pair.split("=", 1) for pair in option if "=" in pair)  # type: ignore
+        env["instance"] = url
+        env["functions"] = load_user_modules(root / "functions")  # type: ignore
+        env["raise"] = raise_helper  # type: ignore
+        if load_env:
+            env["env"] = os.environ  # type: ignore
 
-    # read all the YAML files
-    configs: Dict[Path, AssetConfig] = {}
-    queue = [root]
-    while queue:
-        path_name = queue.pop()
-        relative_path = path_name.relative_to(root)
+        pwds = dict(kv.split("=", 1) for kv in db_password or [])
 
-        if path_name.is_dir() and not path_name.stem.startswith("."):
-            queue.extend(path_name.glob("*"))
-        elif is_yaml_config(relative_path):
-            config = (
-                load_yaml(path_name)
-                if disable_jinja_templating
-                else render_yaml(path_name, env)
-            )
+        # read all the YAML files
+        configs: Dict[Path, AssetConfig] = {}
+        queue = [root]
+        while queue:
+            path_name = queue.pop()
+            relative_path = path_name.relative_to(root)
 
-            overrides_path = path_name.with_suffix(".overrides" + path_name.suffix)
-            if overrides_path.exists():
-                overrides = (
-                    load_yaml(overrides_path)
+            if path_name.is_dir() and not path_name.stem.startswith("."):
+                queue.extend(path_name.glob("*"))
+            elif is_yaml_config(relative_path):
+                config = (
+                    load_yaml(path_name)
                     if disable_jinja_templating
-                    else render_yaml(overrides_path, env)
+                    else render_yaml(path_name, env)
                 )
-                dict_merge(config, overrides)
 
-            config["is_managed_externally"] = disallow_edits
-            if base_url:
-                config["external_url"] = str(
-                    base_url / str(relative_path),
-                )
-            if relative_path.parts[0] == "databases":
-                new_conn = config["uuid"] not in existing_databases
-                add_password_to_config(relative_path, config, pwds, new_conn)
-            if relative_path.parts[0] == "datasets" and isinstance(
-                config.get("params"),
-                str,
-            ):
-                config["params"] = json.loads(config["params"])
+                overrides_path = path_name.with_suffix(".overrides" + path_name.suffix)
+                if overrides_path.exists():
+                    overrides = (
+                        load_yaml(overrides_path)
+                        if disable_jinja_templating
+                        else render_yaml(overrides_path, env)
+                    )
+                    dict_merge(config, overrides)
 
-            configs["bundle" / relative_path] = config
+                config["is_managed_externally"] = disallow_edits
+                if base_url:
+                    config["external_url"] = str(
+                        base_url / str(relative_path),
+                    )
+                if relative_path.parts[0] == "databases":
+                    new_conn = config["uuid"] not in existing_databases
+                    add_password_to_config(relative_path, config, pwds, new_conn)
+                if relative_path.parts[0] == "datasets" and isinstance(
+                    config.get("params"),
+                    str,
+                ):
+                    config["params"] = json.loads(config["params"])
 
-    if split:
-        import_resources_individually(
-            configs,
-            client,
-            overwrite,
-            asset_type,
-            continue_on_error,
-            cascade=cascade,
-            existing_databases=existing_databases,
-        )
-    else:
-        contents = {str(k): yaml.dump(v) for k, v in configs.items()}
-        import_resources(contents, client, overwrite, asset_type)
+                configs["bundle" / relative_path] = config
+
+        if split:
+            import_resources_individually(
+                configs,
+                client,
+                overwrite,
+                asset_type,
+                continue_on_error,
+                cascade=cascade,
+                existing_databases=existing_databases,
+            )
+        else:
+            contents = {str(k): yaml.dump(v) for k, v in configs.items()}
+            import_resources(contents, client, overwrite, asset_type)
+    finally:
+        if temp_dir:
+            temp_dir.cleanup()
 
 
 def import_resources_individually(  # pylint: disable=too-many-locals, too-many-arguments, too-many-branches, too-many-statements

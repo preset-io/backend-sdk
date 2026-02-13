@@ -403,6 +403,70 @@ def test_native(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     client.get_uuids.assert_not_called()
 
 
+def test_native_zip_input(mocker: MockerFixture, tmp_path: Path) -> None:
+    """
+    Test the ``native`` command when input is a ZIP bundle.
+    """
+    bundle_root = tmp_path / "bundle"
+    (bundle_root / "databases").mkdir(parents=True)
+    db_config = {
+        "database_name": "GSheets",
+        "sqlalchemy_uri": "gsheets://",
+        "uuid": "uuid1",
+    }
+    (bundle_root / "databases" / "gsheets.yaml").write_text(
+        yaml.dump(db_config),
+        encoding="utf-8",
+    )
+
+    zip_path = tmp_path / "assets.zip"
+    with ZipFile(zip_path, "w") as bundle:
+        for file_path in bundle_root.rglob("*"):
+            if file_path.is_file():
+                bundle.write(file_path, file_path.relative_to(tmp_path))
+
+    SupersetClient = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.SupersetClient",
+    )
+    client = SupersetClient()
+    client.get_databases.return_value = []
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(zip_path)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    import_resources_mock.assert_called_once()
+    contents = import_resources_mock.call_args.args[0]
+    assert "bundle/databases/gsheets.yaml" in contents
+
+
+def test_native_zip_rejects_unsafe_paths(mocker: MockerFixture, tmp_path: Path) -> None:
+    """
+    Test the ``native`` command rejects ZIP bundles with path traversal entries.
+    """
+    zip_path = tmp_path / "unsafe.zip"
+    with ZipFile(zip_path, "w") as bundle:
+        bundle.writestr("../evil.yaml", "uuid: bad")
+
+    mocker.patch("preset_cli.cli.superset.sync.native.command.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "sync", "native", str(zip_path)],
+    )
+    assert result.exit_code != 0
+    assert "unsafe zip path detected" in result.output.lower()
+
+
 def test_native_params_as_str(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``native`` command when dataset ``params`` are a string.
@@ -2792,6 +2856,83 @@ def test_no_cascade_skips_existing_dependencies(
     )
 
     import_resources_mock.assert_not_called()
+
+
+def test_native_no_cascade_dataset(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test no-cascade with dataset asset type: database imported without overwrite.
+    """
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    client = mocker.MagicMock()
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {
+            "uuid": "db-uuid",
+            "database_name": "db",
+            "sqlalchemy_uri": "sqlite://",
+        },
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+            "table_name": "test",
+        },
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.DATASET,
+        continue_on_error=False,
+        cascade=False,
+    )
+
+    overwrite_by_resource = {}
+    for call in import_resources.mock_calls:
+        contents = call.args[0]
+        resource = next(iter(contents)).split("/")[1]
+        overwrite_by_resource[resource] = call.args[2]
+
+    assert overwrite_by_resource["datasets"] is True
+    assert overwrite_by_resource["databases"] is False
+
+
+def test_native_no_cascade_database(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test no-cascade with database asset type: database imported with overwrite.
+    """
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    client = mocker.MagicMock()
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {
+            "uuid": "db-uuid",
+            "database_name": "db",
+            "sqlalchemy_uri": "sqlite://",
+        },
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.DATABASE,
+        continue_on_error=False,
+        cascade=False,
+    )
+
+    assert import_resources.call_count == 1
+    call = import_resources.mock_calls[0]
+    assert call.args[2] is True
+    assert call.args[3] is ResourceType.DATABASE
 
 
 def test_native_invalid_asset_type(mocker: MockerFixture, fs: FakeFilesystem) -> None:
