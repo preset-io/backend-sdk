@@ -723,7 +723,7 @@ def test_import_users_with_workspace_roles(
             "username": "alice.doe",
             "workspaces": {
                 "TestTeam/Analytics": {
-                    "workspace_role": "primary contributor",
+                    "workspace_role": "primary creator",
                     "workspace_name": "analytics",
                     "team": "TestTeam",
                 },
@@ -788,7 +788,7 @@ def test_import_users_with_workspace_roles(
         1,
         10,
         "PresetAlpha",
-    )  # Alice, Analytics, primary contributor
+    )  # Alice, Analytics, primary creator
     client.change_workspace_role.assert_any_call(
         "TestTeam",
         2,
@@ -870,7 +870,7 @@ def test_detect_users_file_format() -> None:
             "email": "adoe@example.com",
             "workspaces": {
                 "Team/Workspace": {
-                    "workspace_role": "primary contributor",
+                    "workspace_role": "primary creator",
                     "team": "Team",
                 },
             },
@@ -937,7 +937,7 @@ def test_import_users_workspace_roles_error_handling(
             "email": "adoe@example.com",
             "workspaces": {
                 "TestTeam/Analytics": {
-                    "workspace_role": "primary contributor",
+                    "workspace_role": "primary creator",
                     "team": "TestTeam",
                     "workspace_name": "analytics",
                 },
@@ -1087,7 +1087,7 @@ def test_import_users_with_workspace_roles_workspace_not_found(
             "username": "alice.doe",
             "workspaces": {
                 "TestTeam/NonexistentWorkspace": {
-                    "workspace_role": "primary contributor",
+                    "workspace_role": "primary creator",
                     "team": "TestTeam",
                     "workspace_name": "NonexistentWorkspace",
                 },
@@ -1206,7 +1206,7 @@ def test_import_users_with_workspace_roles_change_role_exception(
             "username": "alice.doe",
             "workspaces": {
                 "TestTeam/Analytics": {
-                    "workspace_role": "primary contributor",
+                    "workspace_role": "primary creator",
                     "team": "TestTeam",
                     "workspace_name": "analytics",
                 },
@@ -1270,7 +1270,7 @@ def test_import_users_with_workspace_roles_user_not_in_team(
             "username": "alice.doe",
             "workspaces": {
                 "TestTeam/Analytics": {
-                    "workspace_role": "primary contributor",
+                    "workspace_role": "primary creator",
                     "team": "TestTeam",
                     "workspace_name": "analytics",
                 },
@@ -1381,7 +1381,7 @@ def test_sync_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
             "team_role": "Admin",
             "workspaces": {
                 "My Workspace": {
-                    "workspace_role": "Limited Contributor",
+                    "workspace_role": "Limited Creator",
                     "data_access_roles": ["Database access on A Postgres database"],
                 },
             },
@@ -1450,7 +1450,7 @@ def test_sync_all_user_roles_to_team(mocker: MockerFixture) -> None:
             "team_role": "Admin",
             "workspaces": {
                 "ws1": {
-                    "workspace_role": "Limited Contributor",
+                    "workspace_role": "Limited Creator",
                     "data_access_roles": ["Database access on A Postgres database"],
                 },
             },
@@ -1468,7 +1468,7 @@ def test_sync_all_user_roles_to_team(mocker: MockerFixture) -> None:
             "team_role": "Admin",
             "workspaces": {
                 "ws1": {
-                    "workspace_role": "Limited Contributor",
+                    "workspace_role": "Limited Creator",
                     "data_access_roles": ["Database access on A Postgres database"],
                 },
             },
@@ -1510,7 +1510,7 @@ def test_sync_all_user_roles_to_team_workspace_title(mocker: MockerFixture) -> N
             "team_role": "Admin",
             "workspaces": {
                 "My Workspace": {
-                    "workspace_role": "Limited Contributor",
+                    "workspace_role": "Limited Creator",
                     "data_access_roles": ["Database access on A Postgres database"],
                 },
             },
@@ -1528,7 +1528,7 @@ def test_sync_all_user_roles_to_team_workspace_title(mocker: MockerFixture) -> N
             "team_role": "Admin",
             "workspaces": {
                 "My Workspace": {
-                    "workspace_role": "Limited Contributor",
+                    "workspace_role": "Limited Creator",
                     "data_access_roles": ["Database access on A Postgres database"],
                 },
             },
@@ -1553,7 +1553,7 @@ def test_sync_user_roles_to_team(mocker: MockerFixture) -> None:
         "team_role": "Admin",
         "workspaces": {
             "My Workspace": {
-                "workspace_role": "Limited Contributor",
+                "workspace_role": "Limited Creator",
                 "data_access_roles": ["Database access on A Postgres database"],
             },
         },
@@ -1583,7 +1583,7 @@ def test_sync_user_roles_to_team(mocker: MockerFixture) -> None:
         1,
         {
             "data_access_roles": ["Database access on A Postgres database"],
-            "workspace_role": "Limited Contributor",
+            "workspace_role": "Limited Creator",
         },
     )
 
@@ -1593,7 +1593,7 @@ def test_sync_user_roles_to_team(mocker: MockerFixture) -> None:
         "team_role": "User",
         "workspaces": {
             "My Workspace": {
-                "workspace_role": "Limited Contributor",
+                "workspace_role": "Limited Creator",
                 "data_access_roles": ["Database access on A Postgres database"],
             },
         },
@@ -1607,7 +1607,7 @@ def test_sync_user_roles_to_team(mocker: MockerFixture) -> None:
         "team_role": "Super Mega Admin",
         "workspaces": {
             "My Workspace": {
-                "workspace_role": "Limited Contributor",
+                "workspace_role": "Limited Creator",
                 "data_access_roles": ["Database access on A Postgres database"],
             },
         },
@@ -1624,7 +1624,7 @@ def test_sync_user_roles_to_team(mocker: MockerFixture) -> None:
         "team_role": "User",
         "workspaces": {
             "ws1": {
-                "workspace_role": "Limited Contributor",
+                "workspace_role": "Limited Creator",
                 "data_access_roles": ["Database access on A Postgres database"],
             },
         },
@@ -1637,7 +1637,7 @@ def test_sync_user_roles_to_team(mocker: MockerFixture) -> None:
         1,
         {
             "data_access_roles": ["Database access on A Postgres database"],
-            "workspace_role": "Limited Contributor",
+            "workspace_role": "Limited Creator",
         },
     )
 
@@ -1653,7 +1653,7 @@ def test_sync_user_role_to_workspace(mocker: MockerFixture) -> None:
         "team_role": "User",
         "workspaces": {
             "ws1": {
-                "workspace_role": "Limited Contributor",
+                "workspace_role": "Limited Creator",
                 "data_access_roles": ["Database access on A Postgres database"],
             },
         },
@@ -1666,7 +1666,7 @@ def test_sync_user_role_to_workspace(mocker: MockerFixture) -> None:
         1,
         {
             "data_access_roles": ["Database access on A Postgres database"],
-            "workspace_role": "Limited Contributor",
+            "workspace_role": "Limited Creator",
         },
     )
 
