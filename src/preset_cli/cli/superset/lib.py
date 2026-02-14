@@ -18,6 +18,7 @@ from preset_cli.lib import dict_merge
 LOG_FILE_PATH = Path("progress.log")
 CONTAINS_FILTER_KEYS = {"dashboard_title"}
 LOCAL_FILTER_KEYS = {"certified_by", "is_managed_externally"}
+FILTER_ALIASES = {"managed_externally": "is_managed_externally"}
 DASHBOARD_FILTER_KEYS: Dict[str, type] = {
     "id": int,
     "slug": str,
@@ -168,45 +169,64 @@ def is_filter_not_allowed_error(exc: Exception) -> bool:
     return False
 
 
+def _matches_contains(actual: Any, expected: Contains) -> bool:
+    actual_text = "" if actual is None else str(actual)
+    return str(expected.value).lower() in actual_text.lower()
+
+
+def _matches_bool(actual: Any, expected: bool) -> bool:
+    actual_bool = _normalize_bool(actual)
+    return actual_bool is not None and actual_bool == expected
+
+
+def _matches_empty_string(actual: Any, expected: Any) -> bool:
+    return expected == "" and (actual is None or actual == "")
+
+
+def _matches_int(actual: Any, expected: int) -> bool:
+    try:
+        if actual is None:
+            return False
+        return int(str(actual)) == expected
+    except (TypeError, ValueError):
+        return False
+
+
+def _matches_exact(actual: Any, expected: Any) -> bool:
+    return str(actual) == str(expected)
+
+
 def filter_resources_locally(  # pylint: disable=too-many-return-statements
     resources: list[dict[str, Any]],
     filters: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """
     Apply parsed filters to a list of resources locally.
+
+    Empty-string filter values match both missing and empty values.
     """
 
     def matches(resource: dict[str, Any]) -> bool:
         for key, expected in filters.items():
             actual = resource.get(key)
 
+            if isinstance(expected, Contains) and _matches_contains(actual, expected):
+                continue
+            if isinstance(expected, bool) and _matches_bool(actual, expected):
+                continue
+            if _matches_empty_string(actual, expected):
+                continue
+            if isinstance(expected, int) and _matches_int(actual, expected):
+                continue
+            if _matches_exact(actual, expected):
+                continue
             if isinstance(expected, Contains):
-                actual_text = "" if actual is None else str(actual)
-                if str(expected.value).lower() not in actual_text.lower():
-                    return False
-                continue
-
-            if isinstance(expected, bool):
-                actual_bool = _normalize_bool(actual)
-                if actual_bool is None or actual_bool != expected:
-                    return False
-                continue
-
-            if expected == "" and (actual is None or actual == ""):
-                continue
-
-            if isinstance(expected, int):
-                try:
-                    if actual is None:
-                        return False
-                    if int(str(actual)) != expected:
-                        return False
-                except (TypeError, ValueError):
-                    return False
-                continue
-
-            if str(actual) != str(expected):
                 return False
+            if isinstance(expected, bool):
+                return False
+            if isinstance(expected, int):
+                return False
+            return False
 
         return True
 
@@ -234,8 +254,8 @@ def parse_filters(
             raise click.BadParameter(
                 f"Invalid filter '{item}'. Filter key cannot be empty.",
             )
-        if key == "managed_externally":
-            key = "is_managed_externally"
+        # Normalize user-facing aliases to canonical Superset API keys.
+        key = FILTER_ALIASES.get(key, key)
 
         if key not in allowed_keys:
             allowed = ", ".join(sorted(allowed_keys))

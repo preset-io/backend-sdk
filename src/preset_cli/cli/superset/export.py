@@ -6,6 +6,7 @@ import json
 import re
 import tempfile
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 from zipfile import ZipFile
@@ -123,9 +124,137 @@ def _get_dashboard_dataset_filter_uuids(config: Dict[str, Any]) -> Set[str]:
     return dataset_uuids
 
 
-def restructure_per_asset_folder(  # pylint: disable=too-many-locals, too-many-branches, too-many-statements
+def _build_resource_uuid_map(
+    resource_dir: Path,
+    pattern: str,
+) -> Dict[str, Path]:
+    """
+    Build UUID -> file map for resources under a directory.
+    """
+    resource_map: Dict[str, Path] = {}
+    if not resource_dir.exists():
+        return resource_map
+    for resource_file in resource_dir.glob(pattern):
+        if uuid := extract_uuid_from_asset(file_path=resource_file):
+            resource_map[uuid] = resource_file
+    return resource_map
+
+
+def _copy_asset_relative_to_root(
+    source: Path,
     root: Path,
+    dashboard_dir: Path,
 ) -> None:
+    """
+    Copy an asset to the dashboard folder preserving export-relative path.
+    """
+    target = dashboard_dir / source.relative_to(root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _copy_chart_dependencies(
+    root: Path,
+    dashboard_dir: Path,
+    chart_uuids: Set[str],
+    chart_map: Dict[str, Path],
+) -> Set[str]:
+    """
+    Copy chart files and return dataset UUIDs referenced by those charts.
+    """
+    dataset_uuids: Set[str] = set()
+    for chart_uuid in chart_uuids:
+        chart_path = chart_map.get(chart_uuid)
+        if not chart_path:
+            continue
+        chart_config = _load_yaml(chart_path)
+        if dataset_uuid := chart_config.get("dataset_uuid"):
+            dataset_uuids.add(dataset_uuid)
+        _copy_asset_relative_to_root(chart_path, root, dashboard_dir)
+    return dataset_uuids
+
+
+def _copy_dataset_dependencies(
+    root: Path,
+    dashboard_dir: Path,
+    dataset_uuids: Set[str],
+    dataset_map: Dict[str, Path],
+) -> Set[str]:
+    """
+    Copy dataset files and return database UUIDs referenced by those datasets.
+    """
+    database_uuids: Set[str] = set()
+    for dataset_uuid in dataset_uuids:
+        dataset_path = dataset_map.get(dataset_uuid)
+        if not dataset_path:
+            continue
+        dataset_config = _load_yaml(dataset_path)
+        if database_uuid := dataset_config.get("database_uuid"):
+            database_uuids.add(database_uuid)
+        _copy_asset_relative_to_root(dataset_path, root, dashboard_dir)
+    return database_uuids
+
+
+def _copy_database_dependencies(
+    root: Path,
+    dashboard_dir: Path,
+    database_uuids: Set[str],
+    database_map: Dict[str, Path],
+) -> None:
+    """
+    Copy database files to the dashboard folder.
+    """
+    for database_uuid in database_uuids:
+        database_path = database_map.get(database_uuid)
+        if not database_path:
+            continue
+        _copy_asset_relative_to_root(database_path, root, dashboard_dir)
+
+
+def _cleanup_resource_directory(resource_dir: Path) -> None:
+    """
+    Remove all files/subdirs under a resource directory and then the directory itself.
+    """
+    if not resource_dir.exists():
+        return
+    for path in sorted(resource_dir.rglob("*"), reverse=True):
+        if path.is_file():
+            path.unlink()
+        elif path.is_dir():
+            path.rmdir()
+    resource_dir.rmdir()
+
+
+def _restructure_single_dashboard(
+    root: Path,
+    dashboard_file: Path,
+    chart_map: Dict[str, Path],
+    dataset_map: Dict[str, Path],
+    database_map: Dict[str, Path],
+) -> None:
+    """
+    Move one dashboard and copy its dependencies into a dedicated folder.
+    """
+    config = _load_yaml(dashboard_file)
+    dashboard_dir = dashboard_file.parent / dashboard_file.stem
+    dashboard_dir.mkdir(parents=True, exist_ok=True)
+    dashboard_file.rename(dashboard_dir / "dashboard.yaml")
+
+    chart_uuids = set(_get_dashboard_chart_uuids(config))
+    dataset_uuids = _get_dashboard_dataset_filter_uuids(config)
+    dataset_uuids.update(
+        _copy_chart_dependencies(root, dashboard_dir, chart_uuids, chart_map),
+    )
+    database_uuids = _copy_dataset_dependencies(
+        root,
+        dashboard_dir,
+        dataset_uuids,
+        dataset_map,
+    )
+    _copy_database_dependencies(root, dashboard_dir, database_uuids, database_map)
+
+
+def restructure_per_asset_folder(root: Path) -> None:
     """
     Reorganize flat export into per-dashboard subfolders.
     """
@@ -133,87 +262,137 @@ def restructure_per_asset_folder(  # pylint: disable=too-many-locals, too-many-b
     if not dashboards_dir.exists():
         return
 
-    chart_map: Dict[str, Path] = {}
-    dataset_map: Dict[str, Path] = {}
-    database_map: Dict[str, Path] = {}
-
     charts_dir = root / "charts"
-    if charts_dir.exists():
-        for chart_file in charts_dir.glob("*.yaml"):
-            if uuid := extract_uuid_from_asset(file_path=chart_file):
-                chart_map[uuid] = chart_file
-
     datasets_dir = root / "datasets"
-    if datasets_dir.exists():
-        for dataset_file in datasets_dir.rglob("*.yaml"):
-            if uuid := extract_uuid_from_asset(file_path=dataset_file):
-                dataset_map[uuid] = dataset_file
-
     databases_dir = root / "databases"
-    if databases_dir.exists():
-        for database_file in databases_dir.glob("*.yaml"):
-            if uuid := extract_uuid_from_asset(file_path=database_file):
-                database_map[uuid] = database_file
+    chart_map = _build_resource_uuid_map(charts_dir, "*.yaml")
+    dataset_map = _build_resource_uuid_map(datasets_dir, "**/*.yaml")
+    database_map = _build_resource_uuid_map(databases_dir, "*.yaml")
 
     for dashboard_file in dashboards_dir.glob("*.yaml"):
-        config = _load_yaml(dashboard_file)
-        dashboard_dir = dashboards_dir / dashboard_file.stem
-        dashboard_dir.mkdir(parents=True, exist_ok=True)
-
-        moved_dashboard = dashboard_dir / "dashboard.yaml"
-        dashboard_file.rename(moved_dashboard)
-
-        chart_uuids = set(_get_dashboard_chart_uuids(config))
-        dataset_uuids = _get_dashboard_dataset_filter_uuids(config)
-
-        for chart_uuid in chart_uuids:
-            chart_path = chart_map.get(chart_uuid)
-            if not chart_path:
-                continue
-            chart_config = _load_yaml(chart_path)
-            if dataset_uuid := chart_config.get("dataset_uuid"):
-                dataset_uuids.add(dataset_uuid)
-            rel_path = chart_path.relative_to(root)
-            target = dashboard_dir / rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(chart_path.read_text(encoding="utf-8"), encoding="utf-8")
-
-        database_uuids: Set[str] = set()
-        for dataset_uuid in dataset_uuids:
-            dataset_path = dataset_map.get(dataset_uuid)
-            if not dataset_path:
-                continue
-            dataset_config = _load_yaml(dataset_path)
-            if database_uuid := dataset_config.get("database_uuid"):
-                database_uuids.add(database_uuid)
-            rel_path = dataset_path.relative_to(root)
-            target = dashboard_dir / rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(
-                dataset_path.read_text(encoding="utf-8"),
-                encoding="utf-8",
-            )
-
-        for database_uuid in database_uuids:
-            database_path = database_map.get(database_uuid)
-            if not database_path:
-                continue
-            rel_path = database_path.relative_to(root)
-            target = dashboard_dir / rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(
-                database_path.read_text(encoding="utf-8"),
-                encoding="utf-8",
-            )
+        _restructure_single_dashboard(
+            root,
+            dashboard_file,
+            chart_map,
+            dataset_map,
+            database_map,
+        )
 
     for resource_dir in [charts_dir, datasets_dir, databases_dir]:
-        if resource_dir.exists():
-            for path in sorted(resource_dir.rglob("*"), reverse=True):
-                if path.is_file():
-                    path.unlink()
-                elif path.is_dir():
-                    path.rmdir()
-            resource_dir.rmdir()
+        _cleanup_resource_directory(resource_dir)
+
+
+RESOURCE_NAMES = ("database", "dataset", "chart", "dashboard")
+
+
+def _validate_export_destination_args(
+    directory: Optional[str],
+    output_zip: Optional[str],
+) -> None:
+    if directory and output_zip:
+        raise click.UsageError(
+            "Provide either a directory or --output-zip, not both.",
+        )
+    if not directory and not output_zip:
+        raise click.UsageError(
+            "Provide a directory or --output-zip.",
+        )
+
+
+def _build_requested_ids(
+    database_ids: List[str],
+    dataset_ids: List[str],
+    chart_ids: List[str],
+    dashboard_ids: List[str],
+) -> Tuple[Dict[str, Set[int]], bool]:
+    ids = {
+        "database": {int(id_) for id_ in database_ids},
+        "dataset": {int(id_) for id_ in dataset_ids},
+        "chart": {int(id_) for id_ in chart_ids},
+        "dashboard": {int(id_) for id_ in dashboard_ids},
+    }
+    ids_requested = any([database_ids, dataset_ids, chart_ids, dashboard_ids])
+    return ids, ids_requested
+
+
+@dataclass
+class _DashboardFilterResult:
+    dashboard_ids: Set[int]
+    asset_types: Set[str]
+    ids_requested: bool
+
+
+@dataclass
+class _ExportSelection:
+    asset_types: Set[str]
+    ids: Dict[str, Set[int]]
+    ids_requested: bool
+    overwrite: bool
+    disable_jinja_escaping: bool
+    force_unix_eol: bool
+    simple_file_names: bool
+
+
+def _apply_dashboard_filters(
+    client: SupersetClient,
+    asset_types: Set[str],
+    ids_requested: bool,
+    filters: Tuple[str, ...],
+) -> Optional[_DashboardFilterResult]:
+    if not filters:
+        return None
+    if asset_types and asset_types != {"dashboard"}:
+        raise click.UsageError(
+            "Filters are only supported for dashboard assets.",
+        )
+    parsed_filters = parse_filters(filters, DASHBOARD_FILTER_KEYS)
+    dashboards = fetch_with_filter_fallback(
+        client.get_dashboards,
+        client.get_dashboards,
+        parsed_filters,
+        "dashboards",
+    )
+    return _DashboardFilterResult(
+        dashboard_ids={dashboard["id"] for dashboard in dashboards},
+        asset_types={"dashboard"},
+        ids_requested=True if dashboards else ids_requested,
+    )
+
+
+def _resolve_directory_root(directory: str) -> Path:
+    root = Path(directory)
+    if not root.exists():
+        raise click.UsageError(f"Directory does not exist: {root}")
+    return root
+
+
+def _export_selected_resources(
+    root: Path,
+    client: SupersetClient,
+    selection: _ExportSelection,
+    simple_name_registry: Dict[Path, Set[str]],
+) -> None:
+    for resource_name in RESOURCE_NAMES:
+        if (not selection.asset_types or resource_name in selection.asset_types) and (
+            selection.ids[resource_name] or not selection.ids_requested
+        ):
+            export_resource(
+                resource_name,
+                selection.ids[resource_name],
+                root,
+                client,
+                selection.overwrite,
+                selection.disable_jinja_escaping,
+                skip_related=not selection.ids_requested,
+                force_unix_eol=selection.force_unix_eol,
+                simple_file_names=selection.simple_file_names,
+                simple_name_registry=simple_name_registry,
+            )
+
+
+def _finalize_per_asset_folder_export(root: Path, per_asset_folder: bool) -> None:
+    if per_asset_folder:
+        restructure_per_asset_folder(root)
 
 
 def zip_directory(source_dir: Path, output_path: Path) -> None:
@@ -410,100 +589,63 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
     auth = ctx.obj["AUTH"]
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
-    if directory and output_zip:
-        raise click.UsageError(
-            "Provide either a directory or --output-zip, not both.",
-        )
-    if not directory and not output_zip:
-        raise click.UsageError(
-            "Provide a directory or --output-zip.",
-        )
-
+    _validate_export_destination_args(directory, output_zip)
     asset_types = set(asset_type)
-    ids = {
-        "database": {int(id_) for id_ in database_ids},
-        "dataset": {int(id_) for id_ in dataset_ids},
-        "chart": {int(id_) for id_ in chart_ids},
-        "dashboard": {int(id_) for id_ in dashboard_ids},
-    }
-    ids_requested = any([database_ids, dataset_ids, chart_ids, dashboard_ids])
-
-    if filters:
-        if asset_types and asset_types != {"dashboard"}:
-            raise click.UsageError(
-                "Filters are only supported for dashboard assets.",
-            )
-        asset_types = {"dashboard"}
-        parsed_filters = parse_filters(filters, DASHBOARD_FILTER_KEYS)
-        dashboards = fetch_with_filter_fallback(
-            client.get_dashboards,
-            client.get_dashboards,
-            parsed_filters,
-            "dashboards",
-        )
-
-        if not dashboards:
+    ids, ids_requested = _build_requested_ids(
+        database_ids,
+        dataset_ids,
+        chart_ids,
+        dashboard_ids,
+    )
+    dashboard_filter_result = _apply_dashboard_filters(
+        client,
+        asset_types,
+        ids_requested,
+        filters,
+    )
+    if dashboard_filter_result is not None:
+        if not dashboard_filter_result.dashboard_ids:
             click.echo("No dashboards match the specified filters.")
             return
-        ids["dashboard"].update({dashboard["id"] for dashboard in dashboards})
-        ids_requested = True
+        ids["dashboard"].update(dashboard_filter_result.dashboard_ids)
+        asset_types = dashboard_filter_result.asset_types
+        ids_requested = dashboard_filter_result.ids_requested
 
-    if directory:
-        root = Path(directory)
-        if not root.exists():
-            raise click.UsageError(f"Directory does not exist: {root}")
-    else:
-        root = None
+    selection = _ExportSelection(
+        asset_types=asset_types,
+        ids=ids,
+        ids_requested=ids_requested,
+        overwrite=overwrite,
+        disable_jinja_escaping=disable_jinja_escaping,
+        force_unix_eol=force_unix_eol,
+        simple_file_names=simple_file_names,
+    )
 
     simple_name_registry: Dict[Path, Set[str]] = {}
 
     if output_zip:
         with tempfile.TemporaryDirectory() as temp_dir:
             export_root = Path(temp_dir)
-            for resource_name in ["database", "dataset", "chart", "dashboard"]:
-                if (not asset_types or resource_name in asset_types) and (
-                    ids[resource_name] or not ids_requested
-                ):
-                    export_resource(
-                        resource_name,
-                        ids[resource_name],
-                        export_root,
-                        client,
-                        overwrite,
-                        disable_jinja_escaping,
-                        skip_related=not ids_requested,
-                        force_unix_eol=force_unix_eol,
-                        simple_file_names=simple_file_names,
-                        simple_name_registry=simple_name_registry,
-                    )
-
-            if per_asset_folder:
-                restructure_per_asset_folder(export_root)
-
+            _export_selected_resources(
+                export_root,
+                client,
+                selection,
+                simple_name_registry,
+            )
+            _finalize_per_asset_folder_export(export_root, per_asset_folder)
             zip_directory(export_root, Path(output_zip))
         return
 
-    assert root is not None
-
-    for resource_name in ["database", "dataset", "chart", "dashboard"]:
-        if (not asset_types or resource_name in asset_types) and (
-            ids[resource_name] or not ids_requested
-        ):
-            export_resource(
-                resource_name,
-                ids[resource_name],
-                root,
-                client,
-                overwrite,
-                disable_jinja_escaping,
-                skip_related=not ids_requested,
-                force_unix_eol=force_unix_eol,
-                simple_file_names=simple_file_names,
-                simple_name_registry=simple_name_registry,
-            )
-
-    if per_asset_folder:
-        restructure_per_asset_folder(root)
+    if directory is None:
+        raise click.UsageError("Provide a directory or --output-zip.")
+    root = _resolve_directory_root(directory)
+    _export_selected_resources(
+        root,
+        client,
+        selection,
+        simple_name_registry,
+    )
+    _finalize_per_asset_folder_export(root, per_asset_folder)
 
 
 def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
