@@ -89,9 +89,9 @@ def is_help() -> bool:
 
 workspace_role_identifiers = {
     "workspace admin": "Admin",
-    "primary contributor": "PresetAlpha",
-    "secondary contributor": "PresetBeta",
-    "limited contributor": "PresetGamma",
+    "primary creator": "PresetAlpha",
+    "secondary creator": "PresetBeta",
+    "limited creator": "PresetGamma",
     "viewer": "PresetReportsOnly",
     "dashboard viewer": "PresetDashboardsOnly",
     "no access": "PresetNoAccess",
