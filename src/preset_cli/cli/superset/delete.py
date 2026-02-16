@@ -28,6 +28,17 @@ from preset_cli.cli.superset.lib import (
     is_filter_not_allowed_error,
     parse_filters,
 )
+from preset_cli.cli.superset.delete_types import (
+    _CascadeDependencies,
+    _CascadeResolution,
+    _DashboardCascadeOptions,
+    _DashboardDeletePlan,
+    _DashboardExecutionOptions,
+    _DashboardSelection,
+    _DeleteAssetsCommandOptions,
+    _DeleteSummaryData,
+    _NonDashboardDeleteOptions,
+)
 from preset_cli.lib import remove_root
 
 
@@ -364,83 +375,101 @@ def _echo_resource_summary(
         )
 
 
-def _echo_summary(  # pylint: disable=too-many-arguments, too-many-branches, too-many-locals
-    dashboards: List[Dict[str, Any]],
-    chart_ids: Set[int],
-    dataset_ids: Set[int],
-    database_ids: Set[int],
-    cascade_names: Dict[str, Dict[int, str]],
-    chart_dashboard_context: Dict[int, List[str]],
-    shared: Dict[str, Set[str]],
-    cascade_flags: Dict[str, bool],
-    dry_run: bool,
-) -> None:
+def _echo_delete_header(dry_run: bool) -> None:
     if dry_run:
         click.echo("No changes will be made. Assets to be deleted:\n")
-    else:
-        click.echo("Assets to be deleted:\n")
+        return
+    click.echo("Assets to be deleted:\n")
 
-    click.echo(f"Dashboards ({len(dashboards)}):")
-    for line in _format_dashboard_summary(dashboards):
-        click.echo(f"  {line}")
 
-    if cascade_flags["charts"]:
-        click.echo(f"\nCharts ({len(chart_ids)}):")
-        for cid in sorted(chart_ids):
-            name = cascade_names.get("charts", {}).get(cid)
-            label = f" {name}" if name else ""
-            dashboard_titles = chart_dashboard_context.get(cid, [])
-            context = ""
-            if dashboard_titles:
-                if len(dashboard_titles) == 1:
-                    context = f" (dashboard: {dashboard_titles[0]})"
-                else:
-                    joined = ", ".join(dashboard_titles)
-                    context = f" (dashboards: {joined})"
-            click.echo(f"  - [ID: {cid}]{label}{context}")
-    else:
-        click.echo("\nCharts (0): (not cascading)")
+def _echo_cascade_section(
+    resource_name: str,
+    ids: Set[int],
+    names: Dict[int, str],
+    enabled: bool,
+    chart_dashboard_context: Dict[int, List[str]] | None = None,
+) -> None:
+    title = resource_name.title()
+    if not enabled:
+        click.echo(f"\n{title} (0): (not cascading)")
+        return
 
-    if cascade_flags["datasets"]:
-        click.echo(f"\nDatasets ({len(dataset_ids)}):")
-        for did in sorted(dataset_ids):
-            name = cascade_names.get("datasets", {}).get(did)
-            label = f" {name}" if name else ""
-            click.echo(f"  - [ID: {did}]{label}")
-    else:
-        click.echo("\nDatasets (0): (not cascading)")
+    click.echo(f"\n{title} ({len(ids)}):")
+    for resource_id in sorted(ids):
+        name = names.get(resource_id)
+        label = f" {name}" if name else ""
+        context = ""
+        if chart_dashboard_context is not None:
+            dashboard_titles = chart_dashboard_context.get(resource_id, [])
+            if len(dashboard_titles) == 1:
+                context = f" (dashboard: {dashboard_titles[0]})"
+            elif dashboard_titles:
+                context = f" (dashboards: {', '.join(dashboard_titles)})"
+        click.echo(f"  - [ID: {resource_id}]{label}{context}")
 
-    if cascade_flags["databases"]:
-        click.echo(f"\nDatabases ({len(database_ids)}):")
-        for bid in sorted(database_ids):
-            name = cascade_names.get("databases", {}).get(bid)
-            label = f" {name}" if name else ""
-            click.echo(f"  - [ID: {bid}]{label}")
-    else:
-        click.echo("\nDatabases (0): (not cascading)")
 
-    if any(shared.values()):
-        click.echo("\nShared (skipped):")
-        if shared["charts"]:
-            charts = ", ".join(sorted(shared["charts"]))
-            click.echo(
-                f"  Charts ({len(shared['charts'])}): {charts}",
-            )
-        if shared["datasets"]:
-            datasets = ", ".join(sorted(shared["datasets"]))
-            click.echo(
-                f"  Datasets ({len(shared['datasets'])}): {datasets}",
-            )
-        if shared["databases"]:
-            databases = ", ".join(sorted(shared["databases"]))
-            click.echo(
-                f"  Databases ({len(shared['databases'])}): {databases}",
-            )
+def _echo_shared_summary(shared: Dict[str, Set[str]]) -> None:
+    if not any(shared.values()):
+        return
+
+    click.echo("\nShared (skipped):")
+    if shared["charts"]:
+        charts = ", ".join(sorted(shared["charts"]))
+        click.echo(
+            f"  Charts ({len(shared['charts'])}): {charts}",
+        )
+    if shared["datasets"]:
+        datasets = ", ".join(sorted(shared["datasets"]))
+        click.echo(
+            f"  Datasets ({len(shared['datasets'])}): {datasets}",
+        )
+    if shared["databases"]:
+        databases = ", ".join(sorted(shared["databases"]))
+        click.echo(
+            f"  Databases ({len(shared['databases'])}): {databases}",
+        )
+
+
+def _echo_dry_run_hint(dry_run: bool) -> None:
+    if not dry_run:
+        return
 
     if dry_run:
         click.echo(
             "\nTo proceed with deletion, run with: --dry-run=false --confirm=DELETE",
         )
+
+
+def _echo_summary(summary: _DeleteSummaryData, dry_run: bool) -> None:
+    _echo_delete_header(dry_run)
+
+    dashboards = summary.dashboards
+    click.echo(f"Dashboards ({len(dashboards)}):")
+    for line in _format_dashboard_summary(dashboards):
+        click.echo(f"  {line}")
+
+    _echo_cascade_section(
+        "charts",
+        summary.cascade_ids["charts"],
+        summary.cascade_names.get("charts", {}),
+        summary.cascade_flags["charts"],
+        chart_dashboard_context=summary.chart_dashboard_context,
+    )
+    _echo_cascade_section(
+        "datasets",
+        summary.cascade_ids["datasets"],
+        summary.cascade_names.get("datasets", {}),
+        summary.cascade_flags["datasets"],
+    )
+    _echo_cascade_section(
+        "databases",
+        summary.cascade_ids["databases"],
+        summary.cascade_names.get("databases", {}),
+        summary.cascade_flags["databases"],
+    )
+
+    _echo_shared_summary(summary.shared)
+    _echo_dry_run_hint(dry_run)
 
 
 @click.command()
@@ -517,116 +546,242 @@ def _echo_summary(  # pylint: disable=too-many-arguments, too-many-branches, too
     help="Password for DB connections during rollback (eg, uuid1=my_db_password)",
 )
 @click.pass_context
-def delete_assets(  # pylint: disable=too-many-arguments, too-many-locals
+def delete_assets(
     ctx: click.core.Context,
-    asset_type: str,
-    filters: Tuple[str, ...],
-    cascade_charts: bool,
-    cascade_datasets: bool,
-    cascade_databases: bool,
-    dry_run: bool,
-    skip_shared_check: bool,
-    confirm: str | None,
-    rollback: bool,
-    db_password: Tuple[str, ...],
+    **raw_options: Any,
 ) -> None:
     """
     Delete assets by filters.
     """
-    resource_name = asset_type.lower()
-    if dry_run is None:
-        dry_run = True
-    dry_run = coerce_bool_option(dry_run, "dry_run")
-    db_passwords: Dict[str, str] = {}
+    command_options = _parse_delete_command_options(raw_options)
+    _run_delete_assets(ctx, command_options)
 
+
+def _parse_delete_command_options(raw_options: Dict[str, Any]) -> _DeleteAssetsCommandOptions:
+    cascade_options = _DashboardCascadeOptions(
+        charts=raw_options["cascade_charts"],
+        datasets=raw_options["cascade_datasets"],
+        databases=raw_options["cascade_databases"],
+        skip_shared_check=raw_options["skip_shared_check"],
+    )
+    execution_options = _DashboardExecutionOptions(
+        dry_run=raw_options["dry_run"],
+        confirm=raw_options["confirm"],
+        rollback=raw_options["rollback"],
+    )
+    return _DeleteAssetsCommandOptions(
+        asset_type=raw_options["asset_type"],
+        filters=raw_options["filters"],
+        cascade_options=cascade_options,
+        execution_options=execution_options,
+        db_password=raw_options["db_password"],
+    )
+
+
+def _run_delete_assets(
+    ctx: click.core.Context,
+    command_options: _DeleteAssetsCommandOptions,
+) -> None:
+    cascade_options = command_options.cascade_options
+    execution_options = command_options.execution_options
+    resource_name = command_options.asset_type.lower()
+    dry_run = _normalize_dry_run(execution_options.dry_run)
+    _validate_delete_option_combinations(resource_name, cascade_options)
+    db_passwords, rollback = _resolve_rollback_settings(
+        resource_name,
+        execution_options.rollback,
+        command_options.db_password,
+    )
+    client = _build_superset_client(ctx)
+
+    parsed_filters = parse_filters(
+        command_options.filters,
+        DELETE_FILTER_KEYS[resource_name],
+    )
     if resource_name != "dashboard":
-        if any(
-            [cascade_charts, cascade_datasets, cascade_databases, skip_shared_check],
-        ):
-            raise click.UsageError(
-                "Cascade options are only supported for dashboard assets.",
-            )
-        if resource_name == "database":
-            db_passwords = _parse_db_passwords(db_password)
-            if rollback and not db_passwords:
-                click.echo(
-                    "Warning: rollback for database deletes requires "
-                    "--db-password; proceeding without rollback.",
-                )
-                rollback = False
-    else:
-        db_passwords = _parse_db_passwords(db_password)
-    if cascade_datasets and not cascade_charts:
-        raise click.UsageError(
-            "--cascade-datasets requires --cascade-charts.",
+        non_dashboard_options = _NonDashboardDeleteOptions(
+            resource_name=resource_name,
+            dry_run=dry_run,
+            confirm=execution_options.confirm,
+            rollback=rollback,
+            db_passwords=db_passwords,
         )
-    if cascade_databases and not cascade_datasets:
-        raise click.UsageError(
-            "--cascade-databases requires --cascade-datasets.",
-        )
-
-    auth = ctx.obj["AUTH"]
-    url = URL(ctx.obj["INSTANCE"])
-    client = SupersetClient(url, auth)
-
-    parsed_filters = parse_filters(filters, DELETE_FILTER_KEYS[resource_name])
-    if resource_name != "dashboard":
         _delete_non_dashboard_assets(
             client,
-            resource_name,
             parsed_filters,
-            dry_run,
-            confirm,
-            rollback,
-            db_passwords,
+            non_dashboard_options,
         )
         return
 
+    dashboard_execution_options = _DashboardExecutionOptions(
+        dry_run=dry_run,
+        confirm=execution_options.confirm,
+        rollback=rollback,
+    )
     _delete_dashboard_assets(
         client,
         parsed_filters,
-        dry_run,
-        confirm,
-        cascade_charts,
-        cascade_datasets,
-        cascade_databases,
-        skip_shared_check,
-        rollback,
+        cascade_options,
+        dashboard_execution_options,
         db_passwords,
     )
 
 
-def _delete_non_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-locals, too-many-branches
+def _normalize_dry_run(raw_dry_run: bool | str | None) -> bool:
+    dry_run = True if raw_dry_run is None else raw_dry_run
+    return coerce_bool_option(dry_run, "dry_run")
+
+
+def _validate_delete_option_combinations(
+    resource_name: str,
+    cascade_options: _DashboardCascadeOptions,
+) -> None:
+    if resource_name != "dashboard" and any(
+        [
+            cascade_options.charts,
+            cascade_options.datasets,
+            cascade_options.databases,
+            cascade_options.skip_shared_check,
+        ],
+    ):
+        raise click.UsageError(
+            "Cascade options are only supported for dashboard assets.",
+        )
+    if cascade_options.datasets and not cascade_options.charts:
+        raise click.UsageError(
+            "--cascade-datasets requires --cascade-charts.",
+        )
+    if cascade_options.databases and not cascade_options.datasets:
+        raise click.UsageError(
+            "--cascade-databases requires --cascade-datasets.",
+        )
+
+
+def _resolve_rollback_settings(
+    resource_name: str,
+    rollback: bool,
+    db_password: Tuple[str, ...],
+) -> Tuple[Dict[str, str], bool]:
+    if resource_name == "dashboard":
+        return _parse_db_passwords(db_password), rollback
+    if resource_name != "database":
+        return {}, rollback
+
+    db_passwords = _parse_db_passwords(db_password)
+    if rollback and not db_passwords:
+        click.echo(
+            "Warning: rollback for database deletes requires "
+            "--db-password; proceeding without rollback.",
+        )
+        return db_passwords, False
+    return db_passwords, rollback
+
+
+def _build_superset_client(ctx: click.core.Context) -> SupersetClient:
+    auth = ctx.obj["AUTH"]
+    url = URL(ctx.obj["INSTANCE"])
+    return SupersetClient(url, auth)
+
+
+def _echo_backup_restore_details(backup_path: str, resource_name: str) -> None:
+    click.echo(f"\nBackup saved to: {backup_path}")
+    click.echo(
+        f"To restore, run: {_format_restore_command(backup_path, resource_name)}\n",
+    )
+
+
+def _delete_resources(
+    client: SupersetClient,
+    resource_name: str,
+    resource_ids: Iterable[int],
+    failures: List[str],
+) -> bool:
+    deleted_any = False
+    for resource_id in sorted(resource_ids):
+        try:
+            client.delete_resource(resource_name, resource_id)
+            deleted_any = True
+        except Exception as exc:  # pylint: disable=broad-except
+            failures.append(f"{resource_name}:{resource_id} ({exc})")
+    return deleted_any
+
+
+def _fetch_non_dashboard_resources(
     client: SupersetClient,
     resource_name: str,
     parsed_filters: Dict[str, Any],
-    dry_run: bool,
-    confirm: str | None,
-    rollback: bool,
-    db_passwords: Dict[str, str],
-) -> None:
+) -> List[Dict[str, Any]]:
     if resource_name == "database":
-        resources = filter_resources_locally(
+        return filter_resources_locally(
             client.get_resources(resource_name),
             parsed_filters,
         )
-    else:
-        resources = fetch_with_filter_fallback(
-            lambda **kw: client.get_resources(resource_name, **kw),
-            lambda: client.get_resources(resource_name),
-            parsed_filters,
-            f"{resource_name}s",
+    return fetch_with_filter_fallback(
+        lambda **kw: client.get_resources(resource_name, **kw),
+        lambda: client.get_resources(resource_name),
+        parsed_filters,
+        f"{resource_name}s",
+    )
+
+
+def _rollback_non_dashboard_deletion(
+    client: SupersetClient,
+    resource_name: str,
+    backup_data: bytes,
+    db_passwords: Dict[str, str],
+) -> None:
+    try:
+        rollback_buf = _apply_db_passwords_to_backup(
+            backup_data,
+            db_passwords if resource_name == "database" else {},
         )
+        client.import_zip(resource_name, rollback_buf, overwrite=True)
+    except Exception as exc:  # pylint: disable=broad-except
+        click.echo(f"Rollback failed: {exc}")
+        raise click.ClickException(
+            "Rollback failed. A backup zip is available for manual restore.",
+        ) from exc
+
+    unresolved, missing_types = _verify_rollback_restoration(
+        client,
+        backup_data,
+        {resource_name},
+    )
+    if unresolved:
+        labels = ", ".join(unresolved)
+        click.echo(
+            f"Warning: unable to verify rollback for: {labels}.",
+        )
+    if missing_types:
+        labels = ", ".join(missing_types)
+        raise click.ClickException(
+            f"Rollback verification failed for: {labels}. "
+            "A backup zip is available for manual restore.",
+        )
+    click.echo("Rollback succeeded.")
+
+
+def _delete_non_dashboard_assets(
+    client: SupersetClient,
+    parsed_filters: Dict[str, Any],
+    options: _NonDashboardDeleteOptions,
+) -> None:
+    resource_name = options.resource_name
+    resources = _fetch_non_dashboard_resources(
+        client,
+        resource_name,
+        parsed_filters,
+    )
     if not resources:
         click.echo(f"No {resource_name}s match the specified filters.")
         return
 
     resource_ids = {resource["id"] for resource in resources}
-    if dry_run:
+    if options.dry_run:
         _echo_resource_summary(resource_name, resources, dry_run=True)
         return
 
-    if confirm != "DELETE":
+    if options.confirm != "DELETE":
         click.echo(
             "Deletion aborted. Pass --confirm=DELETE to proceed with deletion.",
         )
@@ -638,74 +793,38 @@ def _delete_non_dashboard_assets(  # pylint: disable=too-many-arguments, too-man
     backup_buf = client.export_zip(resource_name, sorted(resource_ids))
     backup_data = backup_buf.read()
     backup_path = _write_backup(backup_data)
-    click.echo(f"\nBackup saved to: {backup_path}")
-    click.echo(
-        f"To restore, run: {_format_restore_command(backup_path, resource_name)}\n",
-    )
+    _echo_backup_restore_details(backup_path, resource_name)
 
     resource_failures: List[str] = []
-    deleted_any = False
-
-    for resource_id in sorted(resource_ids):
-        try:
-            client.delete_resource(resource_name, resource_id)
-            deleted_any = True
-        except Exception as exc:  # pylint: disable=broad-except
-            resource_failures.append(f"{resource_name}:{resource_id} ({exc})")
+    deleted_any = _delete_resources(
+        client,
+        resource_name,
+        resource_ids,
+        resource_failures,
+    )
 
     if resource_failures:
         click.echo("Some deletions failed:")
         for failure in resource_failures:
             click.echo(f"  {failure}")
-        if rollback and deleted_any:
+        if options.rollback and deleted_any:
             click.echo("\nBest-effort rollback attempted...")
-            try:
-                rollback_buf = _apply_db_passwords_to_backup(
-                    backup_data,
-                    db_passwords if resource_name == "database" else {},
-                )
-                client.import_zip(resource_name, rollback_buf, overwrite=True)
-            except Exception as exc:  # pylint: disable=broad-except
-                click.echo(f"Rollback failed: {exc}")
-                raise click.ClickException(
-                    "Rollback failed. A backup zip is available for manual restore.",
-                ) from exc
-
-            unresolved, missing_types = _verify_rollback_restoration(
+            _rollback_non_dashboard_deletion(
                 client,
+                resource_name,
                 backup_data,
-                {resource_name},
+                options.db_passwords,
             )
-            if unresolved:
-                labels = ", ".join(unresolved)
-                click.echo(
-                    f"Warning: unable to verify rollback for: {labels}.",
-                )
-            if missing_types:
-                labels = ", ".join(missing_types)
-                raise click.ClickException(
-                    f"Rollback verification failed for: {labels}. "
-                    "A backup zip is available for manual restore.",
-                )
-            click.echo("Rollback succeeded.")
 
         raise click.ClickException(
             "Deletion completed with failures. See errors above.",
         )
 
 
-def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-locals, too-many-branches, too-many-statements
+def _fetch_dashboard_selection(
     client: SupersetClient,
     parsed_filters: Dict[str, Any],
-    dry_run: bool,
-    confirm: str | None,
-    cascade_charts: bool,
-    cascade_datasets: bool,
-    cascade_databases: bool,
-    skip_shared_check: bool,
-    rollback: bool,
-    db_passwords: Dict[str, str],
-) -> None:
+) -> _DashboardSelection | None:
     dashboards = fetch_with_filter_fallback(
         client.get_dashboards,
         client.get_dashboards,
@@ -714,301 +833,541 @@ def _delete_dashboard_assets(  # pylint: disable=too-many-arguments, too-many-lo
     )
     if not dashboards:
         click.echo("No dashboards match the specified filters.")
-        return
+        return None
+    return _DashboardSelection(
+        dashboards=dashboards,
+        dashboard_ids={dashboard["id"] for dashboard in dashboards},
+    )
 
-    dashboard_ids = {dashboard["id"] for dashboard in dashboards}
-    chart_uuids: Set[str] = set()
-    dataset_uuids: Set[str] = set()
-    database_uuids: Set[str] = set()
-    chart_dataset_map: Dict[str, str] = {}
-    dataset_database_map: Dict[str, str] = {}
-    chart_dashboard_titles_by_uuid: Dict[str, Set[str]] = {}
-    cascade_buf: BytesIO | None = None
 
-    if cascade_charts:
-        cascade_buf = client.export_zip("dashboard", list(dashboard_ids))
+def _load_cascade_dependencies(
+    client: SupersetClient,
+    selection: _DashboardSelection,
+    cascade_options: _DashboardCascadeOptions,
+) -> _CascadeDependencies:
+    dependencies = _CascadeDependencies(
+        chart_uuids=set(),
+        dataset_uuids=set(),
+        database_uuids=set(),
+        chart_dataset_map={},
+        dataset_database_map={},
+        chart_dashboard_titles_by_uuid={},
+    )
+
+    if cascade_options.charts:
+        selection.cascade_buf = client.export_zip("dashboard", list(selection.dashboard_ids))
         (
-            chart_uuids,
-            dataset_uuids,
-            database_uuids,
-            chart_dataset_map,
-            dataset_database_map,
-            chart_dashboard_titles_by_uuid,
-        ) = _extract_dependency_maps(cascade_buf)
+            dependencies.chart_uuids,
+            dependencies.dataset_uuids,
+            dependencies.database_uuids,
+            dependencies.chart_dataset_map,
+            dependencies.dataset_database_map,
+            dependencies.chart_dashboard_titles_by_uuid,
+        ) = _extract_dependency_maps(selection.cascade_buf)
 
-        if not cascade_datasets:
-            dataset_uuids = set()
-            dataset_database_map = {}
-        if not cascade_databases:
-            database_uuids = set()
+        if not cascade_options.datasets:
+            dependencies.dataset_uuids = set()
+            dependencies.dataset_database_map = {}
+        if not cascade_options.databases:
+            dependencies.database_uuids = set()
 
-    shared_uuids: Dict[str, Set[str]] = {
+    return dependencies
+
+
+def _protect_shared_dependencies(
+    client: SupersetClient,
+    selection: _DashboardSelection,
+    dependencies: _CascadeDependencies,
+    cascade_options: _DashboardCascadeOptions,
+) -> Dict[str, Set[str]]:
+    shared_uuids = _empty_shared_uuids()
+    if not cascade_options.charts:
+        return shared_uuids
+    if cascade_options.skip_shared_check:
+        click.echo(
+            "Shared dependency check skipped — cascade targets may be used by other dashboards",
+        )
+        return shared_uuids
+
+    other_ids = _find_other_dashboard_ids(client, selection.dashboard_ids)
+    if not other_ids:
+        return shared_uuids
+
+    other_buf = client.export_zip("dashboard", list(other_ids))
+    protected = _extract_uuids_from_export(other_buf)
+    shared_uuids = _compute_shared_uuids(dependencies, protected)
+    _remove_shared_dependencies(dependencies, shared_uuids)
+    return shared_uuids
+
+
+def _empty_shared_uuids() -> Dict[str, Set[str]]:
+    return {
         "charts": set(),
         "datasets": set(),
         "databases": set(),
     }
-    if cascade_charts and not skip_shared_check:
-        all_dashboards = client.get_resources("dashboard")
-        other_ids = {d["id"] for d in all_dashboards} - dashboard_ids
-        if other_ids:
-            other_buf = client.export_zip("dashboard", list(other_ids))
-            protected = _extract_uuids_from_export(other_buf)
-            shared_uuids["charts"] = chart_uuids & protected["charts"]
-            protected_datasets = dataset_uuids & protected["datasets"]
-            protected_databases = database_uuids & protected["databases"]
 
-            for chart_uuid in shared_uuids["charts"]:
-                if dataset_uuid := chart_dataset_map.get(chart_uuid):
-                    protected_datasets.add(dataset_uuid)
-                    if database_uuid := dataset_database_map.get(dataset_uuid):
-                        protected_databases.add(database_uuid)
 
-            for dataset_uuid in protected_datasets:
-                if database_uuid := dataset_database_map.get(dataset_uuid):
-                    protected_databases.add(database_uuid)
+def _find_other_dashboard_ids(
+    client: SupersetClient,
+    dashboard_ids: Set[int],
+) -> Set[int]:
+    all_dashboards = client.get_resources("dashboard")
+    return {dashboard["id"] for dashboard in all_dashboards} - dashboard_ids
 
-            shared_uuids["datasets"] = protected_datasets
-            shared_uuids["databases"] = protected_databases
 
-            chart_uuids -= shared_uuids["charts"]
-            chart_dashboard_titles_by_uuid = {
-                uuid: titles
-                for uuid, titles in chart_dashboard_titles_by_uuid.items()
-                if uuid in chart_uuids
-            }
-            dataset_uuids -= shared_uuids["datasets"]
-            database_uuids -= shared_uuids["databases"]
-    elif cascade_charts and skip_shared_check:
-        click.echo(
-            "Shared dependency check skipped — cascade targets may be used by other dashboards",
-        )
+def _compute_shared_uuids(
+    dependencies: _CascadeDependencies,
+    protected: Dict[str, Set[str]],
+) -> Dict[str, Set[str]]:
+    shared_charts = dependencies.chart_uuids & protected["charts"]
+    protected_datasets = dependencies.dataset_uuids & protected["datasets"]
+    protected_databases = dependencies.database_uuids & protected["databases"]
 
-    chart_ids: Set[int] = set()
-    dataset_ids: Set[int] = set()
-    database_ids: Set[int] = set()
-    chart_dashboard_context: Dict[int, List[str]] = {}
-    cascade_names: Dict[str, Dict[int, str]] = {}
+    for chart_uuid in shared_charts:
+        if dataset_uuid := dependencies.chart_dataset_map.get(chart_uuid):
+            protected_datasets.add(dataset_uuid)
+            if database_uuid := dependencies.dataset_database_map.get(dataset_uuid):
+                protected_databases.add(database_uuid)
 
-    cascade_flags = {
-        "charts": cascade_charts,
-        "datasets": cascade_datasets,
-        "databases": cascade_databases,
+    for dataset_uuid in protected_datasets:
+        if database_uuid := dependencies.dataset_database_map.get(dataset_uuid):
+            protected_databases.add(database_uuid)
+
+    return {
+        "charts": shared_charts,
+        "datasets": protected_datasets,
+        "databases": protected_databases,
     }
 
-    if cascade_charts:
-        chart_uuid_map, chart_names, charts_resolved = _build_uuid_map(client, "chart")
-        if charts_resolved:
-            chart_ids = {
-                chart_uuid_map[chart_uuid]
-                for chart_uuid in chart_uuids
-                if chart_uuid in chart_uuid_map
-            }
-            missing_chart_uuids = [
-                chart_uuid
-                for chart_uuid in chart_uuids
-                if chart_uuid not in chart_uuid_map
-            ]
-            for chart_uuid, titles in chart_dashboard_titles_by_uuid.items():
-                chart_id = chart_uuid_map.get(chart_uuid)
-                if chart_id is None:
-                    continue
-                if chart_id not in chart_ids:
-                    continue
-                chart_dashboard_context[chart_id] = sorted(titles)
-        else:
-            chart_ids = set()
-            missing_chart_uuids = list(chart_uuids)
-        dataset_ids, dataset_names, missing_dataset_uuids, datasets_resolved = (
-            _resolve_ids(
-                client,
-                "dataset",
-                dataset_uuids,
-            )
+
+def _remove_shared_dependencies(
+    dependencies: _CascadeDependencies,
+    shared_uuids: Dict[str, Set[str]],
+) -> None:
+    dependencies.chart_uuids -= shared_uuids["charts"]
+    dependencies.chart_dashboard_titles_by_uuid = {
+        uuid: titles
+        for uuid, titles in dependencies.chart_dashboard_titles_by_uuid.items()
+        if uuid in dependencies.chart_uuids
+    }
+    dependencies.dataset_uuids -= shared_uuids["datasets"]
+    dependencies.database_uuids -= shared_uuids["databases"]
+
+
+def _resolve_cascade_targets(
+    client: SupersetClient,
+    dependencies: _CascadeDependencies,
+    cascade_options: _DashboardCascadeOptions,
+) -> _CascadeResolution:
+    ids = {
+        "charts": set(),
+        "datasets": set(),
+        "databases": set(),
+    }
+    names: Dict[str, Dict[int, str]] = {}
+    chart_dashboard_context: Dict[int, List[str]] = {}
+    cascade_flags = {
+        "charts": cascade_options.charts,
+        "datasets": cascade_options.datasets,
+        "databases": cascade_options.databases,
+    }
+    if not cascade_options.charts:
+        return _CascadeResolution(
+            ids=ids,
+            names=names,
+            chart_dashboard_context=chart_dashboard_context,
+            flags=cascade_flags,
         )
-        database_ids, database_names, missing_database_uuids, databases_resolved = (
-            _resolve_ids(
-                client,
-                "database",
-                database_uuids,
-            )
+
+    (
+        ids["charts"],
+        chart_names,
+        chart_dashboard_context,
+        missing_chart_uuids,
+        charts_resolved,
+    ) = _resolve_chart_targets(client, dependencies)
+    dataset_result = _resolve_ids(
+        client,
+        "dataset",
+        dependencies.dataset_uuids,
+    )
+    database_result = _resolve_ids(
+        client,
+        "database",
+        dependencies.database_uuids,
+    )
+    ids["datasets"] = dataset_result[0]
+    ids["databases"] = database_result[0]
+    names = {
+        "charts": chart_names,
+        "datasets": dataset_result[1],
+        "databases": database_result[1],
+    }
+    all_resolved = charts_resolved and dataset_result[3] and database_result[3]
+    if not all_resolved:
+        click.echo(
+            "Cannot resolve cascade targets on this Superset version — "
+            "skipping cascade deletion.",
         )
-        cascade_names = {
-            "charts": chart_names,
-            "datasets": dataset_names,
-            "databases": database_names,
+        ids = {
+            "charts": set(),
+            "datasets": set(),
+            "databases": set(),
         }
+    else:
+        _warn_missing_uuids("chart", missing_chart_uuids)
+        _warn_missing_uuids("dataset", dataset_result[2])
+        _warn_missing_uuids("database", database_result[2])
 
-        if not (charts_resolved and datasets_resolved and databases_resolved):
-            click.echo(
-                "Cannot resolve cascade targets on this Superset version — "
-                "skipping cascade deletion.",
-            )
-            chart_ids = set()
-            dataset_ids = set()
-            database_ids = set()
-        else:
-            for missing in missing_chart_uuids:
-                click.echo(f"Warning: chart UUID not found: {missing}")
-            for missing in missing_dataset_uuids:
-                click.echo(f"Warning: dataset UUID not found: {missing}")
-            for missing in missing_database_uuids:
-                click.echo(f"Warning: database UUID not found: {missing}")
+    return _CascadeResolution(
+        ids=ids,
+        names=names,
+        chart_dashboard_context=chart_dashboard_context,
+        flags=cascade_flags,
+    )
 
-    if dry_run:
-        _echo_summary(
-            dashboards,
-            chart_ids,
-            dataset_ids,
-            database_ids,
-            cascade_names,
+
+def _resolve_chart_targets(
+    client: SupersetClient,
+    dependencies: _CascadeDependencies,
+) -> Tuple[Set[int], Dict[int, str], Dict[int, List[str]], List[str], bool]:
+    chart_dashboard_context: Dict[int, List[str]] = {}
+    chart_uuid_map, chart_names, charts_resolved = _build_uuid_map(client, "chart")
+    if not charts_resolved:
+        return (
+            set(),
+            chart_names,
             chart_dashboard_context,
-            shared_uuids,
-            cascade_flags,
-            dry_run=True,
+            list(dependencies.chart_uuids),
+            False,
         )
-        return
 
-    if confirm != "DELETE":
+    chart_ids = {
+        chart_uuid_map[chart_uuid]
+        for chart_uuid in dependencies.chart_uuids
+        if chart_uuid in chart_uuid_map
+    }
+    missing_chart_uuids = [
+        chart_uuid
+        for chart_uuid in dependencies.chart_uuids
+        if chart_uuid not in chart_uuid_map
+    ]
+    for chart_uuid, titles in dependencies.chart_dashboard_titles_by_uuid.items():
+        chart_id = chart_uuid_map.get(chart_uuid)
+        if chart_id is None:
+            continue
+        if chart_id not in chart_ids:
+            continue
+        chart_dashboard_context[chart_id] = sorted(titles)
+
+    return (
+        chart_ids,
+        chart_names,
+        chart_dashboard_context,
+        missing_chart_uuids,
+        True,
+    )
+
+
+def _warn_missing_uuids(resource_name: str, missing_uuids: List[str]) -> None:
+    for missing in missing_uuids:
+        click.echo(f"Warning: {resource_name} UUID not found: {missing}")
+
+
+def _preflight_database_deletion(
+    client: SupersetClient,
+    database_ids: Set[int],
+    dataset_ids: Set[int],
+) -> None:
+    datasets, filtered_by_db = _fetch_preflight_datasets(
+        client,
+        database_ids,
+    )
+    if not filtered_by_db:
+        datasets = _filter_datasets_for_database_ids(
+            datasets,
+            database_ids,
+        )
+
+    _raise_if_extra_preflight_datasets(datasets, dataset_ids)
+
+
+def _fetch_preflight_datasets(
+    client: SupersetClient,
+    database_ids: Set[int],
+) -> Tuple[List[Dict[str, Any]], bool]:
+    try:
+        return (
+            client.get_resources(
+                "dataset",
+                database_id=In(list(database_ids)),
+            ),
+            True,
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        if is_filter_not_allowed_error(exc):
+            return client.get_resources("dataset"), False
+        raise click.ClickException(
+            f"Failed to preflight datasets ({exc}).",
+        ) from exc
+
+
+def _filter_datasets_for_database_ids(
+    datasets: List[Dict[str, Any]],
+    database_ids: Set[int],
+) -> List[Dict[str, Any]]:
+    filtered_datasets = []
+    missing_db_info = False
+    for dataset in datasets:
+        db_id = _dataset_db_id(dataset)
+        if db_id is None:
+            missing_db_info = True
+            continue
+        if db_id in database_ids:
+            filtered_datasets.append(dataset)
+    if missing_db_info:
+        click.echo(
+            "Warning: Cannot verify all datasets for target databases; "
+            "skipping preflight check.",
+        )
+    return filtered_datasets
+
+
+def _raise_if_extra_preflight_datasets(
+    datasets: List[Dict[str, Any]],
+    dataset_ids: Set[int],
+) -> None:
+    extra = [dataset for dataset in datasets if dataset.get("id") not in dataset_ids]
+    if extra:
+        extra_ids = ", ".join(str(dataset.get("id")) for dataset in extra)
+        raise click.ClickException(
+            "Aborting deletion: databases have datasets not in cascade set. "
+            f"Extra dataset IDs: {extra_ids}",
+        )
+
+
+def _build_dashboard_summary(
+    selection: _DashboardSelection,
+    resolution: _CascadeResolution,
+    shared_uuids: Dict[str, Set[str]],
+) -> _DeleteSummaryData:
+    return _DeleteSummaryData(
+        dashboards=selection.dashboards,
+        cascade_ids=resolution.ids,
+        cascade_names=resolution.names,
+        chart_dashboard_context=resolution.chart_dashboard_context,
+        shared=shared_uuids,
+        cascade_flags=resolution.flags,
+    )
+
+
+def _read_dashboard_backup_data(
+    client: SupersetClient,
+    selection: _DashboardSelection,
+) -> bytes:
+    if selection.cascade_buf is None:
+        backup_buf = client.export_zip("dashboard", list(selection.dashboard_ids))
+        return backup_buf.read()
+    selection.cascade_buf.seek(0)
+    return selection.cascade_buf.read()
+
+
+def _expected_dashboard_rollback_types(
+    cascade_options: _DashboardCascadeOptions,
+) -> Set[str]:
+    expected_types = {"dashboard"}
+    if cascade_options.charts:
+        expected_types.add("chart")
+    if cascade_options.datasets:
+        expected_types.add("dataset")
+    if cascade_options.databases:
+        expected_types.add("database")
+    return expected_types
+
+
+def _rollback_dashboard_deletion(
+    client: SupersetClient,
+    backup_data: bytes,
+    db_passwords: Dict[str, str],
+    cascade_options: _DashboardCascadeOptions,
+) -> None:
+    try:
+        rollback_buf = _apply_db_passwords_to_backup(
+            backup_data,
+            db_passwords,
+        )
+        client.import_zip("dashboard", rollback_buf, overwrite=True)
+    except Exception as exc:  # pylint: disable=broad-except
+        click.echo(f"Rollback failed: {exc}")
+        raise click.ClickException(
+            "Rollback failed. A backup zip is available for manual restore.",
+        ) from exc
+
+    unresolved, missing_types = _verify_rollback_restoration(
+        client,
+        backup_data,
+        _expected_dashboard_rollback_types(cascade_options),
+    )
+    if unresolved:
+        labels = ", ".join(unresolved)
+        click.echo(
+            f"Warning: unable to verify rollback for: {labels}.",
+        )
+    if missing_types:
+        labels = ", ".join(missing_types)
+        raise click.ClickException(
+            f"Rollback verification failed for: {labels}. "
+            "A backup zip is available for manual restore.",
+        )
+    click.echo("Rollback succeeded.")
+
+
+def _prepare_dashboard_delete_plan(
+    client: SupersetClient,
+    parsed_filters: Dict[str, Any],
+    cascade_options: _DashboardCascadeOptions,
+) -> _DashboardDeletePlan | None:
+    selection = _fetch_dashboard_selection(client, parsed_filters)
+    if selection is None:
+        return None
+
+    dependencies = _load_cascade_dependencies(client, selection, cascade_options)
+    shared_uuids = _protect_shared_dependencies(
+        client,
+        selection,
+        dependencies,
+        cascade_options,
+    )
+    resolution = _resolve_cascade_targets(client, dependencies, cascade_options)
+    summary = _build_dashboard_summary(selection, resolution, shared_uuids)
+    return _DashboardDeletePlan(
+        selection=selection,
+        resolution=resolution,
+        summary=summary,
+    )
+
+
+def _validate_dashboard_delete_execution(
+    client: SupersetClient,
+    plan: _DashboardDeletePlan,
+    cascade_options: _DashboardCascadeOptions,
+    execution_options: _DashboardExecutionOptions,
+    db_passwords: Dict[str, str],
+) -> bool:
+    if execution_options.confirm != "DELETE":
         click.echo(
             "Deletion aborted. Pass --confirm=DELETE to proceed with deletion.",
         )
-        return
+        return False
 
-    if rollback and cascade_databases and database_ids and not db_passwords:
+    if (
+        execution_options.rollback
+        and cascade_options.databases
+        and plan.resolution.ids["databases"]
+        and not db_passwords
+    ):
         raise click.ClickException(
             "Rollback requires a DB password (--db-password) when deleting databases.",
         )
 
-    if cascade_databases and database_ids:
-        filtered_by_db = False
-        try:
-            datasets = client.get_resources(
-                "dataset",
-                database_id=In(list(database_ids)),
-            )
-            filtered_by_db = True
-        except Exception as exc:  # pylint: disable=broad-except
-            if is_filter_not_allowed_error(exc):
-                datasets = client.get_resources("dataset")
-            else:
-                raise click.ClickException(
-                    f"Failed to preflight datasets ({exc}).",
-                ) from exc
+    if cascade_options.databases and plan.resolution.ids["databases"]:
+        _preflight_database_deletion(
+            client,
+            plan.resolution.ids["databases"],
+            plan.resolution.ids["datasets"],
+        )
 
-        if not filtered_by_db:
-            filtered_datasets = []
-            missing_db_info = False
-            for dataset in datasets:
-                db_id = _dataset_db_id(dataset)
-                if db_id is None:
-                    missing_db_info = True
-                    continue
-                if db_id in database_ids:
-                    filtered_datasets.append(dataset)
-            if missing_db_info:
-                click.echo(
-                    "Warning: Cannot verify all datasets for target databases; "
-                    "skipping preflight check.",
-                )
-            datasets = filtered_datasets
+    return True
 
-        extra = [
-            dataset for dataset in datasets if dataset.get("id") not in dataset_ids
-        ]
-        if extra:
-            extra_ids = ", ".join(str(dataset.get("id")) for dataset in extra)
-            raise click.ClickException(
-                "Aborting deletion: databases have datasets not in cascade set. "
-                f"Extra dataset IDs: {extra_ids}",
-            )
 
-    _echo_summary(
-        dashboards,
-        chart_ids,
-        dataset_ids,
-        database_ids,
-        cascade_names,
-        chart_dashboard_context,
-        shared_uuids,
-        cascade_flags,
-        dry_run=False,
-    )
+def _execute_dashboard_delete_plan(
+    client: SupersetClient,
+    plan: _DashboardDeletePlan,
+    cascade_options: _DashboardCascadeOptions,
+    execution_options: _DashboardExecutionOptions,
+    db_passwords: Dict[str, str],
+) -> None:
+    selection = plan.selection
+    resolution = plan.resolution
+    _echo_summary(plan.summary, dry_run=False)
 
-    # Pre-delete backup — always-on, near-zero cost (reuses cascade export)
-    if cascade_buf is not None:
-        cascade_buf.seek(0)
-        backup_data = cascade_buf.read()
-    else:
-        backup_buf = client.export_zip("dashboard", list(dashboard_ids))
-        backup_data = backup_buf.read()
+    backup_data = _read_dashboard_backup_data(client, plan.selection)
     backup_path = _write_backup(backup_data)
-    click.echo(f"\nBackup saved to: {backup_path}")
-    click.echo(
-        f"To restore, run: {_format_restore_command(backup_path, 'dashboard')}\n",
-    )
+    _echo_backup_restore_details(backup_path, "dashboard")
 
     failures: List[str] = []
-    deleted_any = False
-
-    def _delete(resource_name: str, resource_ids: Iterable[int]) -> None:
-        nonlocal deleted_any
-        for resource_id in sorted(resource_ids):
-            try:
-                client.delete_resource(resource_name, resource_id)
-                deleted_any = True
-            except Exception as exc:  # pylint: disable=broad-except
-                failures.append(f"{resource_name}:{resource_id} ({exc})")
-
-    # Delete dependencies first, then dashboards.
-    _delete("chart", chart_ids)
-    _delete("dataset", dataset_ids)
-    _delete("database", database_ids)
-    _delete("dashboard", dashboard_ids)
+    deleted_any = _delete_resources(
+        client,
+        "chart",
+        resolution.ids["charts"],
+        failures,
+    )
+    deleted_any = _delete_resources(
+        client,
+        "dataset",
+        resolution.ids["datasets"],
+        failures,
+    ) or deleted_any
+    deleted_any = _delete_resources(
+        client,
+        "database",
+        resolution.ids["databases"],
+        failures,
+    ) or deleted_any
+    deleted_any = _delete_resources(
+        client,
+        "dashboard",
+        selection.dashboard_ids,
+        failures,
+    ) or deleted_any
 
     if failures:
         click.echo("Some deletions failed:")
         for failure in failures:
             click.echo(f"  {failure}")
 
-        if rollback and deleted_any:
+        if execution_options.rollback and deleted_any:
             click.echo("\nBest-effort rollback attempted...")
-            try:
-                rollback_buf = _apply_db_passwords_to_backup(
-                    backup_data,
-                    db_passwords,
-                )
-                client.import_zip("dashboard", rollback_buf, overwrite=True)
-            except Exception as exc:  # pylint: disable=broad-except
-                click.echo(f"Rollback failed: {exc}")
-                raise click.ClickException(
-                    "Rollback failed. A backup zip is available for manual restore.",
-                ) from exc
-
-            expected_types = {"dashboard"}
-            if cascade_charts:
-                expected_types.add("chart")
-            if cascade_datasets:
-                expected_types.add("dataset")
-            if cascade_databases:
-                expected_types.add("database")
-
-            unresolved, missing_types = _verify_rollback_restoration(
+            _rollback_dashboard_deletion(
                 client,
                 backup_data,
-                expected_types,
+                db_passwords,
+                cascade_options,
             )
-            if unresolved:
-                labels = ", ".join(unresolved)
-                click.echo(
-                    f"Warning: unable to verify rollback for: {labels}.",
-                )
-            if missing_types:
-                labels = ", ".join(missing_types)
-                raise click.ClickException(
-                    f"Rollback verification failed for: {labels}. "
-                    "A backup zip is available for manual restore.",
-                )
-            click.echo("Rollback succeeded.")
         raise click.ClickException(
             "Deletion completed with failures. See errors above.",
         )
+
+
+def _delete_dashboard_assets(
+    client: SupersetClient,
+    parsed_filters: Dict[str, Any],
+    cascade_options: _DashboardCascadeOptions,
+    execution_options: _DashboardExecutionOptions,
+    db_passwords: Dict[str, str],
+) -> None:
+    plan = _prepare_dashboard_delete_plan(client, parsed_filters, cascade_options)
+    if plan is None:
+        return
+
+    if execution_options.dry_run:
+        _echo_summary(plan.summary, dry_run=True)
+        return
+
+    if not _validate_dashboard_delete_execution(
+        client,
+        plan,
+        cascade_options,
+        execution_options,
+        db_passwords,
+    ):
+        return
+
+    _execute_dashboard_delete_plan(
+        client,
+        plan,
+        cascade_options,
+        execution_options,
+        db_passwords,
+    )
