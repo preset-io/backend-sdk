@@ -23,7 +23,14 @@ from sqlalchemy.engine.url import URL
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     ResourceType,
+    _build_chart_contents,
+    _build_dataset_contents,
+    _filter_payload_to_schema,
+    _find_config_by_uuid,
+    _prepare_chart_update_payload,
+    _resolve_input_root,
     _resolve_uuid_to_id,
+    _safe_extract_zip,
     _safe_json_loads,
     _update_chart_no_cascade,
     add_password_to_config,
@@ -3331,3 +3338,433 @@ def test_safe_json_loads_decode_failure() -> None:
     assert _safe_json_loads('{"valid": true}', "test") == {"valid": True}
     assert _safe_json_loads("not-json", "test") is None
     assert _safe_json_loads(12345, "test") is None
+
+
+def test_safe_extract_zip_creates_directories(tmp_path: Path) -> None:
+    """
+    Test ZIP extraction handles directory members.
+    """
+    zip_path = tmp_path / "assets.zip"
+    with ZipFile(zip_path, "w") as bundle:
+        bundle.writestr("bundle/charts/", "")
+        bundle.writestr("bundle/charts/chart.yaml", "uuid: c1")
+
+    output_dir = tmp_path / "out"
+    _safe_extract_zip(zip_path, output_dir)
+    assert (output_dir / "bundle/charts").is_dir()
+    assert (output_dir / "bundle/charts/chart.yaml").exists()
+
+
+def test_safe_extract_zip_rejects_commonpath_escape(
+    mocker: MockerFixture,
+    tmp_path: Path,
+) -> None:
+    """
+    Test ZIP extraction rejects entries escaping the target path by commonpath check.
+    """
+    zip_path = tmp_path / "assets.zip"
+    with ZipFile(zip_path, "w") as bundle:
+        bundle.writestr("bundle/charts/chart.yaml", "uuid: c1")
+
+    output_dir = tmp_path / "out"
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.os.path.commonpath",
+        return_value="/outside",
+    )
+    with pytest.raises(Exception, match="escapes target directory"):
+        _safe_extract_zip(zip_path, output_dir)
+
+
+def test_resolve_input_root_rejects_non_zip_file(tmp_path: Path) -> None:
+    """
+    Test ``_resolve_input_root`` rejects non-zip files.
+    """
+    file_path = tmp_path / "not-a-zip.txt"
+    file_path.write_text("content", encoding="utf-8")
+    with pytest.raises(Exception, match="directory or a .zip bundle"):
+        _resolve_input_root(file_path)
+
+
+def test_resolve_input_root_rejects_invalid_zip_bundle(tmp_path: Path) -> None:
+    """
+    Test ``_resolve_input_root`` rejects zip files that do not contain assets.
+    """
+    zip_path = tmp_path / "invalid.zip"
+    with ZipFile(zip_path, "w") as bundle:
+        bundle.writestr("README.txt", "not a bundle")
+
+    with pytest.raises(Exception, match="does not contain a valid assets bundle"):
+        _resolve_input_root(zip_path)
+
+
+def test_resolve_input_root_handles_duplicate_candidates(tmp_path: Path) -> None:
+    """
+    Test ``_resolve_input_root`` de-duplicates candidate paths while scanning bundles.
+    """
+    zip_path = tmp_path / "nested.zip"
+    with ZipFile(zip_path, "w") as bundle:
+        bundle.writestr("bundle/bundle/databases/db.yaml", "uuid: db1")
+
+    root, temp_dir = _resolve_input_root(zip_path)
+    assert root.name == "bundle"
+    assert (root / "databases" / "db.yaml").exists()
+    if temp_dir:
+        temp_dir.cleanup()
+
+
+def test_resolve_uuid_to_id_with_empty_uuid_returns_none() -> None:
+    """
+    Test ``_resolve_uuid_to_id`` returns ``None`` for empty UUID values.
+    """
+    client = mock.MagicMock()
+    assert _resolve_uuid_to_id(client, "chart", None) is None
+    client.get_resources.assert_not_called()
+
+
+def test_resolve_uuid_to_id_returns_none_when_not_found() -> None:
+    """
+    Test ``_resolve_uuid_to_id`` returns ``None`` when fallback UUID map has no match.
+    """
+    client = mock.MagicMock()
+    resources = [{"id": 1, "uuid": "a"}]
+    client.get_uuids.return_value = {1: "a"}
+    assert _resolve_uuid_to_id(client, "chart", "missing", resources=resources) is None
+
+
+def test_find_config_by_uuid_none_and_not_found() -> None:
+    """
+    Test ``_find_config_by_uuid`` for empty UUID and missing entries.
+    """
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/charts/chart.yaml"): {"uuid": "chart-1"},
+    }
+    assert _find_config_by_uuid(configs, "charts", None) is None
+    assert _find_config_by_uuid(configs, "charts", "missing") is None
+
+
+def test_build_dataset_contents_missing_entries() -> None:
+    """
+    Test ``_build_dataset_contents`` returns None when dataset/database configs are absent.
+    """
+    assert _build_dataset_contents({}, "ds-uuid") is None
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+        },
+    }
+    assert _build_dataset_contents(configs, "ds-uuid") is None
+
+
+def test_build_chart_contents_missing_entries() -> None:
+    """
+    Test ``_build_chart_contents`` returns None when chart or dependencies are absent.
+    """
+    assert _build_chart_contents({}, "chart-uuid") is None
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/charts/chart.yaml"): {
+            "uuid": "chart-uuid",
+            "dataset_uuid": "ds-uuid",
+        },
+    }
+    assert _build_chart_contents(configs, "chart-uuid") is None
+
+
+def test_filter_payload_to_schema_falls_back_on_superset_error(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test payload filtering falls back to allowlist when schema lookup fails.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.side_effect = SupersetError(
+        errors=[{"message": "boom"}],
+    )
+    payload = {"slice_name": "Chart", "not_allowed": "x"}
+    result = _filter_payload_to_schema(client, "chart", payload, {"slice_name"})
+    assert result == {"slice_name": "Chart"}
+
+
+def test_prepare_chart_update_payload_raw_json_and_non_numeric_meta(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test chart payload keeps raw JSON strings and skips owners/tags without IDs.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.return_value = {"edit_columns": []}
+    warning = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._logger.warning",
+    )
+    payload = _prepare_chart_update_payload(
+        {
+            "slice_name": "Chart",
+            "viz_type": "table",
+            "owners": ["owner@example.org"],
+            "tags": ["tag-name"],
+            "params": "{invalid-json}",
+            "query_context": "{invalid-json}",
+        },
+        datasource_id=7,
+        datasource_type="table",
+        client=client,
+    )
+    assert payload["params"] == "{invalid-json}"
+    assert payload["query_context"] == "{invalid-json}"
+    assert "owners" not in payload
+    assert "tags" not in payload
+    assert warning.call_count >= 2
+
+
+def test_prepare_chart_update_payload_with_numeric_owners_and_tags(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test chart payload includes owners/tags when values are numeric IDs.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.return_value = {"edit_columns": []}
+    payload = _prepare_chart_update_payload(
+        {
+            "slice_name": "Chart",
+            "viz_type": "table",
+            "owners": [1, 2],
+            "tags": [3, 4],
+            "params": "{}",
+            "query_context": "{}",
+        },
+        datasource_id=7,
+        datasource_type="table",
+        client=client,
+    )
+    assert payload["owners"] == [1, 2]
+    assert payload["tags"] == [3, 4]
+
+
+def test_update_chart_no_cascade_missing_chart_uuid_raises(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade chart update raises for configs missing UUID.
+    """
+    client = mocker.MagicMock()
+    with pytest.raises(Exception, match="Chart config missing UUID"):
+        _update_chart_no_cascade(
+            Path("bundle/charts/chart.yaml"),
+            {"dataset_uuid": "ds-uuid"},
+            {},
+            client,
+            overwrite=True,
+        )
+
+
+def test_update_chart_no_cascade_missing_chart_bundle_raises(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade chart update raises when chart is missing and no bundle is available.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        return_value=None,
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._build_chart_contents",
+        return_value=None,
+    )
+    with pytest.raises(Exception, match="no dataset/database configs available"):
+        _update_chart_no_cascade(
+            Path("bundle/charts/chart.yaml"),
+            {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+            {},
+            client,
+            overwrite=True,
+        )
+
+
+def test_update_chart_no_cascade_unable_to_create_chart_raises(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade chart update raises when chart creation does not produce an ID.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=[None, None],
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._build_chart_contents",
+        return_value={"bundle/charts/chart.yaml": "uuid: chart-uuid"},
+    )
+    mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
+    with pytest.raises(Exception, match="Unable to create chart"):
+        _update_chart_no_cascade(
+            Path("bundle/charts/chart.yaml"),
+            {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+            {},
+            client,
+            overwrite=True,
+        )
+
+
+def test_update_chart_no_cascade_create_then_skip_update_when_overwrite_false(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade chart path skips update after create when overwrite is false.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=[None, 11],
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._build_chart_contents",
+        return_value={"bundle/charts/chart.yaml": "uuid: chart-uuid"},
+    )
+    mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
+    _update_chart_no_cascade(
+        Path("bundle/charts/chart.yaml"),
+        {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+        {},
+        client,
+        overwrite=False,
+    )
+    client.update_chart.assert_not_called()
+
+
+def test_update_chart_no_cascade_missing_dataset_uuid_raises(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade chart update raises when dataset UUID is absent.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        return_value=11,
+    )
+    with pytest.raises(Exception, match="missing dataset_uuid"):
+        _update_chart_no_cascade(
+            Path("bundle/charts/chart.yaml"),
+            {"uuid": "chart-uuid"},
+            {},
+            client,
+            overwrite=True,
+        )
+
+
+def test_update_chart_no_cascade_missing_dataset_bundle_raises(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade chart update raises when dataset is missing and cannot be built.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=[11, None],
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._build_dataset_contents",
+        return_value=None,
+    )
+    with pytest.raises(Exception, match="no dataset/database configs available"):
+        _update_chart_no_cascade(
+            Path("bundle/charts/chart.yaml"),
+            {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+            {},
+            client,
+            overwrite=True,
+        )
+
+
+def test_update_chart_no_cascade_unable_to_create_dataset_raises(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade chart update raises when dataset creation fails to produce an ID.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=[11, None, None],
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._build_dataset_contents",
+        return_value={"bundle/datasets/ds.yaml": "uuid: ds-uuid"},
+    )
+    mocker.patch("preset_cli.cli.superset.sync.native.command.import_resources")
+    with pytest.raises(Exception, match="Unable to create dataset"):
+        _update_chart_no_cascade(
+            Path("bundle/charts/chart.yaml"),
+            {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+            {},
+            client,
+            overwrite=True,
+        )
+
+
+def test_import_resources_individually_handles_none_uuid_dependency_check(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,  # pylint: disable=unused-argument
+) -> None:
+    """
+    Test no-cascade dependency existence check handles configs with ``uuid=None``.
+    """
+    client = mocker.MagicMock()
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        return_value=None,
+    )
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {"uuid": None, "database_name": "db"},
+    }
+
+    import_resources_individually(
+        configs,
+        client,
+        overwrite=True,
+        asset_type=ResourceType.DASHBOARD,
+        continue_on_error=False,
+        cascade=False,
+    )
+
+    import_resources_mock.assert_called_once()
+
+
+def test_prepare_chart_update_payload_without_params_updates_query_context_only(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test payload generation when ``params`` is absent and query list has mixed entries.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.return_value = {"edit_columns": []}
+    payload = _prepare_chart_update_payload(
+        {
+            "slice_name": "Chart",
+            "viz_type": "table",
+            "params": None,
+            "query_context": json.dumps(
+                {
+                    "datasource": {"id": 1, "type": "table"},
+                    "queries": ["not-a-dict", {"foo": "bar"}],
+                    "form_data": {"datasource": "1__table"},
+                },
+            ),
+        },
+        datasource_id=24,
+        datasource_type="table",
+        client=client,
+    )
+    assert "params" not in payload
+    query_context = json.loads(payload["query_context"])
+    assert query_context["datasource"]["id"] == 24
+    assert query_context["form_data"]["datasource"] == "24__table"

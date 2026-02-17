@@ -6,17 +6,46 @@ Tests for delete assets command.
 
 import tempfile
 from io import BytesIO
+from pathlib import Path
 from typing import Dict
 from zipfile import ZipFile
 
+import pytest
 import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
 from preset_cli.cli.superset.delete import (
     _apply_db_passwords_to_backup,
+    _build_uuid_map,
+    _compute_shared_uuids,
     _dataset_db_id,
+    _delete_non_dashboard_assets,
+    _echo_cascade_section,
+    _echo_dry_run_hint,
+    _echo_shared_summary,
+    _expected_dashboard_rollback_types,
+    _extract_backup_uuids_by_type,
+    _extract_dependency_maps,
+    _fetch_preflight_datasets,
+    _filter_datasets_for_database_ids,
+    _format_resource_summary,
     _format_restore_command,
+    _parse_db_passwords,
+    _resolve_chart_targets,
+    _resolve_ids,
+    _resolve_rollback_settings,
+    _rollback_dashboard_deletion,
+    _rollback_non_dashboard_deletion,
+    _validate_delete_option_combinations,
+    _verify_rollback_restoration,
+    _warn_missing_uuids,
+    _write_backup,
+)
+from preset_cli.cli.superset.delete_types import (
+    _CascadeDependencies,
+    _DashboardCascadeOptions,
+    _NonDashboardDeleteOptions,
 )
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.exceptions import SupersetError
@@ -1489,3 +1518,600 @@ def test_delete_assets_prd_example_local_filters(mocker: MockerFixture) -> None:
     assert "[ID: 2]" not in result.output
     assert "[ID: 3]" not in result.output
     client.delete_resource.assert_not_called()
+
+
+def test_extract_backup_uuids_by_type_skips_unrelated_entries() -> None:
+    """
+    Test backup UUID extraction ignores non-yaml and unrelated paths.
+    """
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        bundle.writestr("bundle/charts/chart.yaml", yaml.dump({"uuid": "chart-uuid"}))
+        bundle.writestr("bundle/datasets/ds.yaml", yaml.dump({"uuid": "dataset-uuid"}))
+        bundle.writestr("bundle/databases/db.yaml", yaml.dump({"uuid": "db-uuid"}))
+        bundle.writestr("bundle/dashboards/dash.yaml", yaml.dump({"uuid": "dash-uuid"}))
+        bundle.writestr("bundle/notes.txt", "ignore")
+        bundle.writestr("bundle/unknown/asset.yaml", yaml.dump({"uuid": "ignored"}))
+
+    result = _extract_backup_uuids_by_type(buf.getvalue())
+    assert result == {
+        "dashboard": {"dash-uuid"},
+        "chart": {"chart-uuid"},
+        "dataset": {"dataset-uuid"},
+        "database": {"db-uuid"},
+    }
+
+
+def test_verify_rollback_restoration_collects_unresolved_and_missing(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test rollback verification tracks unresolved and missing types.
+    """
+    mocker.patch(
+        "preset_cli.cli.superset.delete._extract_backup_uuids_by_type",
+        return_value={
+            "dashboard": set(),
+            "chart": {"chart-uuid"},
+            "dataset": {"dataset-uuid"},
+            "database": set(),
+        },
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.delete._resolve_ids",
+        side_effect=[
+            (set(), {}, [], False),
+            ({1}, {1: "dataset"}, ["dataset-uuid"], True),
+        ],
+    )
+
+    unresolved, missing = _verify_rollback_restoration(
+        mocker.MagicMock(),
+        b"zip-data",
+        {"chart", "dataset"},
+    )
+    assert unresolved == ["chart"]
+    assert missing == ["dataset"]
+
+
+def test_extract_dependency_maps_handles_invalid_dashboard_nodes() -> None:
+    """
+    Test dependency extraction tolerates malformed dashboard position data.
+    """
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        bundle.writestr("bundle/README.txt", "ignore")
+        bundle.writestr(
+            "bundle/dashboards/bad.yaml",
+            yaml.dump({"position": "not-a-dict"}),
+        )
+        bundle.writestr(
+            "bundle/dashboards/mixed.yaml",
+            yaml.dump(
+                {
+                    "dashboard_title": "Mixed",
+                    "position": {
+                        "a": "not-dict",
+                        "b": {"type": "ROW"},
+                        "c": {"type": "CHART", "meta": "not-dict"},
+                        "d": {"type": "CHART", "meta": {"uuid": "chart-uuid"}},
+                    },
+                },
+            ),
+        )
+
+    _, _, _, _, _, chart_context = _extract_dependency_maps(buf)
+    assert chart_context == {"chart-uuid": {"Mixed"}}
+
+
+def test_parse_db_passwords_invalid_value_raises() -> None:
+    """
+    Test invalid db-password format raises a click exception.
+    """
+    with pytest.raises(Exception, match="Invalid --db-password value"):
+        _parse_db_passwords(("invalid",))
+
+
+def test_write_backup_ignores_chmod_error(mocker: MockerFixture) -> None:
+    """
+    Test backup creation still succeeds when chmod fails.
+    """
+    mocker.patch("pathlib.Path.chmod", side_effect=OSError("denied"))
+    backup_path = _write_backup(b"data")
+    path = Path(backup_path)
+    assert path.exists()
+    path.unlink()
+
+
+def test_build_uuid_map_fallback_and_missing_id_entries(mocker: MockerFixture) -> None:
+    """
+    Test UUID map fallback path uses ``get_uuids`` and skips resources without IDs.
+    """
+    client = mocker.MagicMock()
+    client.get_resources.return_value = [
+        {"uuid": "uuid-without-id"},
+        {"id": 2, "name": "resource-name"},
+    ]
+    client.get_uuids.return_value = {2: "fallback-uuid"}
+
+    uuid_map, name_map, resolved = _build_uuid_map(client, "chart")
+    assert resolved is True
+    assert uuid_map == {"fallback-uuid": 2}
+    assert name_map == {2: "resource-name"}
+
+
+def test_resolve_ids_unresolved_map(mocker: MockerFixture) -> None:
+    """
+    Test ``_resolve_ids`` reports unresolved state when UUID mapping fails.
+    """
+    mocker.patch(
+        "preset_cli.cli.superset.delete._build_uuid_map",
+        return_value=({}, {}, False),
+    )
+    ids, names, missing, resolved = _resolve_ids(
+        mocker.MagicMock(),
+        "chart",
+        {"a"},
+    )
+    assert ids == set()
+    assert names == {}
+    assert missing == ["a"]
+    assert resolved is False
+
+
+def test_format_resource_summary_without_label() -> None:
+    """
+    Test summary formatting falls back to ID-only when no label is available.
+    """
+    assert _format_resource_summary("chart", [{"id": 1}]) == ["- [ID: 1]"]
+
+
+def test_echo_shared_summary_and_dry_run_hint(capsys) -> None:
+    """
+    Test shared summary sections and dry-run hint are rendered.
+    """
+    _echo_shared_summary(
+        {
+            "charts": {"c1"},
+            "datasets": {"d1"},
+            "databases": {"db1"},
+        },
+    )
+    _echo_dry_run_hint(True)
+    output = capsys.readouterr().out
+    assert "Shared (skipped)" in output
+    assert "Charts (1): c1" in output
+    assert "Datasets (1): d1" in output
+    assert "Databases (1): db1" in output
+    assert "--dry-run=false --confirm=DELETE" in output
+
+
+def test_validate_delete_option_combinations_rejects_non_dashboard_cascade() -> None:
+    """
+    Test non-dashboard deletes reject cascade options.
+    """
+    cascade = _DashboardCascadeOptions(
+        charts=True,
+        datasets=False,
+        databases=False,
+        skip_shared_check=False,
+    )
+    with pytest.raises(Exception, match="Cascade options are only supported"):
+        _validate_delete_option_combinations("chart", cascade)
+
+
+def test_resolve_rollback_settings_database_path_with_no_rollback() -> None:
+    """
+    Test rollback settings keep parsed passwords when rollback is disabled.
+    """
+    db_passwords, rollback = _resolve_rollback_settings("database", False, ("u=pw",))
+    assert db_passwords == {"u": "pw"}
+    assert rollback is False
+
+
+def test_rollback_non_dashboard_deletion_import_failure(mocker: MockerFixture) -> None:
+    """
+    Test non-dashboard rollback raises when import fails.
+    """
+    client = mocker.MagicMock()
+    client.import_zip.side_effect = Exception("boom")
+
+    with pytest.raises(Exception, match="Rollback failed"):
+        _rollback_non_dashboard_deletion(client, "chart", b"zip", {})
+
+
+def test_rollback_non_dashboard_deletion_warns_unresolved(
+    mocker: MockerFixture,
+    capsys,
+) -> None:
+    """
+    Test non-dashboard rollback warns for unresolved verification types.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.delete._verify_rollback_restoration",
+        return_value=(["chart"], []),
+    )
+    _rollback_non_dashboard_deletion(client, "chart", b"zip", {})
+    output = capsys.readouterr().out
+    assert "unable to verify rollback for: chart" in output
+    assert "Rollback succeeded." in output
+
+
+def test_rollback_non_dashboard_deletion_raises_on_missing_types(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test non-dashboard rollback raises when restored resources are missing.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.delete._verify_rollback_restoration",
+        return_value=([], ["chart"]),
+    )
+    with pytest.raises(Exception, match="Rollback verification failed for: chart"):
+        _rollback_non_dashboard_deletion(client, "chart", b"zip", {})
+
+
+def test_delete_non_dashboard_assets_attempts_rollback_on_partial_failure(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test non-dashboard helper attempts rollback after partial deletion failures.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.delete._fetch_non_dashboard_resources",
+        return_value=[{"id": 10}, {"id": 11}],
+    )
+    client.export_zip.return_value = make_export_zip()
+    client.delete_resource.side_effect = [None, Exception("boom")]
+    rollback = mocker.patch(
+        "preset_cli.cli.superset.delete._rollback_non_dashboard_deletion",
+    )
+    options = _NonDashboardDeleteOptions(
+        resource_name="chart",
+        dry_run=False,
+        confirm="DELETE",
+        rollback=True,
+        db_passwords={},
+    )
+
+    with pytest.raises(Exception, match="Deletion completed with failures"):
+        _delete_non_dashboard_assets(client, {}, options)
+
+    rollback.assert_called_once()
+
+
+def test_delete_non_dashboard_assets_no_matches_returns_early(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test non-dashboard helper returns early when no resources match.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.delete._fetch_non_dashboard_resources",
+        return_value=[],
+    )
+    options = _NonDashboardDeleteOptions(
+        resource_name="chart",
+        dry_run=False,
+        confirm="DELETE",
+        rollback=True,
+        db_passwords={},
+    )
+    _delete_non_dashboard_assets(client, {}, options)
+    client.delete_resource.assert_not_called()
+
+
+def test_delete_non_dashboard_assets_requires_confirm_for_execute(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test non-dashboard helper aborts execute path without confirm token.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.delete._fetch_non_dashboard_resources",
+        return_value=[{"id": 10, "slice_name": "Chart"}],
+    )
+    options = _NonDashboardDeleteOptions(
+        resource_name="chart",
+        dry_run=False,
+        confirm=None,
+        rollback=True,
+        db_passwords={},
+    )
+    _delete_non_dashboard_assets(client, {}, options)
+    client.delete_resource.assert_not_called()
+
+
+def test_compute_shared_uuids_propagates_dataset_and_database() -> None:
+    """
+    Test shared chart dependencies propagate dataset/database protection.
+    """
+    dependencies = _CascadeDependencies(
+        chart_uuids={"chart-1"},
+        dataset_uuids={"dataset-1"},
+        database_uuids={"db-1"},
+        chart_dataset_map={"chart-1": "dataset-2"},
+        dataset_database_map={"dataset-1": "db-1", "dataset-2": "db-2"},
+        chart_dashboard_titles_by_uuid={},
+    )
+    shared = _compute_shared_uuids(
+        dependencies,
+        {"charts": {"chart-1"}, "datasets": set(), "databases": set()},
+    )
+    assert shared["charts"] == {"chart-1"}
+    assert shared["datasets"] == {"dataset-2"}
+    assert shared["databases"] == {"db-2"}
+
+
+def test_resolve_chart_targets_skips_unknown_and_non_target_context(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test chart context mapping ignores unknown or non-target chart UUIDs.
+    """
+    dependencies = _CascadeDependencies(
+        chart_uuids={"chart-a"},
+        dataset_uuids=set(),
+        database_uuids=set(),
+        chart_dataset_map={},
+        dataset_database_map={},
+        chart_dashboard_titles_by_uuid={
+            "missing-chart": {"Missing"},
+            "chart-b": {"NotTarget"},
+            "chart-a": {"Target"},
+        },
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.delete._build_uuid_map",
+        return_value=(
+            {"chart-a": 1, "chart-b": 2},
+            {1: "A", 2: "B"},
+            True,
+        ),
+    )
+
+    chart_ids, _, context, missing, resolved = _resolve_chart_targets(
+        mocker.MagicMock(),
+        dependencies,
+    )
+    assert resolved is True
+    assert chart_ids == {1}
+    assert context == {1: ["Target"]}
+    assert missing == []
+
+
+def test_warn_missing_uuids_emits_messages(capsys) -> None:
+    """
+    Test missing UUID warnings are printed.
+    """
+    _warn_missing_uuids("dataset", ["a", "b"])
+    output = capsys.readouterr().out
+    assert "Warning: dataset UUID not found: a" in output
+    assert "Warning: dataset UUID not found: b" in output
+
+
+def test_fetch_preflight_datasets_raises_on_unexpected_error(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test preflight dataset fetch wraps unexpected errors.
+    """
+    client = mocker.MagicMock()
+    client.get_resources.side_effect = RuntimeError("boom")
+    mocker.patch(
+        "preset_cli.cli.superset.delete.is_filter_not_allowed_error",
+        return_value=False,
+    )
+    with pytest.raises(Exception, match="Failed to preflight datasets"):
+        _fetch_preflight_datasets(client, {1})
+
+
+def test_expected_dashboard_rollback_types_full_cascade() -> None:
+    """
+    Test rollback type set includes all cascade levels when enabled.
+    """
+    cascade = _DashboardCascadeOptions(
+        charts=True,
+        datasets=True,
+        databases=True,
+        skip_shared_check=False,
+    )
+    assert _expected_dashboard_rollback_types(cascade) == {
+        "dashboard",
+        "chart",
+        "dataset",
+        "database",
+    }
+
+
+def test_rollback_dashboard_deletion_import_failure(mocker: MockerFixture) -> None:
+    """
+    Test dashboard rollback raises when re-import fails.
+    """
+    client = mocker.MagicMock()
+    client.import_zip.side_effect = Exception("boom")
+    cascade = _DashboardCascadeOptions(
+        charts=True,
+        datasets=False,
+        databases=False,
+        skip_shared_check=False,
+    )
+    with pytest.raises(Exception, match="Rollback failed"):
+        _rollback_dashboard_deletion(client, b"zip", {}, cascade)
+
+
+def test_rollback_dashboard_deletion_warns_unresolved(
+    mocker: MockerFixture,
+    capsys,
+) -> None:
+    """
+    Test dashboard rollback warns unresolved verification types and succeeds.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.delete._verify_rollback_restoration",
+        return_value=(["dataset"], []),
+    )
+    cascade = _DashboardCascadeOptions(
+        charts=True,
+        datasets=True,
+        databases=True,
+        skip_shared_check=False,
+    )
+    _rollback_dashboard_deletion(client, b"zip", {}, cascade)
+    output = capsys.readouterr().out
+    assert "unable to verify rollback for: dataset" in output
+    assert "Rollback succeeded." in output
+
+
+def test_rollback_dashboard_deletion_raises_on_missing_types(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard rollback raises when verification reports missing resources.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.delete._verify_rollback_restoration",
+        return_value=([], ["database"]),
+    )
+    cascade = _DashboardCascadeOptions(
+        charts=True,
+        datasets=True,
+        databases=True,
+        skip_shared_check=False,
+    )
+    with pytest.raises(Exception, match="Rollback verification failed for: database"):
+        _rollback_dashboard_deletion(client, b"zip", {}, cascade)
+
+
+def test_extract_dependency_maps_covers_optional_uuid_paths() -> None:
+    """
+    Test dependency extraction handles yaml assets missing optional UUID fields.
+    """
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        bundle.writestr("bundle/charts/no_uuid.yaml", yaml.dump({"dataset_uuid": "ds"}))
+        bundle.writestr(
+            "bundle/charts/no_dataset.yaml",
+            yaml.dump({"uuid": "chart-no-dataset"}),
+        )
+        bundle.writestr(
+            "bundle/datasets/no_uuid.yaml",
+            yaml.dump({"database_uuid": "db"}),
+        )
+        bundle.writestr(
+            "bundle/datasets/no_database.yaml",
+            yaml.dump({"uuid": "dataset-no-database"}),
+        )
+        bundle.writestr("bundle/databases/no_uuid.yaml", yaml.dump({"name": "db"}))
+        bundle.writestr("bundle/other/unknown.yaml", yaml.dump({"uuid": "ignored"}))
+        bundle.writestr(
+            "bundle/dashboards/no_chart_uuid.yaml",
+            yaml.dump(
+                {
+                    "dashboard_title": "No UUID Dashboard",
+                    "position": {"CHART-1": {"type": "CHART", "meta": {}}},
+                },
+            ),
+        )
+
+    chart_uuids, dataset_uuids, database_uuids, *_ = _extract_dependency_maps(buf)
+    assert "chart-no-dataset" in chart_uuids
+    assert "dataset-no-database" in dataset_uuids
+    assert database_uuids == set()
+
+
+def test_apply_db_passwords_to_backup_skips_database_without_uuid() -> None:
+    """
+    Test DB password injection ignores database yaml files with no UUID.
+    """
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        bundle.writestr("bundle/databases/db.yaml", yaml.dump({"name": "db"}))
+
+    result = _apply_db_passwords_to_backup(buf.getvalue(), {"db-uuid": "secret"})
+    with ZipFile(result) as bundle:
+        config = yaml.load(
+            bundle.read("bundle/databases/db.yaml"),
+            Loader=yaml.SafeLoader,
+        )
+    assert "password" not in config
+
+
+def test_build_uuid_map_unresolved_when_no_ids(mocker: MockerFixture) -> None:
+    """
+    Test UUID mapping reports unresolved state when no IDs are available.
+    """
+    client = mocker.MagicMock()
+    client.get_resources.return_value = [{"uuid": "only-uuid"}]
+    uuid_map, name_map, resolved = _build_uuid_map(client, "chart")
+    assert uuid_map == {}
+    assert name_map == {}
+    assert resolved is False
+
+
+def test_echo_cascade_section_handles_empty_dashboard_context(capsys) -> None:
+    """
+    Test cascade section renders entries without dashboard context labels.
+    """
+    _echo_cascade_section(
+        "charts",
+        {10},
+        {10: "Chart"},
+        enabled=True,
+        chart_dashboard_context={},
+    )
+    output = capsys.readouterr().out
+    assert "[ID: 10] Chart" in output
+
+
+def test_echo_shared_summary_only_databases(capsys) -> None:
+    """
+    Test shared summary handles empty chart/dataset sections.
+    """
+    _echo_shared_summary(
+        {
+            "charts": set(),
+            "datasets": set(),
+            "databases": {"db-1"},
+        },
+    )
+    output = capsys.readouterr().out
+    assert "Databases (1): db-1" in output
+    assert "Charts" not in output
+    assert "Datasets" not in output
+
+
+def test_compute_shared_uuids_shared_chart_without_dataset_mapping() -> None:
+    """
+    Test shared chart UUIDs without dataset mappings do not add extra dependencies.
+    """
+    dependencies = _CascadeDependencies(
+        chart_uuids={"chart-1"},
+        dataset_uuids=set(),
+        database_uuids=set(),
+        chart_dataset_map={},
+        dataset_database_map={},
+        chart_dashboard_titles_by_uuid={},
+    )
+    shared = _compute_shared_uuids(
+        dependencies,
+        {"charts": {"chart-1"}, "datasets": set(), "databases": set()},
+    )
+    assert shared == {"charts": {"chart-1"}, "datasets": set(), "databases": set()}
+
+
+def test_filter_datasets_for_database_ids_ignores_other_databases(capsys) -> None:
+    """
+    Test dataset filtering drops rows for non-target DB IDs without warnings.
+    """
+    datasets = [{"id": 1, "database_id": 99}]
+    filtered = _filter_datasets_for_database_ids(datasets, {1, 2})
+    assert filtered == []
+    assert "Cannot verify all datasets" not in capsys.readouterr().out

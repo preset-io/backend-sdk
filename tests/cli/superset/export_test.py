@@ -21,6 +21,12 @@ from pytest_mock import MockerFixture
 from preset_cli.api.operators import Contains
 from preset_cli.auth.main import Auth
 from preset_cli.cli.superset.export import (
+    _build_resource_uuid_map,
+    _cleanup_resource_directory,
+    _copy_chart_dependencies,
+    _copy_dataset_dependencies,
+    _get_dashboard_chart_uuids,
+    _get_dashboard_dataset_filter_uuids,
     _unique_simple_name,
     build_local_uuid_mapping,
     check_asset_uniqueness,
@@ -3083,3 +3089,106 @@ def test_export_assets_filter_by_managed_externally(
     client.get_dashboards.assert_called_once_with()
     export_resource.assert_called_once()
     assert export_resource.call_args.args[1] == {44}
+
+
+def test_build_resource_uuid_map_missing_dir(fs: FakeFilesystem) -> None:
+    """
+    Test ``_build_resource_uuid_map`` returns empty mapping for missing directory.
+    """
+    missing = Path("/missing/resources")
+    assert _build_resource_uuid_map(missing, "*.yaml") == {}
+
+
+def test_cleanup_resource_directory_missing_dir(fs: FakeFilesystem) -> None:
+    """
+    Test ``_cleanup_resource_directory`` is a no-op for missing directories.
+    """
+    missing = Path("/missing/resources")
+    _cleanup_resource_directory(missing)
+    assert not missing.exists()
+
+
+def test_get_dashboard_chart_uuids_skips_non_chart_nodes() -> None:
+    """
+    Test dashboard chart UUID extraction ignores non-chart/invalid nodes.
+    """
+    config = {
+        "position": {
+            "TEXT": {"type": "MARKDOWN", "meta": {"uuid": "ignore"}},
+            "CHART_NO_META": {"type": "CHART"},
+            "VALID_CHART": {"type": "CHART", "meta": {"uuid": "chart-1"}},
+        },
+    }
+    assert list(_get_dashboard_chart_uuids(config)) == ["chart-1"]
+
+
+def test_get_dashboard_dataset_filter_uuids_skips_targets_without_uuid() -> None:
+    """
+    Test dataset UUID extraction ignores filter targets without ``datasetUuid``.
+    """
+    config = {
+        "metadata": {
+            "native_filter_configuration": [
+                {"targets": [{"column": "x"}, {"datasetUuid": "dataset-1"}]},
+            ],
+        },
+    }
+    assert _get_dashboard_dataset_filter_uuids(config) == {"dataset-1"}
+
+
+def test_build_resource_uuid_map_skips_files_without_uuid(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test UUID mapping ignores yaml files that do not define a UUID.
+    """
+    resource_dir = Path("/tmp/charts")
+    fs.create_dir(resource_dir)
+    fs.create_file(resource_dir / "chart.yaml", contents=yaml.dump({"name": "chart"}))
+    assert _build_resource_uuid_map(resource_dir, "*.yaml") == {}
+
+
+def test_copy_chart_dependencies_handles_charts_without_dataset_uuid(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test chart dependency copy succeeds even when chart configs omit dataset UUIDs.
+    """
+    root = Path("/tmp/export")
+    dashboard_dir = root / "dashboards" / "dash"
+    chart_file = root / "charts" / "chart.yaml"
+    fs.create_dir(chart_file.parent)
+    fs.create_dir(dashboard_dir)
+    fs.create_file(chart_file, contents=yaml.dump({"uuid": "chart-uuid"}))
+
+    dataset_uuids = _copy_chart_dependencies(
+        root,
+        dashboard_dir,
+        {"chart-uuid"},
+        {"chart-uuid": chart_file},
+    )
+    assert dataset_uuids == set()
+    assert (dashboard_dir / "charts" / "chart.yaml").exists()
+
+
+def test_copy_dataset_dependencies_handles_missing_database_uuid(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test dataset dependency copy succeeds when database UUID is absent.
+    """
+    root = Path("/tmp/export")
+    dashboard_dir = root / "dashboards" / "dash"
+    dataset_file = root / "datasets" / "db" / "dataset.yaml"
+    fs.create_dir(dataset_file.parent)
+    fs.create_dir(dashboard_dir)
+    fs.create_file(dataset_file, contents=yaml.dump({"uuid": "dataset-uuid"}))
+
+    database_uuids = _copy_dataset_dependencies(
+        root,
+        dashboard_dir,
+        {"dataset-uuid"},
+        {"dataset-uuid": dataset_file},
+    )
+    assert database_uuids == set()
+    assert (dashboard_dir / "datasets" / "db" / "dataset.yaml").exists()

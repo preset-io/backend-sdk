@@ -434,10 +434,9 @@ def _echo_dry_run_hint(dry_run: bool) -> None:
     if not dry_run:
         return
 
-    if dry_run:
-        click.echo(
-            "\nTo proceed with deletion, run with: --dry-run=false --confirm=DELETE",
-        )
+    click.echo(
+        "\nTo proceed with deletion, run with: --dry-run=false --confirm=DELETE",
+    )
 
 
 def _echo_summary(summary: _DeleteSummaryData, dry_run: bool) -> None:

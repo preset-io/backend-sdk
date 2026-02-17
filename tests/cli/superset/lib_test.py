@@ -611,3 +611,11 @@ def test_fetch_with_filter_fallback_unexpected_error() -> None:
             {"slug": "test"},
             "dashboards",
         )
+
+
+def test_parse_filters_empty_key() -> None:
+    """
+    Test ``parse_filters`` rejects empty filter keys.
+    """
+    with pytest.raises(click.BadParameter, match="Filter key cannot be empty"):
+        parse_filters(("=value",), DASHBOARD_FILTER_KEYS)

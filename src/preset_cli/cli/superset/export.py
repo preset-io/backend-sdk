@@ -8,7 +8,18 @@ import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 from zipfile import ZipFile
 
 import click
@@ -220,8 +231,8 @@ def _cleanup_resource_directory(resource_dir: Path) -> None:
     for path in sorted(resource_dir.rglob("*"), reverse=True):
         if path.is_file():
             path.unlink()
-        elif path.is_dir():
-            path.rmdir()
+            continue
+        path.rmdir()
     resource_dir.rmdir()
 
 
@@ -636,9 +647,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
             zip_directory(export_root, Path(output_zip))
         return
 
-    if directory is None:
-        raise click.UsageError("Provide a directory or --output-zip.")
-    root = _resolve_directory_root(directory)
+    root = _resolve_directory_root(cast(str, directory))
     _export_selected_resources(
         root,
         client,
