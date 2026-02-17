@@ -20,14 +20,6 @@ from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.api.operators import In
-from preset_cli.cli.superset.lib import (
-    DELETE_FILTER_KEYS,
-    coerce_bool_option,
-    fetch_with_filter_fallback,
-    filter_resources_locally,
-    is_filter_not_allowed_error,
-    parse_filters,
-)
 from preset_cli.cli.superset.delete_types import (
     _CascadeDependencies,
     _CascadeResolution,
@@ -38,6 +30,14 @@ from preset_cli.cli.superset.delete_types import (
     _DeleteAssetsCommandOptions,
     _DeleteSummaryData,
     _NonDashboardDeleteOptions,
+)
+from preset_cli.cli.superset.lib import (
+    DELETE_FILTER_KEYS,
+    coerce_bool_option,
+    fetch_with_filter_fallback,
+    filter_resources_locally,
+    is_filter_not_allowed_error,
+    parse_filters,
 )
 from preset_cli.lib import remove_root
 
@@ -557,7 +557,9 @@ def delete_assets(
     _run_delete_assets(ctx, command_options)
 
 
-def _parse_delete_command_options(raw_options: Dict[str, Any]) -> _DeleteAssetsCommandOptions:
+def _parse_delete_command_options(
+    raw_options: Dict[str, Any],
+) -> _DeleteAssetsCommandOptions:
     cascade_options = _DashboardCascadeOptions(
         charts=raw_options["cascade_charts"],
         datasets=raw_options["cascade_datasets"],
@@ -855,7 +857,10 @@ def _load_cascade_dependencies(
     )
 
     if cascade_options.charts:
-        selection.cascade_buf = client.export_zip("dashboard", list(selection.dashboard_ids))
+        selection.cascade_buf = client.export_zip(
+            "dashboard",
+            list(selection.dashboard_ids),
+        )
         (
             dependencies.chart_uuids,
             dependencies.dataset_uuids,
@@ -960,7 +965,7 @@ def _resolve_cascade_targets(
     dependencies: _CascadeDependencies,
     cascade_options: _DashboardCascadeOptions,
 ) -> _CascadeResolution:
-    ids = {
+    ids: Dict[str, Set[int]] = {
         "charts": set(),
         "datasets": set(),
         "databases": set(),
@@ -1303,24 +1308,33 @@ def _execute_dashboard_delete_plan(
         resolution.ids["charts"],
         failures,
     )
-    deleted_any = _delete_resources(
-        client,
-        "dataset",
-        resolution.ids["datasets"],
-        failures,
-    ) or deleted_any
-    deleted_any = _delete_resources(
-        client,
-        "database",
-        resolution.ids["databases"],
-        failures,
-    ) or deleted_any
-    deleted_any = _delete_resources(
-        client,
-        "dashboard",
-        selection.dashboard_ids,
-        failures,
-    ) or deleted_any
+    deleted_any = (
+        _delete_resources(
+            client,
+            "dataset",
+            resolution.ids["datasets"],
+            failures,
+        )
+        or deleted_any
+    )
+    deleted_any = (
+        _delete_resources(
+            client,
+            "database",
+            resolution.ids["databases"],
+            failures,
+        )
+        or deleted_any
+    )
+    deleted_any = (
+        _delete_resources(
+            client,
+            "dashboard",
+            selection.dashboard_ids,
+            failures,
+        )
+        or deleted_any
+    )
 
     if failures:
         click.echo("Some deletions failed:")
