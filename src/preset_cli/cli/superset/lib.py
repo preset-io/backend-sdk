@@ -96,7 +96,7 @@ def clean_logs(log_type: LogType, logs: Dict[LogType, Any]) -> None:
             logs_ = serialize_enum_logs_to_string(logs)
             yaml.dump(logs_, log_file)
     else:
-        LOG_FILE_PATH.unlink()
+        LOG_FILE_PATH.unlink(missing_ok=True)
 
 
 def _normalize_bool(value: Any) -> bool | None:

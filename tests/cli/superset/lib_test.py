@@ -238,6 +238,33 @@ def test_clean_logs_keep_file(mocker: MockerFixture, fs: FakeFilesystem) -> None
     assert content == {"ownership": [{"status": "SUCCESS", "uuid": "uuid2"}]}
 
 
+def test_clean_logs_missing_file_no_error(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``clean_logs`` does not fail when the log file was already removed.
+    """
+    root = Path("/path/to/root")
+    logs_path = root / "progress.log"
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", logs_path)
+    fs.create_dir(root)
+    assert not logs_path.exists()
+
+    current_logs = {
+        LogType.ASSETS: [
+            {
+                "path": "/path/to/root/first_path",
+                "status": "SUCCESS",
+                "uuid": "uuid1",
+            },
+        ],
+    }
+
+    clean_logs(LogType.ASSETS, current_logs)
+    assert not logs_path.exists()
+
+
 def test_parse_filters_single() -> None:
     """
     Test ``parse_filters`` with a single filter.
