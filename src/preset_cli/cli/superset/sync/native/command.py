@@ -528,7 +528,12 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
                             )
                             continue
 
-                    if not cascade and is_primary:
+                    if (
+                        not cascade
+                        and is_primary
+                        # Keep DB config in primary dataset no-cascade imports; pruning can skip dataset updates.
+                        and resource_name != "datasets"
+                    ):
                         _prune_existing_dependency_configs(
                             asset_configs,
                             path,
@@ -545,6 +550,20 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
                         and not cascade
                     ):
                         _update_chart_no_cascade(
+                            path,
+                            config,
+                            configs,
+                            client,
+                            overwrite,
+                        )
+                        continue
+
+                    if (
+                        resource_name == "dashboards"
+                        and asset_type == ResourceType.DASHBOARD
+                        and not cascade
+                    ):
+                        _update_dashboard_no_cascade(
                             path,
                             config,
                             configs,
@@ -781,6 +800,62 @@ def _build_chart_contents(
     return contents
 
 
+def _build_dashboard_contents(
+    configs: Dict[Path, AssetConfig],
+    dashboard_uuid: Any,
+    client: SupersetClient | None = None,
+    missing_only: bool = False,
+) -> Optional[Dict[str, str]]:
+    """
+    Build a minimal bundle for a dashboard and its dependencies.
+    """
+    dashboard_entry = _find_config_by_uuid(configs, "dashboards", dashboard_uuid)
+    if not dashboard_entry:
+        return None
+    dashboard_path, dashboard_config = dashboard_entry
+
+    def should_include(resource_name: str, uuid_value: Any) -> bool:
+        if not missing_only:
+            return True
+        if client is None:
+            return True
+        return _resolve_uuid_to_id(client, resource_name, uuid_value) is None
+
+    def add_dataset(dataset_uuid: Any, output: Dict[str, str]) -> None:
+        dataset_entry = _find_config_by_uuid(configs, "datasets", dataset_uuid)
+        if not dataset_entry:
+            return
+        dataset_path, dataset_config = dataset_entry
+        if should_include("dataset", dataset_uuid):
+            output[str(dataset_path)] = yaml.dump(dataset_config)
+
+        database_uuid = dataset_config.get("database_uuid")
+        database_entry = _find_config_by_uuid(configs, "databases", database_uuid)
+        if not database_entry:
+            return
+        database_path, database_config = database_entry
+        if should_include("database", database_uuid):
+            output[str(database_path)] = yaml.dump(database_config)
+
+    contents: Dict[str, str] = {
+        str(dashboard_path): yaml.dump(dashboard_config),
+    }
+
+    for chart_uuid in get_charts_uuids(dashboard_config):
+        chart_entry = _find_config_by_uuid(configs, "charts", chart_uuid)
+        if not chart_entry:
+            continue
+        chart_path, chart_config = chart_entry
+        if should_include("chart", chart_uuid):
+            contents[str(chart_path)] = yaml.dump(chart_config)
+        add_dataset(chart_config.get("dataset_uuid"), contents)
+
+    for dataset_uuid in get_dataset_filter_uuids(dashboard_config):
+        add_dataset(dataset_uuid, contents)
+
+    return contents
+
+
 def _safe_json_loads(value: Any, label: str) -> Optional[Dict[str, Any]]:
     """
     Safely parse JSON content that may be a dict or string.
@@ -931,6 +1006,110 @@ def _prepare_chart_update_payload(  # pylint: disable=too-many-branches
     return _filter_payload_to_schema(client, "chart", payload, safe_allowlist)
 
 
+def _set_integer_list_payload_field(
+    payload: Dict[str, Any],
+    config: AssetConfig,
+    field_name: str,
+    warning_message: str,
+) -> None:
+    """
+    Add a list-valued payload field only when all values are integer IDs.
+    """
+    values = config.get(field_name)
+    if not values:
+        return
+    if all(isinstance(value, int) for value in values):
+        payload[field_name] = values
+    else:
+        _logger.warning(warning_message)
+
+
+def _set_json_payload_field(
+    payload: Dict[str, Any],
+    config: AssetConfig,
+    preferred_field: str,
+    fallback_field: str,
+    payload_field: str,
+) -> None:
+    """
+    Add a JSON payload field with support for dict and serialized string values.
+    """
+    preferred_value = config.get(preferred_field)
+    fallback_value = config.get(fallback_field)
+    if isinstance(preferred_value, dict):
+        payload[payload_field] = json.dumps(preferred_value)
+    elif isinstance(fallback_value, dict):
+        payload[payload_field] = json.dumps(fallback_value)
+    elif isinstance(fallback_value, str):
+        payload[payload_field] = fallback_value
+
+
+def _prepare_dashboard_update_payload(
+    config: AssetConfig,
+    client: SupersetClient,
+) -> Dict[str, Any]:
+    """
+    Build a dashboard update payload from export config.
+    """
+    payload: Dict[str, Any] = {}
+
+    for key in [
+        "dashboard_title",
+        "slug",
+        "css",
+        "published",
+        "certified_by",
+        "certification_details",
+        "is_managed_externally",
+        "external_url",
+    ]:
+        if key in config:
+            payload[key] = config[key]
+
+    _set_integer_list_payload_field(
+        payload,
+        config,
+        "owners",
+        "Skipping owners update for dashboard; owner IDs not available",
+    )
+    _set_integer_list_payload_field(
+        payload,
+        config,
+        "roles",
+        "Skipping roles update for dashboard; role IDs not available",
+    )
+    _set_json_payload_field(
+        payload,
+        config,
+        preferred_field="position",
+        fallback_field="position_json",
+        payload_field="position_json",
+    )
+    _set_json_payload_field(
+        payload,
+        config,
+        preferred_field="metadata",
+        fallback_field="json_metadata",
+        payload_field="json_metadata",
+    )
+
+    safe_allowlist = {
+        "dashboard_title",
+        "slug",
+        "owners",
+        "roles",
+        "position_json",
+        "css",
+        "json_metadata",
+        "published",
+        "certified_by",
+        "certification_details",
+        "is_managed_externally",
+        "external_url",
+    }
+    return _filter_payload_to_schema(client, "dashboard", payload, safe_allowlist)
+
+
 def _update_chart_no_cascade(
     path: Path,
     config: AssetConfig,
@@ -1005,6 +1184,59 @@ def _update_chart_no_cascade(
     )
     _logger.info("Updating chart %s via API (no-cascade)", chart_uuid)
     client.update_chart(chart_id, **payload)
+
+
+def _update_dashboard_no_cascade(
+    path: Path,
+    config: AssetConfig,
+    configs: Dict[Path, AssetConfig],
+    client: SupersetClient,
+    overwrite: bool,
+) -> None:
+    """
+    Update a dashboard via API without cascading to dependencies.
+    """
+    dashboard_uuid = config.get("uuid")
+    if not dashboard_uuid:
+        raise CLIError(f"Dashboard config missing UUID: {path}", 1)
+
+    dashboard_id = _resolve_uuid_to_id(client, "dashboard", dashboard_uuid)
+    if dashboard_id is None:
+        _logger.info(
+            "Dashboard %s not found; attempting to create it",
+            dashboard_uuid,
+        )
+        contents = _build_dashboard_contents(
+            configs,
+            dashboard_uuid,
+            client=client,
+            missing_only=True,
+        )
+        if not contents:
+            raise CLIError(
+                "Dashboard not found and no dashboard config available for import.",
+                1,
+            )
+        import_resources(
+            contents,
+            client,
+            overwrite=False,
+            asset_type=ResourceType.DASHBOARD,
+        )
+        dashboard_id = _resolve_uuid_to_id(client, "dashboard", dashboard_uuid)
+        if dashboard_id is None:
+            raise CLIError(f"Unable to create dashboard {dashboard_uuid}", 1)
+        if not overwrite:
+            _logger.info("Dashboard created; skipping update because overwrite=false")
+            return
+
+    if not overwrite:
+        _logger.info("Skipping existing dashboard %s (overwrite=false)", dashboard_uuid)
+        return
+
+    payload = _prepare_dashboard_update_payload(config, client)
+    _logger.info("Updating dashboard %s via API (no-cascade)", dashboard_uuid)
+    client.update_dashboard(dashboard_id, **payload)
 
 
 @backoff.on_exception(

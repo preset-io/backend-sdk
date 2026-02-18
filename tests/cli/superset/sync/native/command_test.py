@@ -24,15 +24,18 @@ from preset_cli.cli.superset.main import superset_cli
 from preset_cli.cli.superset.sync.native.command import (
     ResourceType,
     _build_chart_contents,
+    _build_dashboard_contents,
     _build_dataset_contents,
     _filter_payload_to_schema,
     _find_config_by_uuid,
     _prepare_chart_update_payload,
+    _prepare_dashboard_update_payload,
     _resolve_input_root,
     _resolve_uuid_to_id,
     _safe_extract_zip,
     _safe_json_loads,
     _update_chart_no_cascade,
+    _update_dashboard_no_cascade,
     add_password_to_config,
     import_resources,
     import_resources_individually,
@@ -40,7 +43,7 @@ from preset_cli.cli.superset.sync.native.command import (
     raise_helper,
     verify_db_connectivity,
 )
-from preset_cli.exceptions import ErrorLevel, ErrorPayload, SupersetError
+from preset_cli.exceptions import CLIError, ErrorLevel, ErrorPayload, SupersetError
 
 
 def test_add_password_to_config_new_connection(mocker: MockerFixture) -> None:
@@ -2442,6 +2445,9 @@ def test_native_no_cascade(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
+    update_dashboard_no_cascade = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._update_dashboard_no_cascade",
+    )
     client = mocker.MagicMock()
     root = Path("/path/to/root")
     fs.create_dir(root)
@@ -2483,10 +2489,10 @@ def test_native_no_cascade(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         resource = next(iter(contents)).split("/")[1]
         overwrite_by_resource[resource] = call.args[2]
 
-    assert overwrite_by_resource["dashboards"] is True
     assert overwrite_by_resource["charts"] is False
     assert overwrite_by_resource["datasets"] is False
     assert overwrite_by_resource["databases"] is False
+    update_dashboard_no_cascade.assert_called_once()
 
 
 def test_native_no_cascade_forces_split(
@@ -2865,15 +2871,18 @@ def test_no_cascade_skips_existing_dependencies(
     import_resources_mock.assert_not_called()
 
 
-def test_native_no_cascade_dashboard_prunes_existing_dependencies(
+def test_native_no_cascade_dashboard_uses_update_helper(
     mocker: MockerFixture,
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test dashboard no-cascade excludes existing dependencies from primary bundle.
+    Test dashboard no-cascade routes primary imports through update helper.
     """
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    update_dashboard_no_cascade = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._update_dashboard_no_cascade",
     )
     client = mocker.MagicMock()
     root = Path("/path/to/root")
@@ -2927,19 +2936,515 @@ def test_native_no_cascade_dashboard_prunes_existing_dependencies(
         cascade=False,
     )
 
-    import_resources.assert_called_once()
-    call = import_resources.mock_calls[0]
-    assert call.args[3] is ResourceType.DASHBOARD
-    assert call.args[2] is True
-    assert sorted(call.args[0].keys()) == ["bundle/dashboards/dash.yaml"]
+    import_resources.assert_not_called()
+    update_dashboard_no_cascade.assert_called_once()
 
 
-def test_native_no_cascade_dataset_prunes_existing_database(
+def test_build_dashboard_contents_returns_none_when_dashboard_missing() -> None:
+    """
+    Test dashboard bundle builder returns None when dashboard config is missing.
+    """
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/charts/chart.yaml"): {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+    }
+    assert _build_dashboard_contents(configs, "dash-uuid") is None
+
+
+def test_build_dashboard_contents_includes_all_dependencies() -> None:
+    """
+    Test dashboard bundle builder includes chart, dataset, and database assets.
+    """
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
+        Path("bundle/datasets/ds.yaml"): {"uuid": "ds-uuid", "database_uuid": "db-uuid"},
+        Path("bundle/charts/chart.yaml"): {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+        Path("bundle/dashboards/dash.yaml"): {
+            "uuid": "dash-uuid",
+            "position": {
+                "CHART-1": {
+                    "type": "CHART",
+                    "meta": {"uuid": "chart-uuid"},
+                },
+            },
+            "metadata": {
+                "native_filter_configuration": [
+                    {"targets": [{"datasetUuid": "ds-uuid"}]},
+                ],
+            },
+        },
+    }
+
+    contents = _build_dashboard_contents(configs, "dash-uuid")
+    assert contents is not None
+    assert sorted(contents.keys()) == [
+        "bundle/charts/chart.yaml",
+        "bundle/dashboards/dash.yaml",
+        "bundle/databases/db.yaml",
+        "bundle/datasets/ds.yaml",
+    ]
+
+
+def test_build_dashboard_contents_missing_only_skips_existing_dependencies(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test missing-only dashboard bundle excludes dependencies that already exist.
+    """
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
+        Path("bundle/datasets/ds.yaml"): {"uuid": "ds-uuid", "database_uuid": "db-uuid"},
+        Path("bundle/charts/chart.yaml"): {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+        Path("bundle/dashboards/dash.yaml"): {
+            "uuid": "dash-uuid",
+            "position": {
+                "CHART-1": {
+                    "type": "CHART",
+                    "meta": {"uuid": "chart-uuid"},
+                },
+            },
+            "metadata": {
+                "native_filter_configuration": [
+                    {"targets": [{"datasetUuid": "ds-uuid"}]},
+                ],
+            },
+        },
+    }
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=lambda _client, resource_name, _uuid: (
+            1 if resource_name in {"chart", "dataset", "database"} else None
+        ),
+    )
+    client = mocker.MagicMock()
+
+    contents = _build_dashboard_contents(
+        configs,
+        "dash-uuid",
+        client=client,
+        missing_only=True,
+    )
+    assert contents is not None
+    assert sorted(contents.keys()) == ["bundle/dashboards/dash.yaml"]
+
+
+def test_build_dashboard_contents_missing_only_with_no_client_includes_dependencies() -> None:
+    """
+    Test missing-only dashboard bundle includes dependencies when no client is provided.
+    """
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
+        Path("bundle/datasets/ds.yaml"): {"uuid": "ds-uuid", "database_uuid": "db-uuid"},
+        Path("bundle/charts/chart.yaml"): {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+        Path("bundle/dashboards/dash.yaml"): {
+            "uuid": "dash-uuid",
+            "position": {
+                "CHART-1": {
+                    "type": "CHART",
+                    "meta": {"uuid": "chart-uuid"},
+                },
+            },
+            "metadata": {"native_filter_configuration": []},
+        },
+    }
+
+    contents = _build_dashboard_contents(
+        configs,
+        "dash-uuid",
+        client=None,
+        missing_only=True,
+    )
+    assert contents is not None
+    assert sorted(contents.keys()) == [
+        "bundle/charts/chart.yaml",
+        "bundle/dashboards/dash.yaml",
+        "bundle/databases/db.yaml",
+        "bundle/datasets/ds.yaml",
+    ]
+
+
+def test_build_dashboard_contents_tolerates_missing_dependency_references() -> None:
+    """
+    Test dashboard bundle builder skips missing chart, dataset, and database references.
+    """
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/datasets/ds-without-db.yaml"): {
+            "uuid": "ds-without-db",
+            "database_uuid": "missing-db",
+        },
+        Path("bundle/charts/chart-with-missing-db.yaml"): {
+            "uuid": "chart-has-dataset-with-missing-db",
+            "dataset_uuid": "ds-without-db",
+        },
+        Path("bundle/dashboards/dash.yaml"): {
+            "uuid": "dash-uuid",
+            "position": {
+                "CHART-missing": {
+                    "type": "CHART",
+                    "meta": {"uuid": "missing-chart"},
+                },
+                "CHART-existing": {
+                    "type": "CHART",
+                    "meta": {"uuid": "chart-has-dataset-with-missing-db"},
+                },
+            },
+            "metadata": {
+                "native_filter_configuration": [
+                    {"targets": [{"datasetUuid": "missing-dataset"}]},
+                ],
+            },
+        },
+    }
+
+    contents = _build_dashboard_contents(configs, "dash-uuid")
+    assert contents is not None
+    assert sorted(contents.keys()) == [
+        "bundle/charts/chart-with-missing-db.yaml",
+        "bundle/dashboards/dash.yaml",
+        "bundle/datasets/ds-without-db.yaml",
+    ]
+
+
+def test_prepare_dashboard_update_payload_handles_non_integer_roles_and_json_fields(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard payload skips non-integer owner/role values and serializes dict JSON.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.return_value = {
+        "edit_columns": [
+            {"name": "dashboard_title"},
+            {"name": "position_json"},
+            {"name": "json_metadata"},
+        ],
+    }
+    warning_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._logger.warning",
+    )
+
+    payload = _prepare_dashboard_update_payload(
+        {
+            "dashboard_title": "Dashboard Name",
+            "owners": ["owner@example.org"],
+            "roles": ["Gamma"],
+            "position_json": {"ROOT_ID": {"type": "ROOT"}},
+            "json_metadata": {"native_filter_configuration": []},
+        },
+        client,
+    )
+
+    assert "owners" not in payload
+    assert "roles" not in payload
+    assert json.loads(payload["position_json"]) == {"ROOT_ID": {"type": "ROOT"}}
+    assert json.loads(payload["json_metadata"]) == {"native_filter_configuration": []}
+    assert warning_mock.call_count == 2
+
+
+def test_prepare_dashboard_update_payload_uses_serialized_json_fallbacks(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard payload keeps pre-serialized JSON fields when provided as strings.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.return_value = {
+        "edit_columns": [
+            {"name": "position_json"},
+            {"name": "json_metadata"},
+        ],
+    }
+
+    payload = _prepare_dashboard_update_payload(
+        {
+            "position_json": '{"ROOT_ID":{"type":"ROOT"}}',
+            "json_metadata": '{"color_scheme":"supersetColors"}',
+        },
+        client,
+    )
+
+    assert payload["position_json"] == '{"ROOT_ID":{"type":"ROOT"}}'
+    assert payload["json_metadata"] == '{"color_scheme":"supersetColors"}'
+
+
+def test_prepare_dashboard_update_payload_includes_integer_owners_and_roles(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard payload keeps owners/roles when they are integer IDs.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.return_value = {
+        "edit_columns": [
+            {"name": "owners"},
+            {"name": "roles"},
+        ],
+    }
+
+    payload = _prepare_dashboard_update_payload(
+        {
+            "owners": [1, 2],
+            "roles": [3],
+        },
+        client,
+    )
+
+    assert payload["owners"] == [1, 2]
+    assert payload["roles"] == [3]
+
+
+def test_update_dashboard_no_cascade_updates_dashboard(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test updating a dashboard via the no-cascade path.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.return_value = {
+        "edit_columns": [
+            {"name": "dashboard_title"},
+            {"name": "slug"},
+            {"name": "position_json"},
+            {"name": "json_metadata"},
+            {"name": "published"},
+            {"name": "is_managed_externally"},
+            {"name": "external_url"},
+        ],
+    }
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        return_value=9,
+    )
+
+    dashboard_config = {
+        "uuid": "dash-uuid",
+        "dashboard_title": "Dashboard Name",
+        "slug": "dashboard-name",
+        "published": True,
+        "position": {"ROOT_ID": {"type": "ROOT"}},
+        "metadata": {"native_filter_configuration": []},
+        "is_managed_externally": True,
+        "external_url": "https://example.org/dashboard",
+    }
+    configs = {Path("bundle/dashboards/dash.yaml"): dashboard_config}
+
+    _update_dashboard_no_cascade(
+        Path("bundle/dashboards/dash.yaml"),
+        dashboard_config,
+        configs,
+        client,
+        overwrite=True,
+    )
+
+    client.update_dashboard.assert_called_once()
+    dashboard_id = client.update_dashboard.call_args.args[0]
+    payload = client.update_dashboard.call_args.kwargs
+    assert dashboard_id == 9
+    assert payload["dashboard_title"] == "Dashboard Name"
+    assert payload["slug"] == "dashboard-name"
+    assert payload["published"] is True
+    assert payload["is_managed_externally"] is True
+    assert payload["external_url"] == "https://example.org/dashboard"
+    assert json.loads(payload["position_json"]) == {"ROOT_ID": {"type": "ROOT"}}
+    assert json.loads(payload["json_metadata"]) == {"native_filter_configuration": []}
+
+
+def test_update_dashboard_no_cascade_skips_when_overwrite_false(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test no-cascade dashboard update skips when overwrite is false.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        return_value=9,
+    )
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+
+    dashboard_config = {
+        "uuid": "dash-uuid",
+        "dashboard_title": "Dashboard Name",
+        "position": {"ROOT_ID": {"type": "ROOT"}},
+        "metadata": {"native_filter_configuration": []},
+    }
+    configs = {Path("bundle/dashboards/dash.yaml"): dashboard_config}
+
+    _update_dashboard_no_cascade(
+        Path("bundle/dashboards/dash.yaml"),
+        dashboard_config,
+        configs,
+        client,
+        overwrite=False,
+    )
+
+    import_resources_mock.assert_not_called()
+    client.update_dashboard.assert_not_called()
+
+
+def test_update_dashboard_no_cascade_creates_missing_dashboard(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard creation fallback for no-cascade dashboard updates.
+    """
+    client = mocker.MagicMock()
+    client.get_resource_endpoint_info.return_value = {"edit_columns": []}
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+
+    call_state = {"dashboard_calls": 0}
+
+    def resolve_side_effect(_client, resource_name, _uuid):
+        if resource_name == "dashboard":
+            call_state["dashboard_calls"] += 1
+            return None if call_state["dashboard_calls"] == 1 else 42
+        return None
+
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=resolve_side_effect,
+    )
+
+    dashboard_config = {
+        "uuid": "dash-uuid",
+        "dashboard_title": "Dashboard Name",
+        "position": {},
+        "metadata": {},
+    }
+    configs: Dict[Path, Dict[str, Any]] = {
+        Path("bundle/dashboards/dash.yaml"): dashboard_config,
+    }
+
+    _update_dashboard_no_cascade(
+        Path("bundle/dashboards/dash.yaml"),
+        dashboard_config,
+        configs,
+        client,
+        overwrite=True,
+    )
+
+    import_resources_mock.assert_called_once()
+    assert import_resources_mock.call_args.kwargs["asset_type"] == ResourceType.DASHBOARD
+    client.update_dashboard.assert_called_once()
+
+
+def test_update_dashboard_no_cascade_raises_for_missing_uuid(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard no-cascade update fails fast when UUID is missing.
+    """
+    client = mocker.MagicMock()
+    with pytest.raises(CLIError, match="Dashboard config missing UUID"):
+        _update_dashboard_no_cascade(
+            Path("bundle/dashboards/dash.yaml"),
+            {},
+            {},
+            client,
+            overwrite=True,
+        )
+
+
+def test_update_dashboard_no_cascade_raises_when_missing_dashboard_bundle(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard no-cascade update fails when dashboard cannot be created.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        return_value=None,
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._build_dashboard_contents",
+        return_value=None,
+    )
+
+    with pytest.raises(
+        CLIError,
+        match="Dashboard not found and no dashboard config available for import.",
+    ):
+        _update_dashboard_no_cascade(
+            Path("bundle/dashboards/dash.yaml"),
+            {"uuid": "dash-uuid"},
+            {},
+            client,
+            overwrite=True,
+        )
+
+
+def test_update_dashboard_no_cascade_raises_when_create_does_not_materialize(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard no-cascade update fails when create flow doesn't produce an ID.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=[None, None],
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._build_dashboard_contents",
+        return_value={"bundle/dashboards/dash.yaml": "dashboard_title: test"},
+    )
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+
+    with pytest.raises(CLIError, match="Unable to create dashboard"):
+        _update_dashboard_no_cascade(
+            Path("bundle/dashboards/dash.yaml"),
+            {"uuid": "dash-uuid"},
+            {},
+            client,
+            overwrite=True,
+        )
+    import_resources_mock.assert_called_once()
+
+
+def test_update_dashboard_no_cascade_create_then_skip_when_overwrite_false(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard no-cascade create path does not update when overwrite is false.
+    """
+    client = mocker.MagicMock()
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
+        side_effect=[None, 42],
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.sync.native.command._build_dashboard_contents",
+        return_value={"bundle/dashboards/dash.yaml": "dashboard_title: test"},
+    )
+    import_resources_mock = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+
+    _update_dashboard_no_cascade(
+        Path("bundle/dashboards/dash.yaml"),
+        {"uuid": "dash-uuid"},
+        {},
+        client,
+        overwrite=False,
+    )
+
+    import_resources_mock.assert_called_once()
+    client.update_dashboard.assert_not_called()
+
+
+def test_native_no_cascade_dataset_keeps_existing_database_in_primary_bundle(
     mocker: MockerFixture,
     fs: FakeFilesystem,
 ) -> None:
     """
-    Test dataset no-cascade excludes existing databases from primary bundle.
+    Test dataset no-cascade keeps existing databases in the primary bundle.
     """
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
@@ -2981,7 +3486,10 @@ def test_native_no_cascade_dataset_prunes_existing_database(
     call = import_resources.mock_calls[0]
     assert call.args[3] is ResourceType.DATASET
     assert call.args[2] is True
-    assert sorted(call.args[0].keys()) == ["bundle/datasets/ds.yaml"]
+    assert sorted(call.args[0].keys()) == [
+        "bundle/databases/db.yaml",
+        "bundle/datasets/ds.yaml",
+    ]
 
 
 def test_native_no_cascade_dataset_keeps_missing_database(
