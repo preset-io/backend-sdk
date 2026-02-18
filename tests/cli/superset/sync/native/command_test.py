@@ -2945,7 +2945,10 @@ def test_build_dashboard_contents_returns_none_when_dashboard_missing() -> None:
     Test dashboard bundle builder returns None when dashboard config is missing.
     """
     configs: Dict[Path, Dict[str, Any]] = {
-        Path("bundle/charts/chart.yaml"): {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+        Path("bundle/charts/chart.yaml"): {
+            "uuid": "chart-uuid",
+            "dataset_uuid": "ds-uuid",
+        },
     }
     assert _build_dashboard_contents(configs, "dash-uuid") is None
 
@@ -2956,8 +2959,14 @@ def test_build_dashboard_contents_includes_all_dependencies() -> None:
     """
     configs: Dict[Path, Dict[str, Any]] = {
         Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
-        Path("bundle/datasets/ds.yaml"): {"uuid": "ds-uuid", "database_uuid": "db-uuid"},
-        Path("bundle/charts/chart.yaml"): {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+        },
+        Path("bundle/charts/chart.yaml"): {
+            "uuid": "chart-uuid",
+            "dataset_uuid": "ds-uuid",
+        },
         Path("bundle/dashboards/dash.yaml"): {
             "uuid": "dash-uuid",
             "position": {
@@ -2992,8 +3001,14 @@ def test_build_dashboard_contents_missing_only_skips_existing_dependencies(
     """
     configs: Dict[Path, Dict[str, Any]] = {
         Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
-        Path("bundle/datasets/ds.yaml"): {"uuid": "ds-uuid", "database_uuid": "db-uuid"},
-        Path("bundle/charts/chart.yaml"): {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+        },
+        Path("bundle/charts/chart.yaml"): {
+            "uuid": "chart-uuid",
+            "dataset_uuid": "ds-uuid",
+        },
         Path("bundle/dashboards/dash.yaml"): {
             "uuid": "dash-uuid",
             "position": {
@@ -3028,14 +3043,22 @@ def test_build_dashboard_contents_missing_only_skips_existing_dependencies(
     assert sorted(contents.keys()) == ["bundle/dashboards/dash.yaml"]
 
 
-def test_build_dashboard_contents_missing_only_with_no_client_includes_dependencies() -> None:
+def test_build_dashboard_contents_missing_only_with_no_client_includes_dependencies() -> (
+    None
+):
     """
     Test missing-only dashboard bundle includes dependencies when no client is provided.
     """
     configs: Dict[Path, Dict[str, Any]] = {
         Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
-        Path("bundle/datasets/ds.yaml"): {"uuid": "ds-uuid", "database_uuid": "db-uuid"},
-        Path("bundle/charts/chart.yaml"): {"uuid": "chart-uuid", "dataset_uuid": "ds-uuid"},
+        Path("bundle/datasets/ds.yaml"): {
+            "uuid": "ds-uuid",
+            "database_uuid": "db-uuid",
+        },
+        Path("bundle/charts/chart.yaml"): {
+            "uuid": "chart-uuid",
+            "dataset_uuid": "ds-uuid",
+        },
         Path("bundle/dashboards/dash.yaml"): {
             "uuid": "dash-uuid",
             "position": {
@@ -3328,7 +3351,9 @@ def test_update_dashboard_no_cascade_creates_missing_dashboard(
     )
 
     import_resources_mock.assert_called_once()
-    assert import_resources_mock.call_args.kwargs["asset_type"] == ResourceType.DASHBOARD
+    assert (
+        import_resources_mock.call_args.kwargs["asset_type"] == ResourceType.DASHBOARD
+    )
     client.update_dashboard.assert_called_once()
 
 

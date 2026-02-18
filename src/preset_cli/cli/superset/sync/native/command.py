@@ -531,7 +531,8 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
                     if (
                         not cascade
                         and is_primary
-                        # Keep DB config in primary dataset no-cascade imports; pruning can skip dataset updates.
+                        # Keep DB config in primary dataset no-cascade imports.
+                        # Pruning it can skip dataset updates.
                         and resource_name != "datasets"
                     ):
                         _prune_existing_dependency_configs(
