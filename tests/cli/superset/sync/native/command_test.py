@@ -30,6 +30,7 @@ from preset_cli.cli.superset.sync.native.command import (
     _find_config_by_uuid,
     _prepare_chart_update_payload,
     _prepare_dashboard_update_payload,
+    _prune_existing_dependency_configs,
     _resolve_input_root,
     _resolve_uuid_to_id,
     _safe_extract_zip,
@@ -3569,6 +3570,28 @@ def test_native_no_cascade_dataset_keeps_missing_database(
         "bundle/databases/db.yaml",
         "bundle/datasets/ds.yaml",
     ]
+
+
+def test_prune_existing_dependency_configs_keeps_non_existing_dependencies() -> None:
+    """
+    Test dependency prune keeps assets when dependency does not exist in target.
+    """
+    dashboard_path = Path("bundle/dashboards/dash.yaml")
+    chart_path = Path("bundle/charts/chart.yaml")
+    asset_configs: Dict[Path, Dict[str, Any]] = {
+        dashboard_path: {"uuid": "dash-uuid"},
+        chart_path: {"uuid": "chart-uuid"},
+    }
+
+    _prune_existing_dependency_configs(
+        asset_configs=asset_configs,
+        primary_path=dashboard_path,
+        resource_name="dashboards",
+        dependency_resource_map={"dashboards": {"charts": "chart"}},
+        resource_exists=lambda _resource_name, _config: False,
+    )
+
+    assert set(asset_configs.keys()) == {dashboard_path, chart_path}
 
 
 def test_native_no_cascade_dataset(mocker: MockerFixture, fs: FakeFilesystem) -> None:
