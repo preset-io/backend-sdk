@@ -114,6 +114,7 @@ Options:
   --help  Show this message and exit.
 
 Commands:
+  delete-assets
   export
   export-assets
   export-ownership
