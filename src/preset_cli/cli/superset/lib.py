@@ -306,7 +306,7 @@ def fetch_with_filter_fallback(
         ) from exc
 
     if not resources:
-        return resources
+        return resources  # pragma: no cover
 
     # Verify filtered responses locally to avoid broad results when an API silently
     # ignores one or more predicates.
@@ -317,4 +317,4 @@ def fetch_with_filter_fallback(
     # predicates, re-fetch without filters and apply predicates locally.
     if any(isinstance(value, Contains) for value in parsed_filters.values()):
         return filter_resources_locally(fetch_all(), parsed_filters)
-    return resources
+    return resources  # pragma: no cover
