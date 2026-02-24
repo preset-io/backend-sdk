@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict
 from zipfile import ZipFile
 
+import click
 import pytest
 import yaml
 from click.testing import CliRunner
@@ -31,6 +32,7 @@ from preset_cli.cli.superset.delete import (
     _filter_datasets_for_database_ids,
     _format_resource_summary,
     _format_restore_command,
+    _parse_delete_command_options,
     _parse_db_passwords,
     _resolve_chart_targets,
     _resolve_ids,
@@ -1602,6 +1604,71 @@ def test_extract_dependency_maps_handles_invalid_dashboard_nodes() -> None:
 
     _, _, _, _, _, chart_context = _extract_dependency_maps(buf)
     assert chart_context == {"chart-uuid": {"Mixed"}}
+
+
+def test_parse_delete_command_options_normalizes_dry_run_false() -> None:
+    """
+    Test delete command parser normalizes string dry_run option to bool.
+    """
+    options = _parse_delete_command_options(
+        {
+            "asset_type": "dashboard",
+            "filters": ("slug=test",),
+            "cascade_charts": True,
+            "cascade_datasets": False,
+            "cascade_databases": False,
+            "dry_run": "false",
+            "skip_shared_check": True,
+            "confirm": "DELETE",
+            "rollback": True,
+            "db_password": ("db-uuid=secret",),
+        },
+    )
+
+    assert options.execution_options.dry_run is False
+
+
+def test_parse_delete_command_options_defaults_dry_run_true() -> None:
+    """
+    Test delete command parser maps None dry_run option to True.
+    """
+    options = _parse_delete_command_options(
+        {
+            "asset_type": "chart",
+            "filters": ("id=1",),
+            "cascade_charts": False,
+            "cascade_datasets": False,
+            "cascade_databases": False,
+            "dry_run": None,
+            "skip_shared_check": False,
+            "confirm": None,
+            "rollback": True,
+            "db_password": (),
+        },
+    )
+
+    assert options.execution_options.dry_run is True
+
+
+def test_parse_delete_command_options_invalid_dry_run_raises() -> None:
+    """
+    Test delete command parser rejects invalid dry_run values.
+    """
+    with pytest.raises(click.BadParameter, match="Invalid value for dry_run"):
+        _parse_delete_command_options(
+            {
+                "asset_type": "chart",
+                "filters": ("id=1",),
+                "cascade_charts": False,
+                "cascade_datasets": False,
+                "cascade_databases": False,
+                "dry_run": "invalid",
+                "skip_shared_check": False,
+                "confirm": None,
+                "rollback": True,
+                "db_password": (),
+            },
+        )
 
 
 def test_parse_db_passwords_invalid_value_raises() -> None:
