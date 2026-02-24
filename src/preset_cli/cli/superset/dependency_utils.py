@@ -6,45 +6,33 @@ from io import BytesIO
 from typing import Any, Dict, List, Set, Tuple
 from zipfile import ZipFile
 
-import yaml
-
 from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.cli.superset.asset_utils import (
+    RESOURCE_CHART,
+    RESOURCE_DATABASE,
+    RESOURCE_DASHBOARD,
+    RESOURCE_DATASET,
+    iter_yaml_asset_configs,
+)
 from preset_cli.cli.superset.delete_types import CascadeDependencies
-from preset_cli.lib import remove_root
 
 RESOURCE_NAME_KEYS = {
-    "chart": ("slice_name", "name"),
-    "dataset": ("table_name", "name"),
-    "database": ("database_name", "name"),
+    RESOURCE_CHART: ("slice_name", "name"),
+    RESOURCE_DATASET: ("table_name", "name"),
+    RESOURCE_DATABASE: ("database_name", "name"),
 }
 
 
 def extract_backup_uuids_by_type(backup_data: bytes) -> Dict[str, Set[str]]:
     uuids: Dict[str, Set[str]] = {
-        "dashboard": set(),
-        "chart": set(),
-        "dataset": set(),
-        "database": set(),
+        RESOURCE_DASHBOARD: set(),
+        RESOURCE_CHART: set(),
+        RESOURCE_DATASET: set(),
+        RESOURCE_DATABASE: set(),
     }
 
     with ZipFile(BytesIO(backup_data)) as bundle:
-        for file_name in bundle.namelist():
-            relative = remove_root(file_name)
-            if not relative.endswith((".yaml", ".yml")):
-                continue
-
-            if relative.startswith("dashboards/"):
-                resource_name = "dashboard"
-            elif relative.startswith("charts/"):
-                resource_name = "chart"
-            elif relative.startswith("datasets/"):
-                resource_name = "dataset"
-            elif relative.startswith("databases/"):
-                resource_name = "database"
-            else:
-                continue
-
-            config = yaml.load(bundle.read(file_name), Loader=yaml.SafeLoader) or {}
+        for resource_name, config in iter_yaml_asset_configs(bundle):
             if uuid := config.get("uuid"):
                 uuids[resource_name].add(str(uuid))
 
@@ -69,12 +57,8 @@ def extract_dependency_maps(
     chart_dashboard_titles: Dict[str, Set[str]] = {}
 
     with ZipFile(buf) as bundle:
-        for file_name in bundle.namelist():
-            relative = remove_root(file_name)
-            if not relative.endswith((".yaml", ".yml")):
-                continue
-            config = yaml.load(bundle.read(file_name), Loader=yaml.SafeLoader) or {}
-            if relative.startswith("charts/"):
+        for resource_name, config in iter_yaml_asset_configs(bundle):
+            if resource_name == RESOURCE_CHART:
                 _collect_chart_dependencies(
                     config,
                     chart_uuids,
@@ -82,7 +66,7 @@ def extract_dependency_maps(
                     chart_dataset_map,
                 )
                 continue
-            if relative.startswith("datasets/"):
+            if resource_name == RESOURCE_DATASET:
                 _collect_dataset_dependencies(
                     config,
                     dataset_uuids,
@@ -90,10 +74,10 @@ def extract_dependency_maps(
                     dataset_database_map,
                 )
                 continue
-            if relative.startswith("databases/"):
+            if resource_name == RESOURCE_DATABASE:
                 _collect_database_dependencies(config, database_uuids)
                 continue
-            if relative.startswith("dashboards/"):
+            if resource_name == RESOURCE_DASHBOARD:
                 _collect_dashboard_chart_context(
                     config,
                     chart_dashboard_titles,

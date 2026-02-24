@@ -14,6 +14,7 @@ import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.cli.superset.asset_utils import classify_asset_path
 from preset_cli.lib import remove_root, split_comma
 
 JINJA2_OPEN_MARKER = "__JINJA2_OPEN__"
@@ -101,15 +102,7 @@ def check_asset_uniqueness(  # pylint: disable=too-many-arguments
     if not incoming_uuid:
         return
 
-    resource_type = None
-    if file_name.startswith("dashboards/"):
-        resource_type = "dashboards"
-    elif file_name.startswith("charts/"):
-        resource_type = "charts"
-    elif file_name.startswith("datasets/"):
-        resource_type = "datasets"
-    elif file_name.startswith("databases/"):
-        resource_type = "databases"
+    resource_type = classify_asset_path(file_name, plural=True)
 
     if (
         resource_type
