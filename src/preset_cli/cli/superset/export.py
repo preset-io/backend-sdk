@@ -439,10 +439,10 @@ def build_local_uuid_mapping(root: Path) -> Dict[str, Dict[str, Path]]:
     target directory.
     """
     uuid_mapping: Dict[str, Dict[str, Path]] = {
-        "dashboards": {},
-        "charts": {},
-        "datasets": {},
-        "databases": {},
+        RESOURCE_DASHBOARDS: {},
+        RESOURCE_CHARTS: {},
+        RESOURCE_DATASETS: {},
+        RESOURCE_DATABASES: {},
     }
 
     for resource_type, resource_map in uuid_mapping.items():
@@ -451,7 +451,7 @@ def build_local_uuid_mapping(root: Path) -> Dict[str, Dict[str, Path]]:
             continue
 
         # For datasets, we need to handle subdirectories (database connections)
-        if resource_type == "datasets":
+        if resource_type == RESOURCE_DATASETS:
             for db_dir in resource_dir.iterdir():
                 for yaml_file in db_dir.glob("*.yaml"):
                     uuid = extract_uuid_from_asset(file_path=yaml_file)
@@ -626,7 +626,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments, too-m
         if not dashboard_filter_result.dashboard_ids:
             click.echo("No dashboards match the specified filters.")
             return
-        ids["dashboard"].update(dashboard_filter_result.dashboard_ids)
+        ids[RESOURCE_DASHBOARD].update(dashboard_filter_result.dashboard_ids)
         asset_types = dashboard_filter_result.asset_types
         ids_requested = dashboard_filter_result.ids_requested
 
@@ -964,14 +964,14 @@ def export_ownership(  # pylint: disable=too-many-locals, too-many-arguments
 
     asset_types = set(asset_type)
     ids = {
-        "dataset": {int(id_) for id_ in dataset_ids},
-        "chart": {int(id_) for id_ in chart_ids},
-        "dashboard": {int(id_) for id_ in dashboard_ids},
+        RESOURCE_DATASET: {int(id_) for id_ in dataset_ids},
+        RESOURCE_CHART: {int(id_) for id_ in chart_ids},
+        RESOURCE_DASHBOARD: {int(id_) for id_ in dashboard_ids},
     }
     ids_requested = any([dataset_ids, chart_ids, dashboard_ids])
 
     ownership = defaultdict(list)
-    for resource_name in ["dataset", "chart", "dashboard"]:
+    for resource_name in [RESOURCE_DATASET, RESOURCE_CHART, RESOURCE_DASHBOARD]:
         if (not asset_types or resource_name in asset_types) and (
             ids[resource_name] or not ids_requested
         ):

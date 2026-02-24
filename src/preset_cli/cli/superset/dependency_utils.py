@@ -9,9 +9,12 @@ from zipfile import ZipFile
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.cli.superset.asset_utils import (
     RESOURCE_CHART,
+    RESOURCE_CHARTS,
     RESOURCE_DATABASE,
+    RESOURCE_DATABASES,
     RESOURCE_DASHBOARD,
     RESOURCE_DATASET,
+    RESOURCE_DATASETS,
     iter_yaml_asset_configs,
 )
 from preset_cli.cli.superset.delete_types import CascadeDependencies
@@ -208,9 +211,9 @@ def compute_shared_uuids(
     dependencies: CascadeDependencies,
     protected: Dict[str, Set[str]],
 ) -> Dict[str, Set[str]]:
-    shared_charts = dependencies.chart_uuids & protected["charts"]
-    protected_datasets = dependencies.dataset_uuids & protected["datasets"]
-    protected_databases = dependencies.database_uuids & protected["databases"]
+    shared_charts = dependencies.chart_uuids & protected[RESOURCE_CHARTS]
+    protected_datasets = dependencies.dataset_uuids & protected[RESOURCE_DATASETS]
+    protected_databases = dependencies.database_uuids & protected[RESOURCE_DATABASES]
 
     for chart_uuid in shared_charts:
         if dataset_uuid := dependencies.chart_dataset_map.get(chart_uuid):
@@ -223,7 +226,7 @@ def compute_shared_uuids(
             protected_databases.add(database_uuid)
 
     return {
-        "charts": shared_charts,
-        "datasets": protected_datasets,
-        "databases": protected_databases,
+        RESOURCE_CHARTS: shared_charts,
+        RESOURCE_DATASETS: protected_datasets,
+        RESOURCE_DATABASES: protected_databases,
     }

@@ -20,6 +20,17 @@ from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.api.operators import In
+from preset_cli.cli.superset.asset_utils import (
+    RESOURCE_CHART,
+    RESOURCE_CHARTS,
+    RESOURCE_DATABASE,
+    RESOURCE_DATABASES,
+    RESOURCE_DASHBOARD,
+    RESOURCE_DASHBOARDS,
+    RESOURCE_DATASET,
+    RESOURCE_DATASETS,
+    YAML_EXTENSIONS,
+)
 from preset_cli.cli.superset import dependency_utils as dep_utils
 from preset_cli.cli.superset.delete_types import (
     CascadeDependencies,
@@ -50,9 +61,9 @@ def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
         buf,
     )
     return {
-        "charts": chart_uuids,
-        "datasets": dataset_uuids,
-        "databases": database_uuids,
+        RESOURCE_CHARTS: chart_uuids,
+        RESOURCE_DATASETS: dataset_uuids,
+        RESOURCE_DATABASES: database_uuids,
     }
 
 
@@ -146,8 +157,8 @@ def _apply_db_passwords_to_backup(
         for file_name in src.namelist():
             data = src.read(file_name)
             relative = remove_root(file_name)
-            if relative.startswith("databases/") and file_name.endswith(
-                (".yaml", ".yml"),
+            if relative.startswith(f"{RESOURCE_DATABASES}/") and file_name.endswith(
+                YAML_EXTENSIONS,
             ):
                 config = yaml.load(data, Loader=yaml.SafeLoader) or {}
                 if uuid := config.get("uuid"):
@@ -254,20 +265,20 @@ def _echo_shared_summary(shared: Dict[str, Set[str]]) -> None:
         return
 
     click.echo("\nShared (skipped):")
-    if shared["charts"]:
-        charts = ", ".join(sorted(shared["charts"]))
+    if shared[RESOURCE_CHARTS]:
+        charts = ", ".join(sorted(shared[RESOURCE_CHARTS]))
         click.echo(
-            f"  Charts ({len(shared['charts'])}): {charts}",
+            f"  Charts ({len(shared[RESOURCE_CHARTS])}): {charts}",
         )
-    if shared["datasets"]:
-        datasets = ", ".join(sorted(shared["datasets"]))
+    if shared[RESOURCE_DATASETS]:
+        datasets = ", ".join(sorted(shared[RESOURCE_DATASETS]))
         click.echo(
-            f"  Datasets ({len(shared['datasets'])}): {datasets}",
+            f"  Datasets ({len(shared[RESOURCE_DATASETS])}): {datasets}",
         )
-    if shared["databases"]:
-        databases = ", ".join(sorted(shared["databases"]))
+    if shared[RESOURCE_DATABASES]:
+        databases = ", ".join(sorted(shared[RESOURCE_DATABASES]))
         click.echo(
-            f"  Databases ({len(shared['databases'])}): {databases}",
+            f"  Databases ({len(shared[RESOURCE_DATABASES])}): {databases}",
         )
 
 
@@ -289,23 +300,23 @@ def _echo_summary(summary: _DeleteSummaryData, dry_run: bool) -> None:
         click.echo(f"  {line}")
 
     _echo_cascade_section(
-        "charts",
-        summary.cascade_ids["charts"],
-        summary.cascade_names.get("charts", {}),
-        summary.cascade_flags["charts"],
+        RESOURCE_CHARTS,
+        summary.cascade_ids[RESOURCE_CHARTS],
+        summary.cascade_names.get(RESOURCE_CHARTS, {}),
+        summary.cascade_flags[RESOURCE_CHARTS],
         chart_dashboard_context=summary.chart_dashboard_context,
     )
     _echo_cascade_section(
-        "datasets",
-        summary.cascade_ids["datasets"],
-        summary.cascade_names.get("datasets", {}),
-        summary.cascade_flags["datasets"],
+        RESOURCE_DATASETS,
+        summary.cascade_ids[RESOURCE_DATASETS],
+        summary.cascade_names.get(RESOURCE_DATASETS, {}),
+        summary.cascade_flags[RESOURCE_DATASETS],
     )
     _echo_cascade_section(
-        "databases",
-        summary.cascade_ids["databases"],
-        summary.cascade_names.get("databases", {}),
-        summary.cascade_flags["databases"],
+        RESOURCE_DATABASES,
+        summary.cascade_ids[RESOURCE_DATABASES],
+        summary.cascade_names.get(RESOURCE_DATABASES, {}),
+        summary.cascade_flags[RESOURCE_DATABASES],
     )
 
     _echo_shared_summary(summary.shared)
@@ -317,7 +328,7 @@ def _echo_summary(summary: _DeleteSummaryData, dry_run: bool) -> None:
     "--asset-type",
     required=True,
     type=click.Choice(
-        ["dashboard", "chart", "dataset", "database"],
+        [RESOURCE_DASHBOARD, RESOURCE_CHART, RESOURCE_DATASET, RESOURCE_DATABASE],
         case_sensitive=False,
     ),
     help="Asset type to delete",
@@ -442,7 +453,7 @@ def _run_delete_assets(
         command_options.filters,
         DELETE_FILTER_KEYS[resource_name],
     )
-    if resource_name != "dashboard":
+    if resource_name != RESOURCE_DASHBOARD:
         non_dashboard_options = _NonDashboardDeleteOptions(
             resource_name=resource_name,
             dry_run=dry_run,
@@ -480,7 +491,7 @@ def _validate_delete_option_combinations(
     resource_name: str,
     cascade_options: DashboardCascadeOptions,
 ) -> None:
-    if resource_name != "dashboard" and any(
+    if resource_name != RESOURCE_DASHBOARD and any(
         [
             cascade_options.charts,
             cascade_options.datasets,
@@ -506,9 +517,9 @@ def _resolve_rollback_settings(
     rollback: bool,
     db_password: Tuple[str, ...],
 ) -> Tuple[Dict[str, str], bool]:
-    if resource_name == "dashboard":
+    if resource_name == RESOURCE_DASHBOARD:
         return _parse_db_passwords(db_password), rollback
-    if resource_name != "database":
+    if resource_name != RESOURCE_DATABASE:
         return {}, rollback
 
     db_passwords = _parse_db_passwords(db_password)
@@ -555,7 +566,7 @@ def _fetch_non_dashboard_resources(
     resource_name: str,
     parsed_filters: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    if resource_name == "database":
+    if resource_name == RESOURCE_DATABASE:
         return filter_resources_locally(
             client.get_resources(resource_name),
             parsed_filters,
@@ -577,7 +588,7 @@ def _rollback_non_dashboard_deletion(
     try:
         rollback_buf = _apply_db_passwords_to_backup(
             backup_data,
-            db_passwords if resource_name == "database" else {},
+            db_passwords if resource_name == RESOURCE_DATABASE else {},
         )
         client.import_zip(resource_name, rollback_buf, overwrite=True)
     except Exception as exc:  # pylint: disable=broad-except
@@ -673,7 +684,7 @@ def _fetch_dashboard_selection(
         client.get_dashboards,
         client.get_dashboards,
         parsed_filters,
-        "dashboards",
+        RESOURCE_DASHBOARDS,
     )
     if not dashboards:
         click.echo("No dashboards match the specified filters.")
@@ -700,7 +711,7 @@ def _load_cascade_dependencies(
 
     if cascade_options.charts:
         selection.cascade_buf = client.export_zip(
-            "dashboard",
+            RESOURCE_DASHBOARD,
             list(selection.dashboard_ids),
         )
         (
@@ -740,7 +751,7 @@ def _protect_shared_dependencies(
     if not other_ids:
         return shared_uuids
 
-    other_buf = client.export_zip("dashboard", list(other_ids))
+    other_buf = client.export_zip(RESOURCE_DASHBOARD, list(other_ids))
     protected = _extract_uuids_from_export(other_buf)
     shared_uuids = dep_utils.compute_shared_uuids(dependencies, protected)
     _remove_shared_dependencies(dependencies, shared_uuids)
@@ -749,9 +760,9 @@ def _protect_shared_dependencies(
 
 def _empty_shared_uuids() -> Dict[str, Set[str]]:
     return {
-        "charts": set(),
-        "datasets": set(),
-        "databases": set(),
+        RESOURCE_CHARTS: set(),
+        RESOURCE_DATASETS: set(),
+        RESOURCE_DATABASES: set(),
     }
 
 
@@ -759,7 +770,7 @@ def _find_other_dashboard_ids(
     client: SupersetClient,
     dashboard_ids: Set[int],
 ) -> Set[int]:
-    all_dashboards = client.get_resources("dashboard")
+    all_dashboards = client.get_resources(RESOURCE_DASHBOARD)
     return {dashboard["id"] for dashboard in all_dashboards} - dashboard_ids
 
 
@@ -767,14 +778,14 @@ def _remove_shared_dependencies(
     dependencies: CascadeDependencies,
     shared_uuids: Dict[str, Set[str]],
 ) -> None:
-    dependencies.chart_uuids -= shared_uuids["charts"]
+    dependencies.chart_uuids -= shared_uuids[RESOURCE_CHARTS]
     dependencies.chart_dashboard_titles_by_uuid = {
         uuid: titles
         for uuid, titles in dependencies.chart_dashboard_titles_by_uuid.items()
         if uuid in dependencies.chart_uuids
     }
-    dependencies.dataset_uuids -= shared_uuids["datasets"]
-    dependencies.database_uuids -= shared_uuids["databases"]
+    dependencies.dataset_uuids -= shared_uuids[RESOURCE_DATASETS]
+    dependencies.database_uuids -= shared_uuids[RESOURCE_DATABASES]
 
 
 def _resolve_cascade_targets(
@@ -783,16 +794,16 @@ def _resolve_cascade_targets(
     cascade_options: DashboardCascadeOptions,
 ) -> _CascadeResolution:
     ids: Dict[str, Set[int]] = {
-        "charts": set(),
-        "datasets": set(),
-        "databases": set(),
+        RESOURCE_CHARTS: set(),
+        RESOURCE_DATASETS: set(),
+        RESOURCE_DATABASES: set(),
     }
     names: Dict[str, Dict[int, str]] = {}
     chart_dashboard_context: Dict[int, List[str]] = {}
     cascade_flags = {
-        "charts": cascade_options.charts,
-        "datasets": cascade_options.datasets,
-        "databases": cascade_options.databases,
+        RESOURCE_CHARTS: cascade_options.charts,
+        RESOURCE_DATASETS: cascade_options.datasets,
+        RESOURCE_DATABASES: cascade_options.databases,
     }
     if not cascade_options.charts:
         return _CascadeResolution(
@@ -803,7 +814,7 @@ def _resolve_cascade_targets(
         )
 
     (
-        ids["charts"],
+        ids[RESOURCE_CHARTS],
         chart_names,
         chart_dashboard_context,
         missing_chart_uuids,
@@ -811,20 +822,20 @@ def _resolve_cascade_targets(
     ) = _resolve_chart_targets(client, dependencies)
     dataset_result = dep_utils.resolve_ids(
         client,
-        "dataset",
+        RESOURCE_DATASET,
         dependencies.dataset_uuids,
     )
     database_result = dep_utils.resolve_ids(
         client,
-        "database",
+        RESOURCE_DATABASE,
         dependencies.database_uuids,
     )
-    ids["datasets"] = dataset_result[0]
-    ids["databases"] = database_result[0]
+    ids[RESOURCE_DATASETS] = dataset_result[0]
+    ids[RESOURCE_DATABASES] = database_result[0]
     names = {
-        "charts": chart_names,
-        "datasets": dataset_result[1],
-        "databases": database_result[1],
+        RESOURCE_CHARTS: chart_names,
+        RESOURCE_DATASETS: dataset_result[1],
+        RESOURCE_DATABASES: database_result[1],
     }
     all_resolved = charts_resolved and dataset_result[3] and database_result[3]
     if not all_resolved:
@@ -833,14 +844,14 @@ def _resolve_cascade_targets(
             "skipping cascade deletion.",
         )
         ids = {
-            "charts": set(),
-            "datasets": set(),
-            "databases": set(),
+            RESOURCE_CHARTS: set(),
+            RESOURCE_DATASETS: set(),
+            RESOURCE_DATABASES: set(),
         }
     else:
-        _warn_missing_uuids("chart", missing_chart_uuids)
-        _warn_missing_uuids("dataset", dataset_result[2])
-        _warn_missing_uuids("database", database_result[2])
+        _warn_missing_uuids(RESOURCE_CHART, missing_chart_uuids)
+        _warn_missing_uuids(RESOURCE_DATASET, dataset_result[2])
+        _warn_missing_uuids(RESOURCE_DATABASE, database_result[2])
 
     return _CascadeResolution(
         ids=ids,
@@ -857,7 +868,7 @@ def _resolve_chart_targets(
     chart_dashboard_context: Dict[int, List[str]] = {}
     chart_uuid_map, chart_names, charts_resolved = dep_utils.build_uuid_map(
         client,
-        "chart",
+        RESOURCE_CHART,
     )
     if not charts_resolved:
         return (
@@ -925,14 +936,14 @@ def _fetch_preflight_datasets(
     try:
         return (
             client.get_resources(
-                "dataset",
+                RESOURCE_DATASET,
                 database_id=In(list(database_ids)),
             ),
             True,
         )
     except Exception as exc:  # pylint: disable=broad-except
         if is_filter_not_allowed_error(exc):
-            return client.get_resources("dataset"), False
+            return client.get_resources(RESOURCE_DATASET), False
         raise click.ClickException(
             f"Failed to preflight datasets ({exc}).",
         ) from exc
@@ -992,7 +1003,7 @@ def _read_dashboard_backup_data(
     selection: _DashboardSelection,
 ) -> bytes:
     if selection.cascade_buf is None:
-        backup_buf = client.export_zip("dashboard", list(selection.dashboard_ids))
+        backup_buf = client.export_zip(RESOURCE_DASHBOARD, list(selection.dashboard_ids))
         return backup_buf.read()
     selection.cascade_buf.seek(0)
     return selection.cascade_buf.read()
@@ -1001,13 +1012,13 @@ def _read_dashboard_backup_data(
 def _expected_dashboard_rollback_types(
     cascade_options: DashboardCascadeOptions,
 ) -> Set[str]:
-    expected_types = {"dashboard"}
+    expected_types = {RESOURCE_DASHBOARD}
     if cascade_options.charts:
-        expected_types.add("chart")
+        expected_types.add(RESOURCE_CHART)
     if cascade_options.datasets:
-        expected_types.add("dataset")
+        expected_types.add(RESOURCE_DATASET)
     if cascade_options.databases:
-        expected_types.add("database")
+        expected_types.add(RESOURCE_DATABASE)
     return expected_types
 
 
@@ -1022,7 +1033,7 @@ def _rollback_dashboard_deletion(
             backup_data,
             db_passwords,
         )
-        client.import_zip("dashboard", rollback_buf, overwrite=True)
+        client.import_zip(RESOURCE_DASHBOARD, rollback_buf, overwrite=True)
     except Exception as exc:  # pylint: disable=broad-except
         click.echo(f"Rollback failed: {exc}")
         raise click.ClickException(
@@ -1089,18 +1100,18 @@ def _validate_dashboard_delete_execution(
     if (
         execution_options.rollback
         and cascade_options.databases
-        and plan.resolution.ids["databases"]
+        and plan.resolution.ids[RESOURCE_DATABASES]
         and not db_passwords
     ):
         raise click.ClickException(
             "Rollback requires a DB password (--db-password) when deleting databases.",
         )
 
-    if cascade_options.databases and plan.resolution.ids["databases"]:
+    if cascade_options.databases and plan.resolution.ids[RESOURCE_DATABASES]:
         _preflight_database_deletion(
             client,
-            plan.resolution.ids["databases"],
-            plan.resolution.ids["datasets"],
+            plan.resolution.ids[RESOURCE_DATABASES],
+            plan.resolution.ids[RESOURCE_DATASETS],
         )
 
     return True
@@ -1119,20 +1130,20 @@ def _execute_dashboard_delete_plan(
 
     backup_data = _read_dashboard_backup_data(client, plan.selection)
     backup_path = _write_backup(backup_data)
-    _echo_backup_restore_details(backup_path, "dashboard")
+    _echo_backup_restore_details(backup_path, RESOURCE_DASHBOARD)
 
     failures: List[str] = []
     deleted_any = _delete_resources(
         client,
-        "chart",
-        resolution.ids["charts"],
+        RESOURCE_CHART,
+        resolution.ids[RESOURCE_CHARTS],
         failures,
     )
     deleted_any = (
         _delete_resources(
             client,
-            "dataset",
-            resolution.ids["datasets"],
+            RESOURCE_DATASET,
+            resolution.ids[RESOURCE_DATASETS],
             failures,
         )
         or deleted_any
@@ -1140,8 +1151,8 @@ def _execute_dashboard_delete_plan(
     deleted_any = (
         _delete_resources(
             client,
-            "database",
-            resolution.ids["databases"],
+            RESOURCE_DATABASE,
+            resolution.ids[RESOURCE_DATABASES],
             failures,
         )
         or deleted_any
@@ -1149,7 +1160,7 @@ def _execute_dashboard_delete_plan(
     deleted_any = (
         _delete_resources(
             client,
-            "dashboard",
+            RESOURCE_DASHBOARD,
             selection.dashboard_ids,
             failures,
         )
