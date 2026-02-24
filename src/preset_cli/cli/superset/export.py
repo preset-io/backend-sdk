@@ -129,7 +129,7 @@ def _get_dashboard_dataset_filter_uuids(config: Dict[str, Any]) -> Set[str]:
         "native_filter_configuration",
         [],
     ):
-        for target in filter_config.get("targets", {}):
+        for target in filter_config.get("targets", []):
             if uuid := target.get("datasetUuid"):
                 dataset_uuids.add(uuid)
     return dataset_uuids
