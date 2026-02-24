@@ -6,16 +6,10 @@ Delete Superset assets.
 
 from __future__ import annotations
 
-import shlex
-import tempfile
-from datetime import datetime
 from io import BytesIO
-from pathlib import Path
 from typing import Any, Dict, Iterable, List, Set, Tuple, cast
-from zipfile import ZipFile
 
 import click
-import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
@@ -29,9 +23,19 @@ from preset_cli.cli.superset.asset_utils import (
     RESOURCE_DASHBOARDS,
     RESOURCE_DATASET,
     RESOURCE_DATASETS,
-    YAML_EXTENSIONS,
 )
 from preset_cli.cli.superset import dependency_utils as dep_utils
+from preset_cli.cli.superset.delete_display import (
+    _echo_backup_restore_details,
+    _echo_resource_summary,
+    _echo_summary,
+)
+from preset_cli.cli.superset.delete_rollback import (
+    _parse_db_passwords,
+    _rollback_dashboard_deletion,
+    _rollback_non_dashboard_deletion,
+    _write_backup,
+)
 from preset_cli.cli.superset.delete_types import (
     CascadeDependencies,
     _CascadeResolution,
@@ -52,7 +56,6 @@ from preset_cli.cli.superset.lib import (
     is_filter_not_allowed_error,
     parse_filters,
 )
-from preset_cli.lib import remove_root
 
 
 def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
@@ -67,109 +70,6 @@ def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
     }
 
 
-def _verify_rollback_restoration(
-    client: SupersetClient,
-    backup_data: bytes,
-    expected_types: Set[str],
-) -> Tuple[List[str], List[str]]:
-    """
-    Verify rollback restored UUIDs for expected resource types.
-
-    Returns:
-      - list of unresolved resource types (cannot verify on this Superset version)
-      - list of resource types with missing UUIDs
-    """
-    backup_uuids = dep_utils.extract_backup_uuids_by_type(backup_data)
-    unresolved: List[str] = []
-    missing_types: List[str] = []
-
-    for resource_name in sorted(expected_types):
-        expected_uuids = backup_uuids.get(resource_name, set())
-        if not expected_uuids:
-            continue
-
-        _, _, missing_uuids, resolved = dep_utils.resolve_ids(
-            client,
-            resource_name,
-            expected_uuids,
-        )
-        if not resolved:
-            unresolved.append(resource_name)
-            continue
-        if missing_uuids:
-            missing_types.append(resource_name)
-
-    return unresolved, missing_types
-
-
-def _parse_db_passwords(db_password: Tuple[str, ...]) -> Dict[str, str]:
-    passwords: Dict[str, str] = {}
-    for pair in db_password:
-        if "=" not in pair:
-            raise click.ClickException(
-                "Invalid --db-password value. Use the format uuid=password.",
-            )
-        uuid, password = pair.split("=", 1)
-        passwords[uuid] = password
-    return passwords
-
-
-def _write_backup(backup_data: bytes) -> str:
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    with tempfile.NamedTemporaryFile(
-        mode="wb",
-        prefix=f"preset-cli-backup-delete-{timestamp}-",
-        suffix=".zip",
-        delete=False,
-        dir=tempfile.gettempdir(),
-    ) as output:
-        output.write(backup_data)
-        backup_path = Path(output.name)
-
-    # Enforce private backup file permissions where supported.
-    try:
-        backup_path.chmod(0o600)
-    except OSError:
-        pass
-    return str(backup_path)
-
-
-def _format_restore_command(backup_path: str, asset_type: str) -> str:
-    quoted_path = shlex.quote(backup_path)
-    return (
-        "preset-cli superset import-assets "
-        f"{quoted_path} --overwrite --asset-type {asset_type}"
-    )
-
-
-def _apply_db_passwords_to_backup(
-    backup_data: bytes,
-    db_passwords: Dict[str, str],
-) -> BytesIO:
-    if not db_passwords:
-        buf = BytesIO(backup_data)
-        buf.seek(0)
-        return buf
-
-    input_buf = BytesIO(backup_data)
-    output_buf = BytesIO()
-    with ZipFile(input_buf) as src, ZipFile(output_buf, "w") as dest:
-        for file_name in src.namelist():
-            data = src.read(file_name)
-            relative = remove_root(file_name)
-            if relative.startswith(f"{RESOURCE_DATABASES}/") and file_name.endswith(
-                YAML_EXTENSIONS,
-            ):
-                config = yaml.load(data, Loader=yaml.SafeLoader) or {}
-                if uuid := config.get("uuid"):
-                    if uuid in db_passwords:
-                        config["password"] = db_passwords[uuid]
-                        data = yaml.dump(config).encode()
-            dest.writestr(file_name, data)
-    output_buf.seek(0)
-    return output_buf
-
-
 def _dataset_db_id(dataset: Dict[str, Any]) -> int | None:
     if "database_id" in dataset:
         return dataset["database_id"]
@@ -177,150 +77,6 @@ def _dataset_db_id(dataset: Dict[str, Any]) -> int | None:
     if isinstance(database, dict):
         return database.get("id")
     return None
-
-
-def _format_dashboard_summary(dashboards: Iterable[Dict[str, Any]]) -> List[str]:
-    lines = []
-    for dashboard in dashboards:
-        title = dashboard.get("dashboard_title") or dashboard.get("title") or "Unknown"
-        slug = dashboard.get("slug", "n/a")
-        lines.append(f"- [ID: {dashboard['id']}] {title} (slug: {slug})")
-    return lines
-
-
-def _format_resource_summary(
-    resource_name: str,
-    resources: Iterable[Dict[str, Any]],
-) -> List[str]:
-    lines = []
-    keys = dep_utils.RESOURCE_NAME_KEYS.get(resource_name, ("name",))
-    for resource in resources:
-        label = next(
-            (resource.get(key) for key in keys if resource.get(key)),
-            None,
-        )
-        if label:
-            lines.append(f"- [ID: {resource['id']}] {label}")
-        else:
-            lines.append(f"- [ID: {resource['id']}]")
-    return lines
-
-
-def _echo_resource_summary(
-    resource_name: str,
-    resources: List[Dict[str, Any]],
-    dry_run: bool,
-) -> None:
-    if dry_run:
-        click.echo("No changes will be made. Assets to be deleted:\n")
-    else:
-        click.echo("Assets to be deleted:\n")
-
-    title = f"{resource_name.title()}s"
-    click.echo(f"{title} ({len(resources)}):")
-    for line in _format_resource_summary(resource_name, resources):
-        click.echo(f"  {line}")
-
-    if dry_run:
-        click.echo(
-            "\nTo proceed with deletion, run with: --dry-run=false --confirm=DELETE",
-        )
-
-
-def _echo_delete_header(dry_run: bool) -> None:
-    if dry_run:
-        click.echo("No changes will be made. Assets to be deleted:\n")
-        return
-    click.echo("Assets to be deleted:\n")
-
-
-def _echo_cascade_section(
-    resource_name: str,
-    ids: Set[int],
-    names: Dict[int, str],
-    enabled: bool,
-    chart_dashboard_context: Dict[int, List[str]] | None = None,
-) -> None:
-    title = resource_name.title()
-    if not enabled:
-        click.echo(f"\n{title} (0): (not cascading)")
-        return
-
-    click.echo(f"\n{title} ({len(ids)}):")
-    for resource_id in sorted(ids):
-        name = names.get(resource_id)
-        label = f" {name}" if name else ""
-        context = ""
-        if chart_dashboard_context is not None:
-            dashboard_titles = chart_dashboard_context.get(resource_id, [])
-            if len(dashboard_titles) == 1:
-                context = f" (dashboard: {dashboard_titles[0]})"
-            elif dashboard_titles:
-                context = f" (dashboards: {', '.join(dashboard_titles)})"
-        click.echo(f"  - [ID: {resource_id}]{label}{context}")
-
-
-def _echo_shared_summary(shared: Dict[str, Set[str]]) -> None:
-    if not any(shared.values()):
-        return
-
-    click.echo("\nShared (skipped):")
-    if shared[RESOURCE_CHARTS]:
-        charts = ", ".join(sorted(shared[RESOURCE_CHARTS]))
-        click.echo(
-            f"  Charts ({len(shared[RESOURCE_CHARTS])}): {charts}",
-        )
-    if shared[RESOURCE_DATASETS]:
-        datasets = ", ".join(sorted(shared[RESOURCE_DATASETS]))
-        click.echo(
-            f"  Datasets ({len(shared[RESOURCE_DATASETS])}): {datasets}",
-        )
-    if shared[RESOURCE_DATABASES]:
-        databases = ", ".join(sorted(shared[RESOURCE_DATABASES]))
-        click.echo(
-            f"  Databases ({len(shared[RESOURCE_DATABASES])}): {databases}",
-        )
-
-
-def _echo_dry_run_hint(dry_run: bool) -> None:
-    if not dry_run:
-        return
-
-    click.echo(
-        "\nTo proceed with deletion, run with: --dry-run=false --confirm=DELETE",
-    )
-
-
-def _echo_summary(summary: _DeleteSummaryData, dry_run: bool) -> None:
-    _echo_delete_header(dry_run)
-
-    dashboards = summary.dashboards
-    click.echo(f"Dashboards ({len(dashboards)}):")
-    for line in _format_dashboard_summary(dashboards):
-        click.echo(f"  {line}")
-
-    _echo_cascade_section(
-        RESOURCE_CHARTS,
-        summary.cascade_ids[RESOURCE_CHARTS],
-        summary.cascade_names.get(RESOURCE_CHARTS, {}),
-        summary.cascade_flags[RESOURCE_CHARTS],
-        chart_dashboard_context=summary.chart_dashboard_context,
-    )
-    _echo_cascade_section(
-        RESOURCE_DATASETS,
-        summary.cascade_ids[RESOURCE_DATASETS],
-        summary.cascade_names.get(RESOURCE_DATASETS, {}),
-        summary.cascade_flags[RESOURCE_DATASETS],
-    )
-    _echo_cascade_section(
-        RESOURCE_DATABASES,
-        summary.cascade_ids[RESOURCE_DATABASES],
-        summary.cascade_names.get(RESOURCE_DATABASES, {}),
-        summary.cascade_flags[RESOURCE_DATABASES],
-    )
-
-    _echo_shared_summary(summary.shared)
-    _echo_dry_run_hint(dry_run)
 
 
 @click.command()
@@ -538,13 +294,6 @@ def _build_superset_client(ctx: click.core.Context) -> SupersetClient:
     return SupersetClient(url, auth)
 
 
-def _echo_backup_restore_details(backup_path: str, resource_name: str) -> None:
-    click.echo(f"\nBackup saved to: {backup_path}")
-    click.echo(
-        f"To restore, run: {_format_restore_command(backup_path, resource_name)}\n",
-    )
-
-
 def _delete_resources(
     client: SupersetClient,
     resource_name: str,
@@ -577,61 +326,6 @@ def _fetch_non_dashboard_resources(
         parsed_filters,
         f"{resource_name}s",
     )
-
-
-def _rollback_non_dashboard_deletion(
-    client: SupersetClient,
-    resource_name: str,
-    backup_data: bytes,
-    db_passwords: Dict[str, str],
-) -> None:
-    _rollback_deletion(
-        client=client,
-        backup_data=backup_data,
-        import_resource_name=resource_name,
-        db_passwords=(
-            db_passwords if resource_name == RESOURCE_DATABASE else {}
-        ),
-        expected_types={resource_name},
-    )
-
-
-def _rollback_deletion(
-    client: SupersetClient,
-    backup_data: bytes,
-    import_resource_name: str,
-    db_passwords: Dict[str, str],
-    expected_types: Set[str],
-) -> None:
-    try:
-        rollback_buf = _apply_db_passwords_to_backup(
-            backup_data,
-            db_passwords,
-        )
-        client.import_zip(import_resource_name, rollback_buf, overwrite=True)
-    except Exception as exc:  # pylint: disable=broad-except
-        click.echo(f"Rollback failed: {exc}")
-        raise click.ClickException(
-            "Rollback failed. A backup zip is available for manual restore.",
-        ) from exc
-
-    unresolved, missing_types = _verify_rollback_restoration(
-        client,
-        backup_data,
-        expected_types,
-    )
-    if unresolved:
-        labels = ", ".join(unresolved)
-        click.echo(
-            f"Warning: unable to verify rollback for: {labels}.",
-        )
-    if missing_types:
-        labels = ", ".join(missing_types)
-        raise click.ClickException(
-            f"Rollback verification failed for: {labels}. "
-            "A backup zip is available for manual restore.",
-        )
-    click.echo("Rollback succeeded.")
 
 
 def _delete_non_dashboard_assets(
@@ -1025,34 +719,6 @@ def _read_dashboard_backup_data(
         return backup_buf.read()
     selection.cascade_buf.seek(0)
     return selection.cascade_buf.read()
-
-
-def _expected_dashboard_rollback_types(
-    cascade_options: DashboardCascadeOptions,
-) -> Set[str]:
-    expected_types = {RESOURCE_DASHBOARD}
-    if cascade_options.charts:
-        expected_types.add(RESOURCE_CHART)
-    if cascade_options.datasets:
-        expected_types.add(RESOURCE_DATASET)
-    if cascade_options.databases:
-        expected_types.add(RESOURCE_DATABASE)
-    return expected_types
-
-
-def _rollback_dashboard_deletion(
-    client: SupersetClient,
-    backup_data: bytes,
-    db_passwords: Dict[str, str],
-    cascade_options: DashboardCascadeOptions,
-) -> None:
-    _rollback_deletion(
-        client=client,
-        backup_data=backup_data,
-        import_resource_name=RESOURCE_DASHBOARD,
-        db_passwords=db_passwords,
-        expected_types=_expected_dashboard_rollback_types(cascade_options),
-    )
 
 
 def _prepare_dashboard_delete_plan(

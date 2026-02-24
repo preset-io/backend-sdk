@@ -31,27 +31,31 @@ from preset_cli.cli.superset.asset_utils import (
     RESOURCE_DATASETS,
 )
 from preset_cli.cli.superset.delete import (
-    _apply_db_passwords_to_backup,
     _dataset_db_id,
     _delete_non_dashboard_assets,
+    _execute_dashboard_delete_plan,
+    _fetch_preflight_datasets,
+    _filter_datasets_for_database_ids,
+    _parse_delete_command_options,
+    _resolve_chart_targets,
+    _resolve_rollback_settings,
+    _validate_delete_option_combinations,
+    _warn_missing_uuids,
+)
+from preset_cli.cli.superset.delete_display import (
     _echo_cascade_section,
     _echo_dry_run_hint,
     _echo_shared_summary,
-    _execute_dashboard_delete_plan,
-    _expected_dashboard_rollback_types,
-    _fetch_preflight_datasets,
-    _filter_datasets_for_database_ids,
     _format_resource_summary,
     _format_restore_command,
-    _parse_delete_command_options,
+)
+from preset_cli.cli.superset.delete_rollback import (
+    _apply_db_passwords_to_backup,
+    _expected_dashboard_rollback_types,
     _parse_db_passwords,
-    _resolve_chart_targets,
-    _resolve_rollback_settings,
     _rollback_dashboard_deletion,
     _rollback_non_dashboard_deletion,
-    _validate_delete_option_combinations,
     _verify_rollback_restoration,
-    _warn_missing_uuids,
     _write_backup,
 )
 from preset_cli.cli.superset.delete_types import (
@@ -1938,7 +1942,7 @@ def test_rollback_non_dashboard_deletion_warns_unresolved(
     """
     client = mocker.MagicMock()
     mocker.patch(
-        "preset_cli.cli.superset.delete._verify_rollback_restoration",
+        "preset_cli.cli.superset.delete_rollback._verify_rollback_restoration",
         return_value=(["chart"], []),
     )
     _rollback_non_dashboard_deletion(client, "chart", b"zip", {})
@@ -1955,7 +1959,7 @@ def test_rollback_non_dashboard_deletion_raises_on_missing_types(
     """
     client = mocker.MagicMock()
     mocker.patch(
-        "preset_cli.cli.superset.delete._verify_rollback_restoration",
+        "preset_cli.cli.superset.delete_rollback._verify_rollback_restoration",
         return_value=([], ["chart"]),
     )
     with pytest.raises(Exception, match="Rollback verification failed for: chart"):
@@ -2163,7 +2167,7 @@ def test_rollback_dashboard_deletion_warns_unresolved(
     """
     client = mocker.MagicMock()
     mocker.patch(
-        "preset_cli.cli.superset.delete._verify_rollback_restoration",
+        "preset_cli.cli.superset.delete_rollback._verify_rollback_restoration",
         return_value=(["dataset"], []),
     )
     cascade = DashboardCascadeOptions(
@@ -2186,7 +2190,7 @@ def test_rollback_dashboard_deletion_raises_on_missing_types(
     """
     client = mocker.MagicMock()
     mocker.patch(
-        "preset_cli.cli.superset.delete._verify_rollback_restoration",
+        "preset_cli.cli.superset.delete_rollback._verify_rollback_restoration",
         return_value=([], ["database"]),
     )
     cascade = DashboardCascadeOptions(
