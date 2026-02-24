@@ -23,6 +23,13 @@ from preset_cli.cli.superset.dependency_utils import (
     extract_dependency_maps,
     resolve_ids,
 )
+from preset_cli.cli.superset.asset_utils import (
+    RESOURCE_CHART,
+    RESOURCE_CHARTS,
+    RESOURCE_DATABASES,
+    RESOURCE_DATASET,
+    RESOURCE_DATASETS,
+)
 from preset_cli.cli.superset.delete import (
     _apply_db_passwords_to_backup,
     _dataset_db_id,
@@ -30,6 +37,7 @@ from preset_cli.cli.superset.delete import (
     _echo_cascade_section,
     _echo_dry_run_hint,
     _echo_shared_summary,
+    _execute_dashboard_delete_plan,
     _expected_dashboard_rollback_types,
     _fetch_preflight_datasets,
     _filter_datasets_for_database_ids,
@@ -49,6 +57,11 @@ from preset_cli.cli.superset.delete import (
 from preset_cli.cli.superset.delete_types import (
     CascadeDependencies,
     DashboardCascadeOptions,
+    _CascadeResolution,
+    _DashboardDeletePlan,
+    _DashboardExecutionOptions,
+    _DashboardSelection,
+    _DeleteSummaryData,
     _NonDashboardDeleteOptions,
 )
 from preset_cli.cli.superset.main import superset_cli
@@ -96,6 +109,59 @@ def make_export_zip(
                 output.write(file_contents.encode())
     buf.seek(0)
     return buf
+
+
+def make_dashboard_delete_plan() -> _DashboardDeletePlan:
+    """Build a minimal dashboard delete plan for execution flow tests."""
+    dashboard = {"id": 1, "dashboard_title": "Test", "slug": "test"}
+    return _DashboardDeletePlan(
+        selection=_DashboardSelection(
+            dashboards=[dashboard],
+            dashboard_ids={1},
+        ),
+        resolution=_CascadeResolution(
+            ids={
+                RESOURCE_CHARTS: {11},
+                RESOURCE_DATASETS: {22},
+                RESOURCE_DATABASES: {33},
+            },
+            names={
+                RESOURCE_CHARTS: {},
+                RESOURCE_DATASETS: {},
+                RESOURCE_DATABASES: {},
+            },
+            chart_dashboard_context={},
+            flags={
+                RESOURCE_CHARTS: True,
+                RESOURCE_DATASETS: True,
+                RESOURCE_DATABASES: True,
+            },
+        ),
+        summary=_DeleteSummaryData(
+            dashboards=[dashboard],
+            cascade_ids={
+                RESOURCE_CHARTS: {11},
+                RESOURCE_DATASETS: {22},
+                RESOURCE_DATABASES: {33},
+            },
+            cascade_names={
+                RESOURCE_CHARTS: {},
+                RESOURCE_DATASETS: {},
+                RESOURCE_DATABASES: {},
+            },
+            chart_dashboard_context={},
+            shared={
+                RESOURCE_CHARTS: set(),
+                RESOURCE_DATASETS: set(),
+                RESOURCE_DATABASES: set(),
+            },
+            cascade_flags={
+                RESOURCE_CHARTS: True,
+                RESOURCE_DATASETS: True,
+                RESOURCE_DATABASES: True,
+            },
+        ),
+    )
 
 
 def test_delete_assets_dry_run(mocker: MockerFixture) -> None:
@@ -2131,6 +2197,198 @@ def test_rollback_dashboard_deletion_raises_on_missing_types(
     )
     with pytest.raises(Exception, match="Rollback verification failed for: database"):
         _rollback_dashboard_deletion(client, b"zip", {}, cascade)
+
+
+def test_execute_dashboard_delete_plan_stops_after_failing_stage(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard execution stops after first stage that records failures.
+    """
+    client = mocker.MagicMock()
+    plan = make_dashboard_delete_plan()
+    cascade_options = DashboardCascadeOptions(
+        charts=True,
+        datasets=True,
+        databases=True,
+        skip_shared_check=False,
+    )
+    execution_options = _DashboardExecutionOptions(
+        dry_run=False,
+        confirm="DELETE",
+        rollback=False,
+    )
+
+    mocker.patch("preset_cli.cli.superset.delete._echo_summary")
+    mocker.patch(
+        "preset_cli.cli.superset.delete._read_dashboard_backup_data",
+        return_value=b"zip",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.delete._write_backup",
+        return_value="/tmp/backup.zip",
+    )
+    mocker.patch("preset_cli.cli.superset.delete._echo_backup_restore_details")
+    rollback = mocker.patch("preset_cli.cli.superset.delete._rollback_dashboard_deletion")
+
+    stage_calls = []
+
+    def delete_resources_side_effect(
+        _client,
+        resource_name: str,
+        _resource_ids,
+        failures,
+    ) -> bool:
+        stage_calls.append(resource_name)
+        if resource_name == RESOURCE_CHART:
+            failures.append("chart:11 (403)")
+        return False
+
+    mocker.patch(
+        "preset_cli.cli.superset.delete._delete_resources",
+        side_effect=delete_resources_side_effect,
+    )
+
+    with pytest.raises(click.ClickException, match="Deletion completed with failures"):
+        _execute_dashboard_delete_plan(
+            client,
+            plan,
+            cascade_options,
+            execution_options,
+            {},
+        )
+
+    assert stage_calls == [RESOURCE_CHART]
+    rollback.assert_not_called()
+
+
+def test_execute_dashboard_delete_plan_rolls_back_after_partial_stage_failure(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard execution rolls back when a failing stage already deleted assets.
+    """
+    client = mocker.MagicMock()
+    plan = make_dashboard_delete_plan()
+    cascade_options = DashboardCascadeOptions(
+        charts=True,
+        datasets=True,
+        databases=True,
+        skip_shared_check=False,
+    )
+    execution_options = _DashboardExecutionOptions(
+        dry_run=False,
+        confirm="DELETE",
+        rollback=True,
+    )
+
+    mocker.patch("preset_cli.cli.superset.delete._echo_summary")
+    mocker.patch(
+        "preset_cli.cli.superset.delete._read_dashboard_backup_data",
+        return_value=b"zip",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.delete._write_backup",
+        return_value="/tmp/backup.zip",
+    )
+    mocker.patch("preset_cli.cli.superset.delete._echo_backup_restore_details")
+    rollback = mocker.patch("preset_cli.cli.superset.delete._rollback_dashboard_deletion")
+
+    stage_calls = []
+
+    def delete_resources_side_effect(
+        _client,
+        resource_name: str,
+        _resource_ids,
+        failures,
+    ) -> bool:
+        stage_calls.append(resource_name)
+        if resource_name == RESOURCE_CHART:
+            failures.append("chart:11 (403)")
+            return True
+        return False
+
+    mocker.patch(
+        "preset_cli.cli.superset.delete._delete_resources",
+        side_effect=delete_resources_side_effect,
+    )
+
+    with pytest.raises(click.ClickException, match="Deletion completed with failures"):
+        _execute_dashboard_delete_plan(
+            client,
+            plan,
+            cascade_options,
+            execution_options,
+            {},
+        )
+
+    assert stage_calls == [RESOURCE_CHART]
+    rollback.assert_called_once_with(client, b"zip", {}, cascade_options)
+
+
+def test_execute_dashboard_delete_plan_stops_after_dataset_stage_failure(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test dashboard execution stops before DB/dashboard stages after dataset failure.
+    """
+    client = mocker.MagicMock()
+    plan = make_dashboard_delete_plan()
+    cascade_options = DashboardCascadeOptions(
+        charts=True,
+        datasets=True,
+        databases=True,
+        skip_shared_check=False,
+    )
+    execution_options = _DashboardExecutionOptions(
+        dry_run=False,
+        confirm="DELETE",
+        rollback=False,
+    )
+
+    mocker.patch("preset_cli.cli.superset.delete._echo_summary")
+    mocker.patch(
+        "preset_cli.cli.superset.delete._read_dashboard_backup_data",
+        return_value=b"zip",
+    )
+    mocker.patch(
+        "preset_cli.cli.superset.delete._write_backup",
+        return_value="/tmp/backup.zip",
+    )
+    mocker.patch("preset_cli.cli.superset.delete._echo_backup_restore_details")
+    rollback = mocker.patch("preset_cli.cli.superset.delete._rollback_dashboard_deletion")
+
+    stage_calls = []
+
+    def delete_resources_side_effect(
+        _client,
+        resource_name: str,
+        _resource_ids,
+        failures,
+    ) -> bool:
+        stage_calls.append(resource_name)
+        if resource_name == RESOURCE_CHART:
+            return True
+        if resource_name == RESOURCE_DATASET:
+            failures.append("dataset:22 (403)")
+        return False
+
+    mocker.patch(
+        "preset_cli.cli.superset.delete._delete_resources",
+        side_effect=delete_resources_side_effect,
+    )
+
+    with pytest.raises(click.ClickException, match="Deletion completed with failures"):
+        _execute_dashboard_delete_plan(
+            client,
+            plan,
+            cascade_options,
+            execution_options,
+            {},
+        )
+
+    assert stage_calls == [RESOURCE_CHART, RESOURCE_DATASET]
+    rollback.assert_not_called()
 
 
 def test_extract_dependency_maps_covers_optional_uuid_paths() -> None:
