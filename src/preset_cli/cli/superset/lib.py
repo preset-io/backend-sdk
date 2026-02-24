@@ -210,23 +210,19 @@ def filter_resources_locally(  # pylint: disable=too-many-return-statements
         for key, expected in filters.items():
             actual = resource.get(key)
 
-            if isinstance(expected, Contains) and _matches_contains(actual, expected):
-                continue
-            if isinstance(expected, bool) and _matches_bool(actual, expected):
-                continue
             if _matches_empty_string(actual, expected):
                 continue
-            if isinstance(expected, int) and _matches_int(actual, expected):
-                continue
-            if _matches_exact(actual, expected):
-                continue
             if isinstance(expected, Contains):
+                if not _matches_contains(actual, expected):
+                    return False
+            elif isinstance(expected, bool):
+                if not _matches_bool(actual, expected):
+                    return False
+            elif isinstance(expected, int):
+                if not _matches_int(actual, expected):
+                    return False
+            elif not _matches_exact(actual, expected):
                 return False
-            if isinstance(expected, bool):
-                return False
-            if isinstance(expected, int):
-                return False
-            return False
 
         return True
 
