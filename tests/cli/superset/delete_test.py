@@ -16,18 +16,21 @@ import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
+from preset_cli.cli.superset.dependency_utils import (
+    build_uuid_map,
+    compute_shared_uuids,
+    extract_backup_uuids_by_type,
+    extract_dependency_maps,
+    resolve_ids,
+)
 from preset_cli.cli.superset.delete import (
     _apply_db_passwords_to_backup,
-    _build_uuid_map,
-    _compute_shared_uuids,
     _dataset_db_id,
     _delete_non_dashboard_assets,
     _echo_cascade_section,
     _echo_dry_run_hint,
     _echo_shared_summary,
     _expected_dashboard_rollback_types,
-    _extract_backup_uuids_by_type,
-    _extract_dependency_maps,
     _fetch_preflight_datasets,
     _filter_datasets_for_database_ids,
     _format_resource_summary,
@@ -35,7 +38,6 @@ from preset_cli.cli.superset.delete import (
     _parse_delete_command_options,
     _parse_db_passwords,
     _resolve_chart_targets,
-    _resolve_ids,
     _resolve_rollback_settings,
     _rollback_dashboard_deletion,
     _rollback_non_dashboard_deletion,
@@ -45,8 +47,8 @@ from preset_cli.cli.superset.delete import (
     _write_backup,
 )
 from preset_cli.cli.superset.delete_types import (
-    _CascadeDependencies,
-    _DashboardCascadeOptions,
+    CascadeDependencies,
+    DashboardCascadeOptions,
     _NonDashboardDeleteOptions,
 )
 from preset_cli.cli.superset.main import superset_cli
@@ -1535,7 +1537,7 @@ def test_extract_backup_uuids_by_type_skips_unrelated_entries() -> None:
         bundle.writestr("bundle/notes.txt", "ignore")
         bundle.writestr("bundle/unknown/asset.yaml", yaml.dump({"uuid": "ignored"}))
 
-    result = _extract_backup_uuids_by_type(buf.getvalue())
+    result = extract_backup_uuids_by_type(buf.getvalue())
     assert result == {
         "dashboard": {"dash-uuid"},
         "chart": {"chart-uuid"},
@@ -1551,7 +1553,7 @@ def test_verify_rollback_restoration_collects_unresolved_and_missing(
     Test rollback verification tracks unresolved and missing types.
     """
     mocker.patch(
-        "preset_cli.cli.superset.delete._extract_backup_uuids_by_type",
+        "preset_cli.cli.superset.dependency_utils.extract_backup_uuids_by_type",
         return_value={
             "dashboard": set(),
             "chart": {"chart-uuid"},
@@ -1560,7 +1562,7 @@ def test_verify_rollback_restoration_collects_unresolved_and_missing(
         },
     )
     mocker.patch(
-        "preset_cli.cli.superset.delete._resolve_ids",
+        "preset_cli.cli.superset.dependency_utils.resolve_ids",
         side_effect=[
             (set(), {}, [], False),
             ({1}, {1: "dataset"}, ["dataset-uuid"], True),
@@ -1602,8 +1604,82 @@ def test_extract_dependency_maps_handles_invalid_dashboard_nodes() -> None:
             ),
         )
 
-    _, _, _, _, _, chart_context = _extract_dependency_maps(buf)
+    _, _, _, _, _, chart_context = extract_dependency_maps(buf)
     assert chart_context == {"chart-uuid": {"Mixed"}}
+
+
+def test_extract_dependency_maps_full_dependency_graph() -> None:
+    """
+    Test dependency extraction returns all UUID sets and relationship maps.
+    """
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        bundle.writestr(
+            "bundle/charts/chart_a.yaml",
+            yaml.dump({"uuid": "chart-a", "dataset_uuid": "dataset-a"}),
+        )
+        bundle.writestr(
+            "bundle/charts/chart_b.yaml",
+            yaml.dump({"uuid": "chart-b", "dataset_uuid": "dataset-b"}),
+        )
+        bundle.writestr(
+            "bundle/datasets/dataset_a.yaml",
+            yaml.dump({"uuid": "dataset-a", "database_uuid": "db-a"}),
+        )
+        bundle.writestr(
+            "bundle/datasets/dataset_b.yaml",
+            yaml.dump({"uuid": "dataset-b", "database_uuid": "db-b"}),
+        )
+        bundle.writestr("bundle/databases/db_a.yaml", yaml.dump({"uuid": "db-a"}))
+        bundle.writestr("bundle/databases/db_b.yaml", yaml.dump({"uuid": "db-b"}))
+        bundle.writestr(
+            "bundle/dashboards/dash_one.yaml",
+            yaml.dump(
+                {
+                    "dashboard_title": "Sales",
+                    "position": {
+                        "CHART-1": {"type": "CHART", "meta": {"uuid": "chart-a"}},
+                        "CHART-2": {"type": "CHART", "meta": {"uuid": "chart-b"}},
+                    },
+                },
+            ),
+        )
+        bundle.writestr(
+            "bundle/dashboards/dash_two.yaml",
+            yaml.dump(
+                {
+                    "title": "Marketing",
+                    "position": {
+                        "CHART-1": {"type": "CHART", "meta": {"uuid": "chart-a"}},
+                    },
+                },
+            ),
+        )
+
+    (
+        chart_uuids,
+        dataset_uuids,
+        database_uuids,
+        chart_dataset_map,
+        dataset_database_map,
+        chart_context,
+    ) = extract_dependency_maps(buf)
+
+    assert chart_uuids == {"chart-a", "chart-b"}
+    assert dataset_uuids == {"dataset-a", "dataset-b"}
+    assert database_uuids == {"db-a", "db-b"}
+    assert chart_dataset_map == {
+        "chart-a": "dataset-a",
+        "chart-b": "dataset-b",
+    }
+    assert dataset_database_map == {
+        "dataset-a": "db-a",
+        "dataset-b": "db-b",
+    }
+    assert chart_context == {
+        "chart-a": {"Marketing", "Sales"},
+        "chart-b": {"Sales"},
+    }
 
 
 def test_parse_delete_command_options_normalizes_dry_run_false() -> None:
@@ -1701,7 +1777,7 @@ def test_build_uuid_map_fallback_and_missing_id_entries(mocker: MockerFixture) -
     ]
     client.get_uuids.return_value = {2: "fallback-uuid"}
 
-    uuid_map, name_map, resolved = _build_uuid_map(client, "chart")
+    uuid_map, name_map, resolved = build_uuid_map(client, "chart")
     assert resolved is True
     assert uuid_map == {"fallback-uuid": 2}
     assert name_map == {2: "resource-name"}
@@ -1709,13 +1785,13 @@ def test_build_uuid_map_fallback_and_missing_id_entries(mocker: MockerFixture) -
 
 def test_resolve_ids_unresolved_map(mocker: MockerFixture) -> None:
     """
-    Test ``_resolve_ids`` reports unresolved state when UUID mapping fails.
+    Test ``resolve_ids`` reports unresolved state when UUID mapping fails.
     """
     mocker.patch(
-        "preset_cli.cli.superset.delete._build_uuid_map",
+        "preset_cli.cli.superset.dependency_utils.build_uuid_map",
         return_value=({}, {}, False),
     )
-    ids, names, missing, resolved = _resolve_ids(
+    ids, names, missing, resolved = resolve_ids(
         mocker.MagicMock(),
         "chart",
         {"a"},
@@ -1757,7 +1833,7 @@ def test_validate_delete_option_combinations_rejects_non_dashboard_cascade() -> 
     """
     Test non-dashboard deletes reject cascade options.
     """
-    cascade = _DashboardCascadeOptions(
+    cascade = DashboardCascadeOptions(
         charts=True,
         datasets=False,
         databases=False,
@@ -1898,7 +1974,7 @@ def test_compute_shared_uuids_propagates_dataset_and_database() -> None:
     """
     Test shared chart dependencies propagate dataset/database protection.
     """
-    dependencies = _CascadeDependencies(
+    dependencies = CascadeDependencies(
         chart_uuids={"chart-1"},
         dataset_uuids={"dataset-1"},
         database_uuids={"db-1"},
@@ -1906,7 +1982,7 @@ def test_compute_shared_uuids_propagates_dataset_and_database() -> None:
         dataset_database_map={"dataset-1": "db-1", "dataset-2": "db-2"},
         chart_dashboard_titles_by_uuid={},
     )
-    shared = _compute_shared_uuids(
+    shared = compute_shared_uuids(
         dependencies,
         {"charts": {"chart-1"}, "datasets": set(), "databases": set()},
     )
@@ -1921,7 +1997,7 @@ def test_resolve_chart_targets_skips_unknown_and_non_target_context(
     """
     Test chart context mapping ignores unknown or non-target chart UUIDs.
     """
-    dependencies = _CascadeDependencies(
+    dependencies = CascadeDependencies(
         chart_uuids={"chart-a"},
         dataset_uuids=set(),
         database_uuids=set(),
@@ -1934,7 +2010,7 @@ def test_resolve_chart_targets_skips_unknown_and_non_target_context(
         },
     )
     mocker.patch(
-        "preset_cli.cli.superset.delete._build_uuid_map",
+        "preset_cli.cli.superset.dependency_utils.build_uuid_map",
         return_value=(
             {"chart-a": 1, "chart-b": 2},
             {1: "A", 2: "B"},
@@ -1982,7 +2058,7 @@ def test_expected_dashboard_rollback_types_full_cascade() -> None:
     """
     Test rollback type set includes all cascade levels when enabled.
     """
-    cascade = _DashboardCascadeOptions(
+    cascade = DashboardCascadeOptions(
         charts=True,
         datasets=True,
         databases=True,
@@ -2002,7 +2078,7 @@ def test_rollback_dashboard_deletion_import_failure(mocker: MockerFixture) -> No
     """
     client = mocker.MagicMock()
     client.import_zip.side_effect = Exception("boom")
-    cascade = _DashboardCascadeOptions(
+    cascade = DashboardCascadeOptions(
         charts=True,
         datasets=False,
         databases=False,
@@ -2024,7 +2100,7 @@ def test_rollback_dashboard_deletion_warns_unresolved(
         "preset_cli.cli.superset.delete._verify_rollback_restoration",
         return_value=(["dataset"], []),
     )
-    cascade = _DashboardCascadeOptions(
+    cascade = DashboardCascadeOptions(
         charts=True,
         datasets=True,
         databases=True,
@@ -2047,7 +2123,7 @@ def test_rollback_dashboard_deletion_raises_on_missing_types(
         "preset_cli.cli.superset.delete._verify_rollback_restoration",
         return_value=([], ["database"]),
     )
-    cascade = _DashboardCascadeOptions(
+    cascade = DashboardCascadeOptions(
         charts=True,
         datasets=True,
         databases=True,
@@ -2088,7 +2164,7 @@ def test_extract_dependency_maps_covers_optional_uuid_paths() -> None:
             ),
         )
 
-    chart_uuids, dataset_uuids, database_uuids, *_ = _extract_dependency_maps(buf)
+    chart_uuids, dataset_uuids, database_uuids, *_ = extract_dependency_maps(buf)
     assert "chart-no-dataset" in chart_uuids
     assert "dataset-no-database" in dataset_uuids
     assert database_uuids == set()
@@ -2117,7 +2193,7 @@ def test_build_uuid_map_unresolved_when_no_ids(mocker: MockerFixture) -> None:
     """
     client = mocker.MagicMock()
     client.get_resources.return_value = [{"uuid": "only-uuid"}]
-    uuid_map, name_map, resolved = _build_uuid_map(client, "chart")
+    uuid_map, name_map, resolved = build_uuid_map(client, "chart")
     assert uuid_map == {}
     assert name_map == {}
     assert resolved is False
@@ -2159,7 +2235,7 @@ def test_compute_shared_uuids_shared_chart_without_dataset_mapping() -> None:
     """
     Test shared chart UUIDs without dataset mappings do not add extra dependencies.
     """
-    dependencies = _CascadeDependencies(
+    dependencies = CascadeDependencies(
         chart_uuids={"chart-1"},
         dataset_uuids=set(),
         database_uuids=set(),
@@ -2167,7 +2243,7 @@ def test_compute_shared_uuids_shared_chart_without_dataset_mapping() -> None:
         dataset_database_map={},
         chart_dashboard_titles_by_uuid={},
     )
-    shared = _compute_shared_uuids(
+    shared = compute_shared_uuids(
         dependencies,
         {"charts": {"chart-1"}, "datasets": set(), "databases": set()},
     )

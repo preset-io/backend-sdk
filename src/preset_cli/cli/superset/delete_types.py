@@ -19,7 +19,7 @@ class _NonDashboardDeleteOptions:
 
 
 @dataclass(frozen=True)
-class _DashboardCascadeOptions:
+class DashboardCascadeOptions:
     """Cascade flags for dashboard delete operations."""
 
     charts: bool
@@ -47,7 +47,7 @@ class _DashboardSelection:
 
 
 @dataclass
-class _CascadeDependencies:
+class CascadeDependencies:
     """UUID-level dependency graph extracted from dashboard exports."""
 
     chart_uuids: Set[str]
@@ -86,7 +86,7 @@ class _DeleteAssetsCommandOptions:
 
     asset_type: str
     filters: Tuple[str, ...]
-    cascade_options: _DashboardCascadeOptions
+    cascade_options: DashboardCascadeOptions
     execution_options: _DashboardExecutionOptions
     db_password: Tuple[str, ...]
 

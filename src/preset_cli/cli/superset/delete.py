@@ -20,10 +20,11 @@ from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.api.operators import In
+from preset_cli.cli.superset import dependency_utils as dep_utils
 from preset_cli.cli.superset.delete_types import (
-    _CascadeDependencies,
+    CascadeDependencies,
     _CascadeResolution,
-    _DashboardCascadeOptions,
+    DashboardCascadeOptions,
     _DashboardDeletePlan,
     _DashboardExecutionOptions,
     _DashboardSelection,
@@ -45,7 +46,7 @@ from preset_cli.lib import remove_root
 
 def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
     """Extract UUID sets from a dashboard export ZIP."""
-    chart_uuids, dataset_uuids, database_uuids, _, _, _ = _extract_dependency_maps(
+    chart_uuids, dataset_uuids, database_uuids, _, _, _ = dep_utils.extract_dependency_maps(
         buf,
     )
     return {
@@ -53,38 +54,6 @@ def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
         "datasets": dataset_uuids,
         "databases": database_uuids,
     }
-
-
-def _extract_backup_uuids_by_type(backup_data: bytes) -> Dict[str, Set[str]]:
-    uuids: Dict[str, Set[str]] = {
-        "dashboard": set(),
-        "chart": set(),
-        "dataset": set(),
-        "database": set(),
-    }
-
-    with ZipFile(BytesIO(backup_data)) as bundle:
-        for file_name in bundle.namelist():
-            relative = remove_root(file_name)
-            if not relative.endswith((".yaml", ".yml")):
-                continue
-
-            if relative.startswith("dashboards/"):
-                resource_name = "dashboard"
-            elif relative.startswith("charts/"):
-                resource_name = "chart"
-            elif relative.startswith("datasets/"):
-                resource_name = "dataset"
-            elif relative.startswith("databases/"):
-                resource_name = "database"
-            else:
-                continue
-
-            config = yaml.load(bundle.read(file_name), Loader=yaml.SafeLoader) or {}
-            if uuid := config.get("uuid"):
-                uuids[resource_name].add(str(uuid))
-
-    return uuids
 
 
 def _verify_rollback_restoration(
@@ -99,7 +68,7 @@ def _verify_rollback_restoration(
       - list of unresolved resource types (cannot verify on this Superset version)
       - list of resource types with missing UUIDs
     """
-    backup_uuids = _extract_backup_uuids_by_type(backup_data)
+    backup_uuids = dep_utils.extract_backup_uuids_by_type(backup_data)
     unresolved: List[str] = []
     missing_types: List[str] = []
 
@@ -108,7 +77,7 @@ def _verify_rollback_restoration(
         if not expected_uuids:
             continue
 
-        _, _, missing_uuids, resolved = _resolve_ids(
+        _, _, missing_uuids, resolved = dep_utils.resolve_ids(
             client,
             resource_name,
             expected_uuids,
@@ -120,75 +89,6 @@ def _verify_rollback_restoration(
             missing_types.append(resource_name)
 
     return unresolved, missing_types
-
-
-def _extract_dependency_maps(  # pylint: disable=too-many-locals, too-many-branches
-    buf: BytesIO,
-) -> Tuple[
-    Set[str],
-    Set[str],
-    Set[str],
-    Dict[str, str],
-    Dict[str, str],
-    Dict[str, Set[str]],
-]:
-    chart_uuids: Set[str] = set()
-    dataset_uuids: Set[str] = set()
-    database_uuids: Set[str] = set()
-    chart_dataset_map: Dict[str, str] = {}
-    dataset_database_map: Dict[str, str] = {}
-    chart_dashboard_titles: Dict[str, Set[str]] = {}
-
-    with ZipFile(buf) as bundle:
-        for file_name in bundle.namelist():
-            relative = remove_root(file_name)
-            if not relative.endswith((".yaml", ".yml")):
-                continue
-            config = yaml.load(bundle.read(file_name), Loader=yaml.SafeLoader) or {}
-            if relative.startswith("charts/"):
-                if uuid := config.get("uuid"):
-                    chart_uuids.add(uuid)
-                    if dataset_uuid := config.get("dataset_uuid"):
-                        chart_dataset_map[uuid] = dataset_uuid
-                        dataset_uuids.add(dataset_uuid)
-            elif relative.startswith("datasets/"):
-                if uuid := config.get("uuid"):
-                    dataset_uuids.add(uuid)
-                    if database_uuid := config.get("database_uuid"):
-                        dataset_database_map[uuid] = database_uuid
-                        database_uuids.add(database_uuid)
-            elif relative.startswith("databases/"):
-                if uuid := config.get("uuid"):
-                    database_uuids.add(uuid)
-            elif relative.startswith("dashboards/"):
-                dashboard_title = (
-                    config.get("dashboard_title") or config.get("title") or "Unknown"
-                )
-                position = config.get("position")
-                if not isinstance(position, dict):
-                    continue
-                for node in position.values():
-                    if not isinstance(node, dict):
-                        continue
-                    if node.get("type") != "CHART":
-                        continue
-                    meta = node.get("meta")
-                    if not isinstance(meta, dict):
-                        continue
-                    chart_uuid = meta.get("uuid")
-                    if chart_uuid:
-                        chart_dashboard_titles.setdefault(str(chart_uuid), set()).add(
-                            str(dashboard_title),
-                        )
-
-    return (
-        chart_uuids,
-        dataset_uuids,
-        database_uuids,
-        chart_dataset_map,
-        dataset_database_map,
-        chart_dashboard_titles,
-    )
 
 
 def _parse_db_passwords(db_password: Tuple[str, ...]) -> Dict[str, str]:
@@ -268,59 +168,6 @@ def _dataset_db_id(dataset: Dict[str, Any]) -> int | None:
     return None
 
 
-def _build_uuid_map(
-    client: SupersetClient,
-    resource_name: str,
-) -> Tuple[Dict[str, int], Dict[int, str], bool]:
-    resources = client.get_resources(resource_name)
-    name_keys = RESOURCE_NAME_KEYS.get(resource_name, ("name",))
-    name_map: Dict[int, str] = {}
-    for resource in resources:
-        if "id" not in resource:
-            continue
-        name = next(
-            (resource.get(k) for k in name_keys if resource.get(k)),
-            None,
-        )
-        if name:
-            name_map[resource["id"]] = name
-
-    uuid_map = {
-        resource["uuid"]: resource["id"]
-        for resource in resources
-        if "uuid" in resource and "id" in resource
-    }
-    if uuid_map:
-        return uuid_map, name_map, True
-
-    ids = {resource["id"] for resource in resources if "id" in resource}
-    if ids:
-        uuid_map = {
-            str(uuid): id_ for id_, uuid in client.get_uuids(resource_name, ids).items()
-        }
-        if uuid_map:
-            return uuid_map, name_map, True
-
-    return {}, name_map, False
-
-
-def _resolve_ids(
-    client: SupersetClient,
-    resource_name: str,
-    uuids: Set[str],
-) -> Tuple[Set[int], Dict[int, str], List[str], bool]:
-    if not uuids:
-        return set(), {}, [], True
-
-    uuid_map, name_map, resolved = _build_uuid_map(client, resource_name)
-    if not resolved:
-        return set(), {}, list(uuids), False
-
-    ids = {uuid_map[uuid] for uuid in uuids if uuid in uuid_map}
-    missing = [uuid for uuid in uuids if uuid not in uuid_map]
-    return ids, name_map, missing, True
-
-
 def _format_dashboard_summary(dashboards: Iterable[Dict[str, Any]]) -> List[str]:
     lines = []
     for dashboard in dashboards:
@@ -330,19 +177,12 @@ def _format_dashboard_summary(dashboards: Iterable[Dict[str, Any]]) -> List[str]
     return lines
 
 
-RESOURCE_NAME_KEYS = {
-    "chart": ("slice_name", "name"),
-    "dataset": ("table_name", "name"),
-    "database": ("database_name", "name"),
-}
-
-
 def _format_resource_summary(
     resource_name: str,
     resources: Iterable[Dict[str, Any]],
 ) -> List[str]:
     lines = []
-    keys = RESOURCE_NAME_KEYS.get(resource_name, ("name",))
+    keys = dep_utils.RESOURCE_NAME_KEYS.get(resource_name, ("name",))
     for resource in resources:
         label = next(
             (resource.get(key) for key in keys if resource.get(key)),
@@ -562,7 +402,7 @@ def delete_assets(
 def _parse_delete_command_options(
     raw_options: _DeleteAssetsRawOptions,
 ) -> _DeleteAssetsCommandOptions:
-    cascade_options = _DashboardCascadeOptions(
+    cascade_options = DashboardCascadeOptions(
         charts=raw_options["cascade_charts"],
         datasets=raw_options["cascade_datasets"],
         databases=raw_options["cascade_databases"],
@@ -638,7 +478,7 @@ def _normalize_dry_run(raw_dry_run: bool | str | None) -> bool:
 
 def _validate_delete_option_combinations(
     resource_name: str,
-    cascade_options: _DashboardCascadeOptions,
+    cascade_options: DashboardCascadeOptions,
 ) -> None:
     if resource_name != "dashboard" and any(
         [
@@ -847,9 +687,9 @@ def _fetch_dashboard_selection(
 def _load_cascade_dependencies(
     client: SupersetClient,
     selection: _DashboardSelection,
-    cascade_options: _DashboardCascadeOptions,
-) -> _CascadeDependencies:
-    dependencies = _CascadeDependencies(
+    cascade_options: DashboardCascadeOptions,
+) -> CascadeDependencies:
+    dependencies = CascadeDependencies(
         chart_uuids=set(),
         dataset_uuids=set(),
         database_uuids=set(),
@@ -870,7 +710,7 @@ def _load_cascade_dependencies(
             dependencies.chart_dataset_map,
             dependencies.dataset_database_map,
             dependencies.chart_dashboard_titles_by_uuid,
-        ) = _extract_dependency_maps(selection.cascade_buf)
+        ) = dep_utils.extract_dependency_maps(selection.cascade_buf)
 
         if not cascade_options.datasets:
             dependencies.dataset_uuids = set()
@@ -884,8 +724,8 @@ def _load_cascade_dependencies(
 def _protect_shared_dependencies(
     client: SupersetClient,
     selection: _DashboardSelection,
-    dependencies: _CascadeDependencies,
-    cascade_options: _DashboardCascadeOptions,
+    dependencies: CascadeDependencies,
+    cascade_options: DashboardCascadeOptions,
 ) -> Dict[str, Set[str]]:
     shared_uuids = _empty_shared_uuids()
     if not cascade_options.charts:
@@ -902,7 +742,7 @@ def _protect_shared_dependencies(
 
     other_buf = client.export_zip("dashboard", list(other_ids))
     protected = _extract_uuids_from_export(other_buf)
-    shared_uuids = _compute_shared_uuids(dependencies, protected)
+    shared_uuids = dep_utils.compute_shared_uuids(dependencies, protected)
     _remove_shared_dependencies(dependencies, shared_uuids)
     return shared_uuids
 
@@ -923,33 +763,8 @@ def _find_other_dashboard_ids(
     return {dashboard["id"] for dashboard in all_dashboards} - dashboard_ids
 
 
-def _compute_shared_uuids(
-    dependencies: _CascadeDependencies,
-    protected: Dict[str, Set[str]],
-) -> Dict[str, Set[str]]:
-    shared_charts = dependencies.chart_uuids & protected["charts"]
-    protected_datasets = dependencies.dataset_uuids & protected["datasets"]
-    protected_databases = dependencies.database_uuids & protected["databases"]
-
-    for chart_uuid in shared_charts:
-        if dataset_uuid := dependencies.chart_dataset_map.get(chart_uuid):
-            protected_datasets.add(dataset_uuid)
-            if database_uuid := dependencies.dataset_database_map.get(dataset_uuid):
-                protected_databases.add(database_uuid)
-
-    for dataset_uuid in protected_datasets:
-        if database_uuid := dependencies.dataset_database_map.get(dataset_uuid):
-            protected_databases.add(database_uuid)
-
-    return {
-        "charts": shared_charts,
-        "datasets": protected_datasets,
-        "databases": protected_databases,
-    }
-
-
 def _remove_shared_dependencies(
-    dependencies: _CascadeDependencies,
+    dependencies: CascadeDependencies,
     shared_uuids: Dict[str, Set[str]],
 ) -> None:
     dependencies.chart_uuids -= shared_uuids["charts"]
@@ -964,8 +779,8 @@ def _remove_shared_dependencies(
 
 def _resolve_cascade_targets(
     client: SupersetClient,
-    dependencies: _CascadeDependencies,
-    cascade_options: _DashboardCascadeOptions,
+    dependencies: CascadeDependencies,
+    cascade_options: DashboardCascadeOptions,
 ) -> _CascadeResolution:
     ids: Dict[str, Set[int]] = {
         "charts": set(),
@@ -994,12 +809,12 @@ def _resolve_cascade_targets(
         missing_chart_uuids,
         charts_resolved,
     ) = _resolve_chart_targets(client, dependencies)
-    dataset_result = _resolve_ids(
+    dataset_result = dep_utils.resolve_ids(
         client,
         "dataset",
         dependencies.dataset_uuids,
     )
-    database_result = _resolve_ids(
+    database_result = dep_utils.resolve_ids(
         client,
         "database",
         dependencies.database_uuids,
@@ -1037,10 +852,13 @@ def _resolve_cascade_targets(
 
 def _resolve_chart_targets(
     client: SupersetClient,
-    dependencies: _CascadeDependencies,
+    dependencies: CascadeDependencies,
 ) -> Tuple[Set[int], Dict[int, str], Dict[int, List[str]], List[str], bool]:
     chart_dashboard_context: Dict[int, List[str]] = {}
-    chart_uuid_map, chart_names, charts_resolved = _build_uuid_map(client, "chart")
+    chart_uuid_map, chart_names, charts_resolved = dep_utils.build_uuid_map(
+        client,
+        "chart",
+    )
     if not charts_resolved:
         return (
             set(),
@@ -1181,7 +999,7 @@ def _read_dashboard_backup_data(
 
 
 def _expected_dashboard_rollback_types(
-    cascade_options: _DashboardCascadeOptions,
+    cascade_options: DashboardCascadeOptions,
 ) -> Set[str]:
     expected_types = {"dashboard"}
     if cascade_options.charts:
@@ -1197,7 +1015,7 @@ def _rollback_dashboard_deletion(
     client: SupersetClient,
     backup_data: bytes,
     db_passwords: Dict[str, str],
-    cascade_options: _DashboardCascadeOptions,
+    cascade_options: DashboardCascadeOptions,
 ) -> None:
     try:
         rollback_buf = _apply_db_passwords_to_backup(
@@ -1233,7 +1051,7 @@ def _rollback_dashboard_deletion(
 def _prepare_dashboard_delete_plan(
     client: SupersetClient,
     parsed_filters: Dict[str, Any],
-    cascade_options: _DashboardCascadeOptions,
+    cascade_options: DashboardCascadeOptions,
 ) -> _DashboardDeletePlan | None:
     selection = _fetch_dashboard_selection(client, parsed_filters)
     if selection is None:
@@ -1258,7 +1076,7 @@ def _prepare_dashboard_delete_plan(
 def _validate_dashboard_delete_execution(
     client: SupersetClient,
     plan: _DashboardDeletePlan,
-    cascade_options: _DashboardCascadeOptions,
+    cascade_options: DashboardCascadeOptions,
     execution_options: _DashboardExecutionOptions,
     db_passwords: Dict[str, str],
 ) -> bool:
@@ -1291,7 +1109,7 @@ def _validate_dashboard_delete_execution(
 def _execute_dashboard_delete_plan(
     client: SupersetClient,
     plan: _DashboardDeletePlan,
-    cascade_options: _DashboardCascadeOptions,
+    cascade_options: DashboardCascadeOptions,
     execution_options: _DashboardExecutionOptions,
     db_passwords: Dict[str, str],
 ) -> None:
@@ -1359,7 +1177,7 @@ def _execute_dashboard_delete_plan(
 def _delete_dashboard_assets(
     client: SupersetClient,
     parsed_filters: Dict[str, Any],
-    cascade_options: _DashboardCascadeOptions,
+    cascade_options: DashboardCascadeOptions,
     execution_options: _DashboardExecutionOptions,
     db_passwords: Dict[str, str],
 ) -> None:
