@@ -30,17 +30,19 @@ from preset_cli.cli.superset.asset_utils import (
     RESOURCE_DATASET,
     RESOURCE_DATASETS,
 )
-from preset_cli.cli.superset.delete import (
+from preset_cli.cli.superset.delete_cascade import (
     _dataset_db_id,
-    _delete_non_dashboard_assets,
-    _execute_dashboard_delete_plan,
     _fetch_preflight_datasets,
     _filter_datasets_for_database_ids,
-    _parse_delete_command_options,
     _resolve_chart_targets,
+    _warn_missing_uuids,
+)
+from preset_cli.cli.superset.delete import (
+    _delete_non_dashboard_assets,
+    _execute_dashboard_delete_plan,
+    _parse_delete_command_options,
     _resolve_rollback_settings,
     _validate_delete_option_combinations,
-    _warn_missing_uuids,
 )
 from preset_cli.cli.superset.delete_display import (
     _echo_cascade_section,
@@ -2117,7 +2119,7 @@ def test_fetch_preflight_datasets_raises_on_unexpected_error(
     client = mocker.MagicMock()
     client.get_resources.side_effect = RuntimeError("boom")
     mocker.patch(
-        "preset_cli.cli.superset.delete.is_filter_not_allowed_error",
+        "preset_cli.cli.superset.delete_cascade.is_filter_not_allowed_error",
         return_value=False,
     )
     with pytest.raises(Exception, match="Failed to preflight datasets"):
