@@ -585,12 +585,30 @@ def _rollback_non_dashboard_deletion(
     backup_data: bytes,
     db_passwords: Dict[str, str],
 ) -> None:
+    _rollback_deletion(
+        client=client,
+        backup_data=backup_data,
+        import_resource_name=resource_name,
+        db_passwords=(
+            db_passwords if resource_name == RESOURCE_DATABASE else {}
+        ),
+        expected_types={resource_name},
+    )
+
+
+def _rollback_deletion(
+    client: SupersetClient,
+    backup_data: bytes,
+    import_resource_name: str,
+    db_passwords: Dict[str, str],
+    expected_types: Set[str],
+) -> None:
     try:
         rollback_buf = _apply_db_passwords_to_backup(
             backup_data,
-            db_passwords if resource_name == RESOURCE_DATABASE else {},
+            db_passwords,
         )
-        client.import_zip(resource_name, rollback_buf, overwrite=True)
+        client.import_zip(import_resource_name, rollback_buf, overwrite=True)
     except Exception as exc:  # pylint: disable=broad-except
         click.echo(f"Rollback failed: {exc}")
         raise click.ClickException(
@@ -600,7 +618,7 @@ def _rollback_non_dashboard_deletion(
     unresolved, missing_types = _verify_rollback_restoration(
         client,
         backup_data,
-        {resource_name},
+        expected_types,
     )
     if unresolved:
         labels = ", ".join(unresolved)
@@ -1028,35 +1046,13 @@ def _rollback_dashboard_deletion(
     db_passwords: Dict[str, str],
     cascade_options: DashboardCascadeOptions,
 ) -> None:
-    try:
-        rollback_buf = _apply_db_passwords_to_backup(
-            backup_data,
-            db_passwords,
-        )
-        client.import_zip(RESOURCE_DASHBOARD, rollback_buf, overwrite=True)
-    except Exception as exc:  # pylint: disable=broad-except
-        click.echo(f"Rollback failed: {exc}")
-        raise click.ClickException(
-            "Rollback failed. A backup zip is available for manual restore.",
-        ) from exc
-
-    unresolved, missing_types = _verify_rollback_restoration(
-        client,
-        backup_data,
-        _expected_dashboard_rollback_types(cascade_options),
+    _rollback_deletion(
+        client=client,
+        backup_data=backup_data,
+        import_resource_name=RESOURCE_DASHBOARD,
+        db_passwords=db_passwords,
+        expected_types=_expected_dashboard_rollback_types(cascade_options),
     )
-    if unresolved:
-        labels = ", ".join(unresolved)
-        click.echo(
-            f"Warning: unable to verify rollback for: {labels}.",
-        )
-    if missing_types:
-        labels = ", ".join(missing_types)
-        raise click.ClickException(
-            f"Rollback verification failed for: {labels}. "
-            "A backup zip is available for manual restore.",
-        )
-    click.echo("Rollback succeeded.")
 
 
 def _prepare_dashboard_delete_plan(
