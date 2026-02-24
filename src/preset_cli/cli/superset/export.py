@@ -14,7 +14,17 @@ import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
-from preset_cli.cli.superset.asset_utils import classify_asset_path
+from preset_cli.cli.superset.asset_utils import (
+    RESOURCE_CHART,
+    RESOURCE_CHARTS,
+    RESOURCE_DATABASE,
+    RESOURCE_DATABASES,
+    RESOURCE_DASHBOARD,
+    RESOURCE_DASHBOARDS,
+    RESOURCE_DATASET,
+    RESOURCE_DATASETS,
+    classify_asset_path,
+)
 from preset_cli.lib import remove_root, split_comma
 
 JINJA2_OPEN_MARKER = "__JINJA2_OPEN__"
@@ -51,10 +61,10 @@ def build_local_uuid_mapping(root: Path) -> Dict[str, Dict[str, Path]]:
     target directory.
     """
     uuid_mapping: Dict[str, Dict[str, Path]] = {
-        "dashboards": {},
-        "charts": {},
-        "datasets": {},
-        "databases": {},
+        RESOURCE_DASHBOARDS: {},
+        RESOURCE_CHARTS: {},
+        RESOURCE_DATASETS: {},
+        RESOURCE_DATABASES: {},
     }
 
     for resource_type, resource_map in uuid_mapping.items():
@@ -63,7 +73,7 @@ def build_local_uuid_mapping(root: Path) -> Dict[str, Dict[str, Path]]:
             continue
 
         # For datasets, we need to handle subdirectories (database connections)
-        if resource_type == "datasets":
+        if resource_type == RESOURCE_DATASETS:
             for db_dir in resource_dir.iterdir():
                 for yaml_file in db_dir.glob("*.yaml"):
                     uuid = extract_uuid_from_asset(file_path=yaml_file)
@@ -187,14 +197,19 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     root = Path(directory)
     asset_types = set(asset_type)
     ids = {
-        "database": {int(id_) for id_ in database_ids},
-        "dataset": {int(id_) for id_ in dataset_ids},
-        "chart": {int(id_) for id_ in chart_ids},
-        "dashboard": {int(id_) for id_ in dashboard_ids},
+        RESOURCE_DATABASE: {int(id_) for id_ in database_ids},
+        RESOURCE_DATASET: {int(id_) for id_ in dataset_ids},
+        RESOURCE_CHART: {int(id_) for id_ in chart_ids},
+        RESOURCE_DASHBOARD: {int(id_) for id_ in dashboard_ids},
     }
     ids_requested = any([database_ids, dataset_ids, chart_ids, dashboard_ids])
 
-    for resource_name in ["database", "dataset", "chart", "dashboard"]:
+    for resource_name in [
+        RESOURCE_DATABASE,
+        RESOURCE_DATASET,
+        RESOURCE_CHART,
+        RESOURCE_DASHBOARD,
+    ]:
         if (not asset_types or resource_name in asset_types) and (
             ids[resource_name] or not ids_requested
         ):
@@ -502,14 +517,14 @@ def export_ownership(  # pylint: disable=too-many-locals, too-many-arguments
 
     asset_types = set(asset_type)
     ids = {
-        "dataset": {int(id_) for id_ in dataset_ids},
-        "chart": {int(id_) for id_ in chart_ids},
-        "dashboard": {int(id_) for id_ in dashboard_ids},
+        RESOURCE_DATASET: {int(id_) for id_ in dataset_ids},
+        RESOURCE_CHART: {int(id_) for id_ in chart_ids},
+        RESOURCE_DASHBOARD: {int(id_) for id_ in dashboard_ids},
     }
     ids_requested = any([dataset_ids, chart_ids, dashboard_ids])
 
     ownership = defaultdict(list)
-    for resource_name in ["dataset", "chart", "dashboard"]:
+    for resource_name in [RESOURCE_DATASET, RESOURCE_CHART, RESOURCE_DASHBOARD]:
         if (not asset_types or resource_name in asset_types) and (
             ids[resource_name] or not ids_requested
         ):
