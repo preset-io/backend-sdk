@@ -1129,39 +1129,26 @@ def _execute_dashboard_delete_plan(
     _echo_backup_restore_details(backup_path, RESOURCE_DASHBOARD)
 
     failures: List[str] = []
-    deleted_any = _delete_resources(
-        client,
-        RESOURCE_CHART,
-        resolution.ids[RESOURCE_CHARTS],
-        failures,
-    )
-    deleted_any = (
-        _delete_resources(
-            client,
-            RESOURCE_DATASET,
-            resolution.ids[RESOURCE_DATASETS],
-            failures,
+    deleted_any = False
+    stages = [
+        (RESOURCE_CHART, resolution.ids[RESOURCE_CHARTS]),
+        (RESOURCE_DATASET, resolution.ids[RESOURCE_DATASETS]),
+        (RESOURCE_DATABASE, resolution.ids[RESOURCE_DATABASES]),
+        (RESOURCE_DASHBOARD, selection.dashboard_ids),
+    ]
+    for resource_name, resource_ids in stages:
+        failure_count_before_stage = len(failures)
+        deleted_any = (
+            _delete_resources(
+                client,
+                resource_name,
+                resource_ids,
+                failures,
+            )
+            or deleted_any
         )
-        or deleted_any
-    )
-    deleted_any = (
-        _delete_resources(
-            client,
-            RESOURCE_DATABASE,
-            resolution.ids[RESOURCE_DATABASES],
-            failures,
-        )
-        or deleted_any
-    )
-    deleted_any = (
-        _delete_resources(
-            client,
-            RESOURCE_DASHBOARD,
-            selection.dashboard_ids,
-            failures,
-        )
-        or deleted_any
-    )
+        if len(failures) > failure_count_before_stage:
+            break
 
     if failures:
         click.echo("Some deletions failed:")
