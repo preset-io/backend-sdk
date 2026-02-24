@@ -11,7 +11,7 @@ import tempfile
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Set, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple, cast
 from zipfile import ZipFile
 
 import click
@@ -28,6 +28,7 @@ from preset_cli.cli.superset.delete_types import (
     _DashboardExecutionOptions,
     _DashboardSelection,
     _DeleteAssetsCommandOptions,
+    _DeleteAssetsRawOptions,
     _DeleteSummaryData,
     _NonDashboardDeleteOptions,
 )
@@ -552,12 +553,14 @@ def delete_assets(
     """
     Delete assets by filters.
     """
-    command_options = _parse_delete_command_options(raw_options)
+    command_options = _parse_delete_command_options(
+        cast(_DeleteAssetsRawOptions, raw_options),
+    )
     _run_delete_assets(ctx, command_options)
 
 
 def _parse_delete_command_options(
-    raw_options: Dict[str, Any],
+    raw_options: _DeleteAssetsRawOptions,
 ) -> _DeleteAssetsCommandOptions:
     cascade_options = _DashboardCascadeOptions(
         charts=raw_options["cascade_charts"],
@@ -566,7 +569,7 @@ def _parse_delete_command_options(
         skip_shared_check=raw_options["skip_shared_check"],
     )
     execution_options = _DashboardExecutionOptions(
-        dry_run=raw_options["dry_run"],
+        dry_run=_normalize_dry_run(raw_options["dry_run"]),
         confirm=raw_options["confirm"],
         rollback=raw_options["rollback"],
     )
@@ -586,7 +589,7 @@ def _run_delete_assets(
     cascade_options = command_options.cascade_options
     execution_options = command_options.execution_options
     resource_name = command_options.asset_type.lower()
-    dry_run = _normalize_dry_run(execution_options.dry_run)
+    dry_run = execution_options.dry_run
     _validate_delete_option_combinations(resource_name, cascade_options)
     db_passwords, rollback = _resolve_rollback_settings(
         resource_name,

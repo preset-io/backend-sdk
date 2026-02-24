@@ -4,7 +4,7 @@ Internal data models for the delete-assets command.
 
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple, TypedDict
 
 
 @dataclass(frozen=True)
@@ -88,6 +88,19 @@ class _DeleteAssetsCommandOptions:
     filters: Tuple[str, ...]
     cascade_options: _DashboardCascadeOptions
     execution_options: _DashboardExecutionOptions
+    db_password: Tuple[str, ...]
+
+
+class _DeleteAssetsRawOptions(TypedDict):
+    asset_type: str
+    filters: Tuple[str, ...]
+    cascade_charts: bool
+    cascade_datasets: bool
+    cascade_databases: bool
+    dry_run: bool | str | None
+    skip_shared_check: bool
+    confirm: str | None
+    rollback: bool
     db_password: Tuple[str, ...]
 
 
