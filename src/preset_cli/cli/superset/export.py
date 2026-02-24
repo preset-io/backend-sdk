@@ -27,6 +27,17 @@ import yaml
 from yarl import URL
 
 from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.cli.superset.asset_utils import (
+    RESOURCE_CHART,
+    RESOURCE_CHARTS,
+    RESOURCE_DATABASE,
+    RESOURCE_DATABASES,
+    RESOURCE_DASHBOARD,
+    RESOURCE_DASHBOARDS,
+    RESOURCE_DATASET,
+    RESOURCE_DATASETS,
+    classify_asset_path,
+)
 from preset_cli.cli.superset.lib import (
     DASHBOARD_FILTER_KEYS,
     fetch_with_filter_fallback,
@@ -269,13 +280,13 @@ def restructure_per_asset_folder(root: Path) -> None:
     """
     Reorganize flat export into per-dashboard subfolders.
     """
-    dashboards_dir = root / "dashboards"
+    dashboards_dir = root / RESOURCE_DASHBOARDS
     if not dashboards_dir.exists():
         return
 
-    charts_dir = root / "charts"
-    datasets_dir = root / "datasets"
-    databases_dir = root / "databases"
+    charts_dir = root / RESOURCE_CHARTS
+    datasets_dir = root / RESOURCE_DATASETS
+    databases_dir = root / RESOURCE_DATABASES
     chart_map = _build_resource_uuid_map(charts_dir, "*.yaml")
     dataset_map = _build_resource_uuid_map(datasets_dir, "**/*.yaml")
     database_map = _build_resource_uuid_map(databases_dir, "*.yaml")
@@ -293,7 +304,12 @@ def restructure_per_asset_folder(root: Path) -> None:
         _cleanup_resource_directory(resource_dir)
 
 
-RESOURCE_NAMES = ("database", "dataset", "chart", "dashboard")
+RESOURCE_NAMES = (
+    RESOURCE_DATABASE,
+    RESOURCE_DATASET,
+    RESOURCE_CHART,
+    RESOURCE_DASHBOARD,
+)
 
 
 def _validate_export_destination_args(
@@ -317,10 +333,10 @@ def _build_requested_ids(
     dashboard_ids: List[str],
 ) -> Tuple[Dict[str, Set[int]], bool]:
     ids = {
-        "database": {int(id_) for id_ in database_ids},
-        "dataset": {int(id_) for id_ in dataset_ids},
-        "chart": {int(id_) for id_ in chart_ids},
-        "dashboard": {int(id_) for id_ in dashboard_ids},
+        RESOURCE_DATABASE: {int(id_) for id_ in database_ids},
+        RESOURCE_DATASET: {int(id_) for id_ in dataset_ids},
+        RESOURCE_CHART: {int(id_) for id_ in chart_ids},
+        RESOURCE_DASHBOARD: {int(id_) for id_ in dashboard_ids},
     }
     ids_requested = any([database_ids, dataset_ids, chart_ids, dashboard_ids])
     return ids, ids_requested
@@ -352,7 +368,7 @@ def _apply_dashboard_filters(
 ) -> Optional[_DashboardFilterResult]:
     if not filters:
         return None
-    if asset_types and asset_types != {"dashboard"}:
+    if asset_types and asset_types != {RESOURCE_DASHBOARD}:
         raise click.UsageError(
             "Filters are only supported for dashboard assets.",
         )
@@ -361,11 +377,11 @@ def _apply_dashboard_filters(
         client.get_dashboards,
         client.get_dashboards,
         parsed_filters,
-        "dashboards",
+        RESOURCE_DASHBOARDS,
     )
     return _DashboardFilterResult(
         dashboard_ids={dashboard["id"] for dashboard in dashboards},
-        asset_types={"dashboard"},
+        asset_types={RESOURCE_DASHBOARD},
         ids_requested=True if dashboards else ids_requested,
     )
 
@@ -474,15 +490,7 @@ def check_asset_uniqueness(  # pylint: disable=too-many-arguments
     if not incoming_uuid:
         return
 
-    resource_type = None
-    if file_name.startswith("dashboards/"):
-        resource_type = "dashboards"
-    elif file_name.startswith("charts/"):
-        resource_type = "charts"
-    elif file_name.startswith("datasets/"):
-        resource_type = "datasets"
-    elif file_name.startswith("databases/"):
-        resource_type = "databases"
+    resource_type = classify_asset_path(file_name, plural=True)
 
     if (
         resource_type
