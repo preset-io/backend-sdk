@@ -491,6 +491,21 @@ def test_filter_resources_locally_extra_branches() -> None:
         coerce_bool_option(1, "dry_run")
 
 
+def test_filter_resources_locally_bool_does_not_match_numeric_strings() -> None:
+    """
+    Test bool filters do not match numeric-string values.
+    """
+    resources: list[dict[str, Any]] = [
+        {"id": 1, "is_managed_externally": "1"},
+        {"id": 2, "is_managed_externally": "0"},
+    ]
+    parsed_true = parse_filters(("is_managed_externally=true",), DASHBOARD_FILTER_KEYS)
+    parsed_false = parse_filters(("is_managed_externally=false",), DASHBOARD_FILTER_KEYS)
+
+    assert filter_resources_locally(resources, parsed_true) == []
+    assert filter_resources_locally(resources, parsed_false) == []
+
+
 def test_fetch_with_filter_fallback_local_keys() -> None:
     """
     Test ``fetch_with_filter_fallback`` takes the local path when LOCAL_FILTER_KEYS are present.
