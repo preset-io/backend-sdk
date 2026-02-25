@@ -35,6 +35,9 @@ from preset_cli.cli.superset.sync.native.command import (
     _resolve_uuid_to_id,
     _safe_extract_zip,
     _safe_json_loads,
+    _set_integer_list_payload_field,
+    _set_json_payload_field,
+    _update_chart_datasource_refs,
     _update_chart_no_cascade,
     _update_dashboard_no_cascade,
     add_password_to_config,
@@ -2753,7 +2756,10 @@ def test_update_chart_no_cascade_creates_missing_dataset(
     )
 
     import_resources_mock.assert_called_once()
-    assert import_resources_mock.call_args.kwargs["asset_type"] == ResourceType.DATASET
+    called_asset_type = import_resources_mock.call_args.kwargs.get("asset_type")
+    if called_asset_type is None:
+        called_asset_type = import_resources_mock.call_args.args[3]
+    assert called_asset_type == ResourceType.DATASET
     client.update_chart.assert_called_once()
 
 
@@ -2817,7 +2823,10 @@ def test_update_chart_no_cascade_creates_missing_chart(
     )
 
     import_resources_mock.assert_called_once()
-    assert import_resources_mock.call_args.kwargs["asset_type"] == ResourceType.CHART
+    called_asset_type = import_resources_mock.call_args.kwargs.get("asset_type")
+    if called_asset_type is None:
+        called_asset_type = import_resources_mock.call_args.args[3]
+    assert called_asset_type == ResourceType.CHART
     client.update_chart.assert_called_once()
 
 
@@ -3352,9 +3361,10 @@ def test_update_dashboard_no_cascade_creates_missing_dashboard(
     )
 
     import_resources_mock.assert_called_once()
-    assert (
-        import_resources_mock.call_args.kwargs["asset_type"] == ResourceType.DASHBOARD
-    )
+    called_asset_type = import_resources_mock.call_args.kwargs.get("asset_type")
+    if called_asset_type is None:
+        called_asset_type = import_resources_mock.call_args.args[3]
+    assert called_asset_type == ResourceType.DASHBOARD
     client.update_dashboard.assert_called_once()
 
 
@@ -3894,6 +3904,38 @@ def test_safe_json_loads_decode_failure() -> None:
     assert _safe_json_loads('{"valid": true}', "test") == {"valid": True}
     assert _safe_json_loads("not-json", "test") is None
     assert _safe_json_loads(12345, "test") is None
+
+
+def test_no_cascade_wrapper_helpers() -> None:
+    """
+    Test wrapper helpers delegated from ``command.py`` into ``no_cascade`` module.
+    """
+    params, query_context = _update_chart_datasource_refs(
+        {"datasource": "1__table"},
+        {"datasource": {"id": 1, "type": "table"}},
+        datasource_id=42,
+        datasource_type="table",
+    )
+    assert params == {"datasource": "42__table"}
+    assert query_context == {"datasource": {"id": 42, "type": "table"}}
+
+    payload: Dict[str, Any] = {}
+    _set_integer_list_payload_field(
+        payload,
+        {"owners": [1, 2]},
+        "owners",
+        "warning",
+    )
+    assert payload["owners"] == [1, 2]
+
+    _set_json_payload_field(
+        payload,
+        {"position": {"CHART-1": {"type": "CHART"}}},
+        preferred_field="position",
+        fallback_field="position_json",
+        payload_field="position_json",
+    )
+    assert payload["position_json"] == '{"CHART-1": {"type": "CHART"}}'
 
 
 def test_safe_extract_zip_creates_directories(tmp_path: Path) -> None:
