@@ -7,6 +7,8 @@ from typing import Any, Dict
 from requests import Response, Session
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class Auth:  # pylint: disable=too-few-public-methods
@@ -46,11 +48,23 @@ class Auth:  # pylint: disable=too-few-public-methods
         if r.status_code != 401:
             return r
 
+        # prevent infinite recursion
+        if getattr(r.request, "_reauth_attempted", False):
+            return r
+
         try:
             self.auth()
         except NotImplementedError:
             return r
 
         self.session.headers.update(self.get_headers())
-        r.request.headers.update(self.get_headers())
-        return self.session.send(r.request, verify=False)
+
+        new_request = r.request.copy()
+        new_request.headers.update(self.get_headers())
+
+        new_request._reauth_attempted = True
+
+        # CRITICAL: remove hooks so reauth is not called again
+        new_request.hooks = {}
+
+        return self.session.send(new_request, verify=False)
