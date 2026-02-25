@@ -500,7 +500,10 @@ def test_filter_resources_locally_bool_does_not_match_numeric_strings() -> None:
         {"id": 2, "is_managed_externally": "0"},
     ]
     parsed_true = parse_filters(("is_managed_externally=true",), DASHBOARD_FILTER_KEYS)
-    parsed_false = parse_filters(("is_managed_externally=false",), DASHBOARD_FILTER_KEYS)
+    parsed_false = parse_filters(
+        ("is_managed_externally=false",),
+        DASHBOARD_FILTER_KEYS,
+    )
 
     assert filter_resources_locally(resources, parsed_true) == []
     assert filter_resources_locally(resources, parsed_false) == []
