@@ -52,19 +52,18 @@ class Auth:  # pylint: disable=too-few-public-methods
         if getattr(r.request, "_reauth_attempted", False):
             return r
 
-        try:
-            self.auth()
-        except NotImplementedError:
-            return r
+        self.auth()
 
-        self.session.headers.update(self.get_headers())
+        headers = self.get_headers()
 
         new_request = r.request.copy()
-        new_request.headers.update(self.get_headers())
+
+        # critical: explicitly inject Authorization
+        new_request.headers["Authorization"] = headers["Authorization"]
 
         new_request._reauth_attempted = True
 
-        # CRITICAL: remove hooks so reauth is not called again
+        # prevent recursion via hooks
         new_request.hooks = {}
 
         return self.session.send(new_request, verify=False)
