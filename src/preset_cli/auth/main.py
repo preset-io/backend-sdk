@@ -56,12 +56,10 @@ class Auth:  # pylint: disable=too-few-public-methods
 
         headers = self.get_headers()
 
-        print(headers)
-
         new_request = r.request.copy()
 
         # critical: explicitly inject Authorization
-        new_request.headers["Authorization"] = headers["Authorization"]
+        new_request.headers["X-CSRFToken"] = headers["X-CSRFToken"]
 
         new_request._reauth_attempted = True
 
