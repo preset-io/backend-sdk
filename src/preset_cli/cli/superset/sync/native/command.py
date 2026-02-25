@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from io import BytesIO
@@ -91,6 +92,21 @@ class ResourceType(Enum):
     DASHBOARD = ("dashboard", "Dashboard")
     DATABASE = ("database", "Database")
     DATASET = ("dataset", "SqlaTable")
+
+
+@dataclass(frozen=True)
+class _NoCascadePrimarySpec:
+    """
+    Configuration for resolving/creating primary no-cascade resources.
+    """
+
+    resource_name: str
+    asset_type: ResourceType
+    build_contents: Callable[
+        [Dict[Path, AssetConfig], str, SupersetClient],
+        Optional[Dict[str, str]],
+    ]
+    missing_bundle_error: Callable[[str], str]
 
 
 def normalize_to_enum(  # pylint: disable=unused-argument
@@ -1111,6 +1127,48 @@ def _prepare_dashboard_update_payload(
     return _filter_payload_to_schema(client, "dashboard", payload, safe_allowlist)
 
 
+def _resolve_or_create_primary_no_cascade(
+    resource_uuid: str,
+    configs: Dict[Path, AssetConfig],
+    client: SupersetClient,
+    overwrite: bool,
+    spec: _NoCascadePrimarySpec,
+) -> Optional[int]:
+    """
+    Resolve or create the primary resource for no-cascade update flows.
+    """
+    resource_label = spec.resource_name.capitalize()
+
+    resource_id = _resolve_uuid_to_id(client, spec.resource_name, resource_uuid)
+    if resource_id is None:
+        _logger.info("%s %s not found; attempting to create it", resource_label, resource_uuid)
+        contents = spec.build_contents(configs, resource_uuid, client)
+        if not contents:
+            raise CLIError(spec.missing_bundle_error(resource_uuid), 1)
+        import_resources(
+            contents,
+            client,
+            overwrite=False,
+            asset_type=spec.asset_type,
+        )
+        resource_id = _resolve_uuid_to_id(client, spec.resource_name, resource_uuid)
+        if resource_id is None:
+            raise CLIError(f"Unable to create {spec.resource_name} {resource_uuid}", 1)
+        if not overwrite:
+            _logger.info("%s created; skipping update because overwrite=false", resource_label)
+            return None
+
+    if not overwrite:
+        _logger.info(
+            "Skipping existing %s %s (overwrite=false)",
+            spec.resource_name,
+            resource_uuid,
+        )
+        return None
+
+    return resource_id
+
+
 def _update_chart_no_cascade(
     path: Path,
     config: AssetConfig,
@@ -1125,30 +1183,24 @@ def _update_chart_no_cascade(
     if not chart_uuid:
         raise CLIError(f"Chart config missing UUID: {path}", 1)
 
-    chart_id = _resolve_uuid_to_id(client, "chart", chart_uuid)
-    if chart_id is None:
-        _logger.info("Chart %s not found; attempting to create it", chart_uuid)
-        contents = _build_chart_contents(configs, chart_uuid)
-        if not contents:
-            raise CLIError(
-                f"Chart {chart_uuid} not found and no dataset/database configs available.",
-                1,
-            )
-        import_resources(
-            contents,
-            client,
-            overwrite=False,
+    chart_id = _resolve_or_create_primary_no_cascade(
+        resource_uuid=chart_uuid,
+        configs=configs,
+        client=client,
+        overwrite=overwrite,
+        spec=_NoCascadePrimarySpec(
+            resource_name="chart",
             asset_type=ResourceType.CHART,
-        )
-        chart_id = _resolve_uuid_to_id(client, "chart", chart_uuid)
-        if chart_id is None:
-            raise CLIError(f"Unable to create chart {chart_uuid}", 1)
-        if not overwrite:
-            _logger.info("Chart created; skipping update because overwrite=false")
-            return
-
-    if not overwrite:
-        _logger.info("Skipping existing chart %s (overwrite=false)", chart_uuid)
+            build_contents=lambda all_configs, uuid, _client: _build_chart_contents(
+                all_configs,
+                uuid,
+            ),
+            missing_bundle_error=lambda uuid: (
+                f"Chart {uuid} not found and no dataset/database configs available."
+            ),
+        ),
+    )
+    if chart_id is None:
         return
 
     dataset_uuid = config.get("dataset_uuid")
@@ -1201,38 +1253,26 @@ def _update_dashboard_no_cascade(
     if not dashboard_uuid:
         raise CLIError(f"Dashboard config missing UUID: {path}", 1)
 
-    dashboard_id = _resolve_uuid_to_id(client, "dashboard", dashboard_uuid)
-    if dashboard_id is None:
-        _logger.info(
-            "Dashboard %s not found; attempting to create it",
-            dashboard_uuid,
-        )
-        contents = _build_dashboard_contents(
-            configs,
-            dashboard_uuid,
-            client=client,
-            missing_only=True,
-        )
-        if not contents:
-            raise CLIError(
-                "Dashboard not found and no dashboard config available for import.",
-                1,
-            )
-        import_resources(
-            contents,
-            client,
-            overwrite=False,
+    dashboard_id = _resolve_or_create_primary_no_cascade(
+        resource_uuid=dashboard_uuid,
+        configs=configs,
+        client=client,
+        overwrite=overwrite,
+        spec=_NoCascadePrimarySpec(
+            resource_name="dashboard",
             asset_type=ResourceType.DASHBOARD,
-        )
-        dashboard_id = _resolve_uuid_to_id(client, "dashboard", dashboard_uuid)
-        if dashboard_id is None:
-            raise CLIError(f"Unable to create dashboard {dashboard_uuid}", 1)
-        if not overwrite:
-            _logger.info("Dashboard created; skipping update because overwrite=false")
-            return
-
-    if not overwrite:
-        _logger.info("Skipping existing dashboard %s (overwrite=false)", dashboard_uuid)
+            build_contents=lambda all_configs, uuid, update_client: _build_dashboard_contents(
+                all_configs,
+                uuid,
+                client=update_client,
+                missing_only=True,
+            ),
+            missing_bundle_error=lambda _uuid: (
+                "Dashboard not found and no dashboard config available for import."
+            ),
+        ),
+    )
+    if dashboard_id is None:
         return
 
     payload = _prepare_dashboard_update_payload(config, client)
