@@ -56,6 +56,8 @@ class Auth:  # pylint: disable=too-few-public-methods
 
         headers = self.get_headers()
 
+        print(headers)
+
         new_request = r.request.copy()
 
         # critical: explicitly inject Authorization
