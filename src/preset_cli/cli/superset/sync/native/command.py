@@ -93,6 +93,7 @@ class ResourceType(Enum):
     DATABASE = ("database", "Database")
     DATASET = ("dataset", "SqlaTable")
 
+
 def normalize_to_enum(  # pylint: disable=unused-argument
     ctx: click.core.Context,
     param: str,

@@ -31,7 +31,10 @@ class NoCascadePrimarySpec:
 
     resource_name: str
     asset_type: Any
-    build_contents: Callable[[Dict[Path, AssetConfig], Any, Any], Optional[Dict[str, str]]]
+    build_contents: Callable[
+        [Dict[Path, AssetConfig], Any, Any],
+        Optional[Dict[str, str]],
+    ]
     missing_bundle_error: Callable[[str], str]
 
 
@@ -69,9 +72,18 @@ class ChartUpdateDeps:
 
     chart_asset_type: Any
     dataset_asset_type: Any
-    build_chart_contents_fn: Callable[[Dict[Path, AssetConfig], Any], Optional[Dict[str, str]]]
-    build_dataset_contents_fn: Callable[[Dict[Path, AssetConfig], Any], Optional[Dict[str, str]]]
-    prepare_chart_update_payload_fn: Callable[[AssetConfig, int, str, Any], Dict[str, Any]]
+    build_chart_contents_fn: Callable[
+        [Dict[Path, AssetConfig], Any],
+        Optional[Dict[str, str]],
+    ]
+    build_dataset_contents_fn: Callable[
+        [Dict[Path, AssetConfig], Any],
+        Optional[Dict[str, str]],
+    ]
+    prepare_chart_update_payload_fn: Callable[
+        [AssetConfig, int, str, Any],
+        Dict[str, Any],
+    ]
 
 
 @dataclass(frozen=True)
@@ -566,8 +578,8 @@ def resolve_or_create_primary_no_cascade(
         context.import_resources_fn(
             contents,
             context.client,
-            overwrite=False,
-            asset_type=spec.asset_type,
+            False,
+            spec.asset_type,
         )
         resource_id = context.resolve_uuid_to_id_fn(
             context.client,
@@ -635,7 +647,10 @@ def update_chart_no_cascade(
 
     dataset_id = context.resolve_uuid_to_id_fn(context.client, "dataset", dataset_uuid)
     if dataset_id is None:
-        context.logger.info("Dataset %s not found; attempting to create it", dataset_uuid)
+        context.logger.info(
+            "Dataset %s not found; attempting to create it",
+            dataset_uuid,
+        )
         contents = deps.build_dataset_contents_fn(context.configs, dataset_uuid)
         if not contents:
             raise CLIError(
@@ -645,10 +660,14 @@ def update_chart_no_cascade(
         context.import_resources_fn(
             contents,
             context.client,
-            overwrite=False,
-            asset_type=deps.dataset_asset_type,
+            False,
+            deps.dataset_asset_type,
         )
-        dataset_id = context.resolve_uuid_to_id_fn(context.client, "dataset", dataset_uuid)
+        dataset_id = context.resolve_uuid_to_id_fn(
+            context.client,
+            "dataset",
+            dataset_uuid,
+        )
         if dataset_id is None:
             raise CLIError(f"Unable to create dataset {dataset_uuid}", 1)
 
