@@ -26,6 +26,7 @@ from preset_cli.cli.main import (
     parse_selection,
     preset_cli,
     print_group_membership,
+    resolve_workspace_role,
     sync_all_user_roles_to_team,
     sync_user_role_to_workspace,
     sync_user_roles_to_team,
@@ -1676,6 +1677,142 @@ def test_sync_user_role_to_workspace(mocker: MockerFixture) -> None:
         1001,
         "PresetGamma",
     )
+
+
+def test_import_users_with_deprecated_contributor_roles(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test that old 'contributor' role names still work during import and log deprecation warnings.
+    """
+    PresetClient = mocker.patch("preset_cli.cli.main.PresetClient")
+    client = PresetClient()
+    client.get_teams.return_value = [{"title": "TestTeam", "name": "TestTeam"}]
+
+    client.get_workspaces.return_value = [
+        {"id": 1, "title": "Analytics", "name": "analytics"},
+    ]
+    client.get_team_members.return_value = [
+        {"user": {"id": 10, "email": "adoe@example.com"}},
+    ]
+
+    users = [
+        {
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "email": "adoe@example.com",
+            "username": "alice.doe",
+            "workspaces": {
+                "TestTeam/Analytics": {
+                    "workspace_role": "Primary Contributor",
+                    "workspace_name": "analytics",
+                    "team": "TestTeam",
+                },
+            },
+        },
+    ]
+    fs.create_file("users_workspace_roles.yaml", contents=yaml.dump(users))
+
+    mock_logger = mocker.patch("preset_cli.cli.main._logger")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        preset_cli,
+        [
+            "--jwt-token=XXX",
+            "import-users",
+            "--teams=TestTeam",
+            "users_workspace_roles.yaml",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Should resolve to PresetAlpha (same as "primary creator")
+    client.change_workspace_role.assert_called_once_with(
+        "TestTeam",
+        1,
+        10,
+        "PresetAlpha",
+    )
+
+    # Should log a deprecation warning
+    mock_logger.warning.assert_any_call(
+        "Workspace role '%s' is deprecated and will be removed in a future version. "
+        "Please use '%s' instead.",
+        "primary contributor",
+        "primary creator",
+    )
+
+
+def test_sync_user_role_to_workspace_deprecated_contributor(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test that sync-roles works with old 'contributor' names and logs deprecation warnings.
+    """
+    client = mocker.MagicMock()
+    user = {
+        "id": 1001,
+        "email": "adoe@example.com",
+        "team_role": "User",
+        "workspaces": {
+            "ws1": {
+                "workspace_role": "Limited Contributor",
+                "data_access_roles": ["Database access on A Postgres database"],
+            },
+        },
+    }
+
+    mock_logger = mocker.patch("preset_cli.cli.main._logger")
+
+    sync_user_role_to_workspace(
+        client,
+        "team1",
+        user,
+        1,
+        {
+            "data_access_roles": ["Database access on A Postgres database"],
+            "workspace_role": "Limited Contributor",
+        },
+    )
+
+    # Should resolve to PresetGamma (same as "limited creator")
+    client.change_workspace_role.assert_called_with(
+        "team1",
+        1,
+        1001,
+        "PresetGamma",
+    )
+
+    # Should log a deprecation warning
+    mock_logger.warning.assert_any_call(
+        "Workspace role '%s' is deprecated and will be removed in a future version. "
+        "Please use '%s' instead.",
+        "limited contributor",
+        "limited creator",
+    )
+
+
+def test_resolve_workspace_role_deprecated_names(mocker: MockerFixture) -> None:
+    """
+    Test that resolve_workspace_role handles all deprecated contributor names.
+    """
+    mock_logger = mocker.patch("preset_cli.cli.main._logger")
+
+    assert resolve_workspace_role("primary contributor") == "PresetAlpha"
+    assert resolve_workspace_role("secondary contributor") == "PresetBeta"
+    assert resolve_workspace_role("limited contributor") == "PresetGamma"
+
+    assert mock_logger.warning.call_count == 3
+
+    # New names still work without warnings
+    mock_logger.warning.reset_mock()
+    assert resolve_workspace_role("primary creator") == "PresetAlpha"
+    assert resolve_workspace_role("secondary creator") == "PresetBeta"
+    assert resolve_workspace_role("limited creator") == "PresetGamma"
+    mock_logger.warning.assert_not_called()
 
 
 def test_list_group_membership_specified_team(mocker: MockerFixture) -> None:
