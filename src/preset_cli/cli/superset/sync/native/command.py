@@ -499,12 +499,9 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
                         and asset_type != ResourceType.DATABASE
                         and config["uuid"] in existing_databases
                     )
-                    if resource_name == "databases":
-                        # Always keep database configs so dependent assets (datasets/charts)
-                        # can include the database YAML even when the DB already exists.
-                        related_configs[config["uuid"]] = asset_configs
-                    else:
-                        related_configs[config["uuid"]] = asset_configs
+                    # Always keep database configs so dependent assets (datasets/charts)
+                    # can include the database YAML even when the DB already exists.
+                    related_configs[config["uuid"]] = asset_configs
 
                     is_primary = asset_type == ResourceType.ASSET or (
                         asset_type.resource_name in resource_name
