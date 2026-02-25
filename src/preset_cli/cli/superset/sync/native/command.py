@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import tempfile
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from io import BytesIO
@@ -38,7 +37,8 @@ from preset_cli.cli.superset.lib import (
     get_logs,
     write_logs_to_file,
 )
-from preset_cli.exceptions import CLIError, SupersetError
+from preset_cli.cli.superset.sync.native import no_cascade as no_cascade_lib
+from preset_cli.exceptions import SupersetError
 from preset_cli.lib import dict_merge
 
 _logger = logging.getLogger(__name__)
@@ -92,22 +92,6 @@ class ResourceType(Enum):
     DASHBOARD = ("dashboard", "Dashboard")
     DATABASE = ("database", "Database")
     DATASET = ("dataset", "SqlaTable")
-
-
-@dataclass(frozen=True)
-class _NoCascadePrimarySpec:
-    """
-    Configuration for resolving/creating primary no-cascade resources.
-    """
-
-    resource_name: str
-    asset_type: ResourceType
-    build_contents: Callable[
-        [Dict[Path, AssetConfig], str, SupersetClient],
-        Optional[Dict[str, str]],
-    ]
-    missing_bundle_error: Callable[[str], str]
-
 
 def normalize_to_enum(  # pylint: disable=unused-argument
     ctx: click.core.Context,
@@ -639,17 +623,13 @@ def _prune_existing_dependency_configs(
     """
     Remove dependency configs that already exist when cascade is disabled.
     """
-    dependency_map = dependency_resource_map.get(resource_name)
-    if not dependency_map:
-        return
-
-    for dep_path, dep_config in list(asset_configs.items()):
-        if dep_path == primary_path or len(dep_path.parts) < 2:
-            continue
-
-        dep_resource = dependency_map.get(dep_path.parts[1])
-        if dep_resource and resource_exists(dep_resource, dep_config):
-            asset_configs.pop(dep_path, None)
+    no_cascade_lib.prune_existing_dependency_configs(
+        asset_configs,
+        primary_path,
+        resource_name,
+        dependency_resource_map,
+        resource_exists,
+    )
 
 
 def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
@@ -762,14 +742,7 @@ def _find_config_by_uuid(
     """
     Find a config by UUID in the given resource directory.
     """
-    if not uuid_value:
-        return None
-    uuid_str = str(uuid_value)
-    for path, config in configs.items():
-        if len(path.parts) > 1 and path.parts[1] == resource_dir:
-            if str(config.get("uuid")) == uuid_str:
-                return path, config
-    return None
+    return no_cascade_lib.find_config_by_uuid(configs, resource_dir, uuid_value)
 
 
 def _build_dataset_contents(
@@ -779,20 +752,11 @@ def _build_dataset_contents(
     """
     Build a minimal bundle for a dataset (dataset + database).
     """
-    dataset_entry = _find_config_by_uuid(configs, "datasets", dataset_uuid)
-    if not dataset_entry:
-        return None
-    dataset_path, dataset_config = dataset_entry
-    database_uuid = dataset_config.get("database_uuid")
-    database_entry = _find_config_by_uuid(configs, "databases", database_uuid)
-    if not database_entry:
-        return None
-    database_path, database_config = database_entry
-
-    return {
-        str(dataset_path): yaml.dump(dataset_config),
-        str(database_path): yaml.dump(database_config),
-    }
+    return no_cascade_lib.build_dataset_contents(
+        configs,
+        dataset_uuid,
+        find_config_by_uuid_fn=_find_config_by_uuid,
+    )
 
 
 def _build_chart_contents(
@@ -802,19 +766,12 @@ def _build_chart_contents(
     """
     Build a minimal bundle for a chart (chart + dataset + database).
     """
-    chart_entry = _find_config_by_uuid(configs, "charts", chart_uuid)
-    if not chart_entry:
-        return None
-    chart_path, chart_config = chart_entry
-
-    dataset_uuid = chart_config.get("dataset_uuid")
-    dataset_contents = _build_dataset_contents(configs, dataset_uuid)
-    if not dataset_contents:
-        return None
-
-    contents = {str(chart_path): yaml.dump(chart_config)}
-    contents.update(dataset_contents)
-    return contents
+    return no_cascade_lib.build_chart_contents(
+        configs,
+        chart_uuid,
+        find_config_by_uuid_fn=_find_config_by_uuid,
+        build_dataset_contents_fn=no_cascade_lib.build_dataset_contents,
+    )
 
 
 def _build_dashboard_contents(
@@ -826,68 +783,25 @@ def _build_dashboard_contents(
     """
     Build a minimal bundle for a dashboard and its dependencies.
     """
-    dashboard_entry = _find_config_by_uuid(configs, "dashboards", dashboard_uuid)
-    if not dashboard_entry:
-        return None
-    dashboard_path, dashboard_config = dashboard_entry
-
-    def should_include(resource_name: str, uuid_value: Any) -> bool:
-        if not missing_only:
-            return True
-        if client is None:
-            return True
-        return _resolve_uuid_to_id(client, resource_name, uuid_value) is None
-
-    def add_dataset(dataset_uuid: Any, output: Dict[str, str]) -> None:
-        dataset_entry = _find_config_by_uuid(configs, "datasets", dataset_uuid)
-        if not dataset_entry:
-            return
-        dataset_path, dataset_config = dataset_entry
-        if should_include("dataset", dataset_uuid):
-            output[str(dataset_path)] = yaml.dump(dataset_config)
-
-        database_uuid = dataset_config.get("database_uuid")
-        database_entry = _find_config_by_uuid(configs, "databases", database_uuid)
-        if not database_entry:
-            return
-        database_path, database_config = database_entry
-        if should_include("database", database_uuid):
-            output[str(database_path)] = yaml.dump(database_config)
-
-    contents: Dict[str, str] = {
-        str(dashboard_path): yaml.dump(dashboard_config),
-    }
-
-    for chart_uuid in get_charts_uuids(dashboard_config):
-        chart_entry = _find_config_by_uuid(configs, "charts", chart_uuid)
-        if not chart_entry:
-            continue
-        chart_path, chart_config = chart_entry
-        if should_include("chart", chart_uuid):
-            contents[str(chart_path)] = yaml.dump(chart_config)
-        add_dataset(chart_config.get("dataset_uuid"), contents)
-
-    for dataset_uuid in get_dataset_filter_uuids(dashboard_config):
-        add_dataset(dataset_uuid, contents)
-
-    return contents
+    return no_cascade_lib.build_dashboard_contents(
+        configs,
+        dashboard_uuid,
+        no_cascade_lib.DashboardContentDeps(
+            find_config_by_uuid_fn=_find_config_by_uuid,
+            resolve_uuid_to_id_fn=_resolve_uuid_to_id,
+            get_charts_uuids_fn=get_charts_uuids,
+            get_dataset_filter_uuids_fn=get_dataset_filter_uuids,
+        ),
+        client=client,
+        missing_only=missing_only,
+    )
 
 
 def _safe_json_loads(value: Any, label: str) -> Optional[Dict[str, Any]]:
     """
     Safely parse JSON content that may be a dict or string.
     """
-    if value is None:
-        return None
-    if isinstance(value, dict):
-        return value
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            _logger.warning("Unable to parse %s as JSON", label)
-            return None
-    return None
+    return no_cascade_lib.safe_json_loads(value, label, _logger)
 
 
 def _update_chart_datasource_refs(
@@ -899,23 +813,12 @@ def _update_chart_datasource_refs(
     """
     Update datasource references in chart params/query_context.
     """
-    dataset_uid = f"{datasource_id}__{datasource_type}"
-
-    if params is not None:
-        params["datasource"] = dataset_uid
-
-    if query_context is not None:
-        query_context["datasource"] = {"id": datasource_id, "type": datasource_type}
-        form_data = query_context.get("form_data")
-        if isinstance(form_data, dict):
-            form_data["datasource"] = dataset_uid
-        queries = query_context.get("queries")
-        if isinstance(queries, list):
-            for query in queries:
-                if isinstance(query, dict) and "datasource" in query:
-                    query["datasource"] = query_context["datasource"]
-
-    return params, query_context
+    return no_cascade_lib.update_chart_datasource_refs(
+        params,
+        query_context,
+        datasource_id,
+        datasource_type,
+    )
 
 
 def _filter_payload_to_schema(
@@ -927,15 +830,12 @@ def _filter_payload_to_schema(
     """
     Filter payload keys based on API schema info when available.
     """
-    try:
-        info = client.get_resource_endpoint_info(resource_name, keys=["edit_columns"])
-        allowed = {column["name"] for column in info.get("edit_columns", [])}
-        if allowed:
-            return {key: value for key, value in payload.items() if key in allowed}
-    except SupersetError:
-        pass
-
-    return {key: value for key, value in payload.items() if key in fallback_allowed}
+    return no_cascade_lib.filter_payload_to_schema(
+        client,
+        resource_name,
+        payload,
+        fallback_allowed,
+    )
 
 
 def _prepare_chart_update_payload(  # pylint: disable=too-many-branches
@@ -947,80 +847,13 @@ def _prepare_chart_update_payload(  # pylint: disable=too-many-branches
     """
     Build a chart update payload from export config.
     """
-    payload: Dict[str, Any] = {}
-
-    for key in [
-        "slice_name",
-        "description",
-        "viz_type",
-        "cache_timeout",
-        "certified_by",
-        "certification_details",
-        "is_managed_externally",
-        "external_url",
-    ]:
-        if key in config:
-            payload[key] = config[key]
-
-    owners = config.get("owners")
-    if owners:
-        if all(isinstance(owner, int) for owner in owners):
-            payload["owners"] = owners
-        else:
-            _logger.warning("Skipping owners update for chart; owner IDs not available")
-
-    tags = config.get("tags")
-    if tags:
-        if all(isinstance(tag, int) for tag in tags):
-            payload["tags"] = tags
-        else:
-            _logger.warning("Skipping tags update for chart; tag IDs not available")
-
-    params_value = config.get("params")
-    params = _safe_json_loads(params_value, "chart params")
-
-    query_context_value = config.get("query_context")
-    query_context = _safe_json_loads(query_context_value, "chart query_context")
-
-    if params is not None or query_context is not None:
-        params, query_context = _update_chart_datasource_refs(
-            params,
-            query_context,
-            datasource_id,
-            datasource_type,
-        )
-
-    if params is not None:
-        payload["params"] = json.dumps(params)
-    elif isinstance(params_value, str):
-        payload["params"] = params_value
-
-    if query_context is not None:
-        payload["query_context"] = json.dumps(query_context)
-    elif isinstance(query_context_value, str):
-        payload["query_context"] = query_context_value
-
-    payload["datasource_id"] = datasource_id
-    payload["datasource_type"] = datasource_type
-
-    safe_allowlist = {
-        "slice_name",
-        "description",
-        "viz_type",
-        "owners",
-        "params",
-        "query_context",
-        "cache_timeout",
-        "datasource_id",
-        "datasource_type",
-        "dashboards",
-        "certified_by",
-        "certification_details",
-        "is_managed_externally",
-        "external_url",
-        "tags",
-    }
-    return _filter_payload_to_schema(client, "chart", payload, safe_allowlist)
+    return no_cascade_lib.prepare_chart_update_payload(
+        config,
+        datasource_id,
+        datasource_type,
+        client,
+        _logger,
+    )
 
 
 def _set_integer_list_payload_field(
@@ -1032,13 +865,13 @@ def _set_integer_list_payload_field(
     """
     Add a list-valued payload field only when all values are integer IDs.
     """
-    values = config.get(field_name)
-    if not values:
-        return
-    if all(isinstance(value, int) for value in values):
-        payload[field_name] = values
-    else:
-        _logger.warning(warning_message)
+    no_cascade_lib.set_integer_list_payload_field(
+        payload,
+        config,
+        field_name,
+        warning_message,
+        _logger,
+    )
 
 
 def _set_json_payload_field(
@@ -1051,14 +884,13 @@ def _set_json_payload_field(
     """
     Add a JSON payload field with support for dict and serialized string values.
     """
-    preferred_value = config.get(preferred_field)
-    fallback_value = config.get(fallback_field)
-    if isinstance(preferred_value, dict):
-        payload[payload_field] = json.dumps(preferred_value)
-    elif isinstance(fallback_value, dict):
-        payload[payload_field] = json.dumps(fallback_value)
-    elif isinstance(fallback_value, str):
-        payload[payload_field] = fallback_value
+    no_cascade_lib.set_json_payload_field(
+        payload,
+        config,
+        preferred_field,
+        fallback_field,
+        payload_field,
+    )
 
 
 def _prepare_dashboard_update_payload(
@@ -1068,105 +900,29 @@ def _prepare_dashboard_update_payload(
     """
     Build a dashboard update payload from export config.
     """
-    payload: Dict[str, Any] = {}
-
-    for key in [
-        "dashboard_title",
-        "slug",
-        "css",
-        "published",
-        "certified_by",
-        "certification_details",
-        "is_managed_externally",
-        "external_url",
-    ]:
-        if key in config:
-            payload[key] = config[key]
-
-    _set_integer_list_payload_field(
-        payload,
+    return no_cascade_lib.prepare_dashboard_update_payload(
         config,
-        "owners",
-        "Skipping owners update for dashboard; owner IDs not available",
-    )
-    _set_integer_list_payload_field(
-        payload,
-        config,
-        "roles",
-        "Skipping roles update for dashboard; role IDs not available",
-    )
-    _set_json_payload_field(
-        payload,
-        config,
-        preferred_field="position",
-        fallback_field="position_json",
-        payload_field="position_json",
-    )
-    _set_json_payload_field(
-        payload,
-        config,
-        preferred_field="metadata",
-        fallback_field="json_metadata",
-        payload_field="json_metadata",
+        client,
+        _logger,
     )
 
-    safe_allowlist = {
-        "dashboard_title",
-        "slug",
-        "owners",
-        "roles",
-        "position_json",
-        "css",
-        "json_metadata",
-        "published",
-        "certified_by",
-        "certification_details",
-        "is_managed_externally",
-        "external_url",
-    }
-    return _filter_payload_to_schema(client, "dashboard", payload, safe_allowlist)
 
-
-def _resolve_or_create_primary_no_cascade(
-    resource_uuid: str,
+def _build_no_cascade_context(
     configs: Dict[Path, AssetConfig],
     client: SupersetClient,
     overwrite: bool,
-    spec: _NoCascadePrimarySpec,
-) -> Optional[int]:
+) -> no_cascade_lib.NoCascadeContext:
     """
-    Resolve or create the primary resource for no-cascade update flows.
+    Build shared no-cascade runtime context.
     """
-    resource_label = spec.resource_name.capitalize()
-
-    resource_id = _resolve_uuid_to_id(client, spec.resource_name, resource_uuid)
-    if resource_id is None:
-        _logger.info("%s %s not found; attempting to create it", resource_label, resource_uuid)
-        contents = spec.build_contents(configs, resource_uuid, client)
-        if not contents:
-            raise CLIError(spec.missing_bundle_error(resource_uuid), 1)
-        import_resources(
-            contents,
-            client,
-            overwrite=False,
-            asset_type=spec.asset_type,
-        )
-        resource_id = _resolve_uuid_to_id(client, spec.resource_name, resource_uuid)
-        if resource_id is None:
-            raise CLIError(f"Unable to create {spec.resource_name} {resource_uuid}", 1)
-        if not overwrite:
-            _logger.info("%s created; skipping update because overwrite=false", resource_label)
-            return None
-
-    if not overwrite:
-        _logger.info(
-            "Skipping existing %s %s (overwrite=false)",
-            spec.resource_name,
-            resource_uuid,
-        )
-        return None
-
-    return resource_id
+    return no_cascade_lib.NoCascadeContext(
+        configs,
+        client,
+        overwrite,
+        resolve_uuid_to_id_fn=_resolve_uuid_to_id,
+        import_resources_fn=import_resources,
+        logger=_logger,
+    )
 
 
 def _update_chart_no_cascade(
@@ -1179,64 +935,20 @@ def _update_chart_no_cascade(
     """
     Update a chart via API without cascading to dependencies.
     """
-    chart_uuid = config.get("uuid")
-    if not chart_uuid:
-        raise CLIError(f"Chart config missing UUID: {path}", 1)
-
-    chart_id = _resolve_or_create_primary_no_cascade(
-        resource_uuid=chart_uuid,
-        configs=configs,
-        client=client,
-        overwrite=overwrite,
-        spec=_NoCascadePrimarySpec(
-            resource_name="chart",
-            asset_type=ResourceType.CHART,
-            build_contents=lambda all_configs, uuid, _client: _build_chart_contents(
-                all_configs,
-                uuid,
-            ),
-            missing_bundle_error=lambda uuid: (
-                f"Chart {uuid} not found and no dataset/database configs available."
-            ),
-        ),
+    no_cascade_context = _build_no_cascade_context(configs, client, overwrite)
+    chart_deps = no_cascade_lib.ChartUpdateDeps(
+        chart_asset_type=ResourceType.CHART,
+        dataset_asset_type=ResourceType.DATASET,
+        build_chart_contents_fn=_build_chart_contents,
+        build_dataset_contents_fn=_build_dataset_contents,
+        prepare_chart_update_payload_fn=_prepare_chart_update_payload,
     )
-    if chart_id is None:
-        return
-
-    dataset_uuid = config.get("dataset_uuid")
-    if not dataset_uuid:
-        raise CLIError(f"Chart {chart_uuid} missing dataset_uuid", 1)
-
-    dataset_id = _resolve_uuid_to_id(client, "dataset", dataset_uuid)
-    if dataset_id is None:
-        _logger.info("Dataset %s not found; attempting to create it", dataset_uuid)
-        contents = _build_dataset_contents(configs, dataset_uuid)
-        if not contents:
-            raise CLIError(
-                f"Dataset {dataset_uuid} not found and no dataset/database configs available.",
-                1,
-            )
-        import_resources(
-            contents,
-            client,
-            overwrite=False,
-            asset_type=ResourceType.DATASET,
-        )
-        dataset_id = _resolve_uuid_to_id(client, "dataset", dataset_uuid)
-        if dataset_id is None:
-            raise CLIError(f"Unable to create dataset {dataset_uuid}", 1)
-
-    dataset = client.get_dataset(dataset_id)
-    datasource_type = dataset.get("kind") or dataset.get("datasource_type") or "table"
-
-    payload = _prepare_chart_update_payload(
+    return no_cascade_lib.update_chart_no_cascade(
+        path,
         config,
-        dataset_id,
-        datasource_type,
-        client,
+        no_cascade_context,
+        chart_deps,
     )
-    _logger.info("Updating chart %s via API (no-cascade)", chart_uuid)
-    client.update_chart(chart_id, **payload)
 
 
 def _update_dashboard_no_cascade(
@@ -1249,35 +961,18 @@ def _update_dashboard_no_cascade(
     """
     Update a dashboard via API without cascading to dependencies.
     """
-    dashboard_uuid = config.get("uuid")
-    if not dashboard_uuid:
-        raise CLIError(f"Dashboard config missing UUID: {path}", 1)
-
-    dashboard_id = _resolve_or_create_primary_no_cascade(
-        resource_uuid=dashboard_uuid,
-        configs=configs,
-        client=client,
-        overwrite=overwrite,
-        spec=_NoCascadePrimarySpec(
-            resource_name="dashboard",
-            asset_type=ResourceType.DASHBOARD,
-            build_contents=lambda all_configs, uuid, update_client: _build_dashboard_contents(
-                all_configs,
-                uuid,
-                client=update_client,
-                missing_only=True,
-            ),
-            missing_bundle_error=lambda _uuid: (
-                "Dashboard not found and no dashboard config available for import."
-            ),
-        ),
+    no_cascade_context = _build_no_cascade_context(configs, client, overwrite)
+    dashboard_deps = no_cascade_lib.DashboardUpdateDeps(
+        dashboard_asset_type=ResourceType.DASHBOARD,
+        build_dashboard_contents_fn=_build_dashboard_contents,
+        prepare_dashboard_update_payload_fn=_prepare_dashboard_update_payload,
     )
-    if dashboard_id is None:
-        return
-
-    payload = _prepare_dashboard_update_payload(config, client)
-    _logger.info("Updating dashboard %s via API (no-cascade)", dashboard_uuid)
-    client.update_dashboard(dashboard_id, **payload)
+    return no_cascade_lib.update_dashboard_no_cascade(
+        path,
+        config,
+        no_cascade_context,
+        dashboard_deps,
+    )
 
 
 @backoff.on_exception(
