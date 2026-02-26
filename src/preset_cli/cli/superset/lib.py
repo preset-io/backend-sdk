@@ -152,7 +152,7 @@ def _coerce_filter_value(
 
 
 def coerce_bool_option(
-    value: bool | str,
+    value: object,
     key: str,
 ) -> bool:
     """
@@ -192,9 +192,8 @@ def _is_filter_not_allowed_payload(error: ErrorPayload) -> bool:
     normalized_error_type = _normalize_error_type(error.get("error_type"))
     if normalized_error_type in FILTER_NOT_ALLOWED_ERROR_TYPES:
         return True
-    if (
-        "FILTER" in normalized_error_type
-        and ("NOT_ALLOWED" in normalized_error_type or "UNSUPPORTED" in normalized_error_type)
+    if "FILTER" in normalized_error_type and (
+        "NOT_ALLOWED" in normalized_error_type or "UNSUPPORTED" in normalized_error_type
     ):
         return True
 
