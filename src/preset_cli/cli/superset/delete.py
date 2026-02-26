@@ -2,7 +2,7 @@
 Delete Superset assets.
 """
 
-# pylint: disable=too-many-lines
+# pylint: disable=too-many-lines,too-many-locals
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.cli.superset.asset_utils import (
     RESOURCE_CHART,
     RESOURCE_CHARTS,
+    RESOURCE_DASHBOARD,
     RESOURCE_DATABASE,
     RESOURCE_DATABASES,
-    RESOURCE_DASHBOARD,
     RESOURCE_DATASET,
     RESOURCE_DATASETS,
 )
@@ -43,7 +43,9 @@ from preset_cli.cli.superset.delete_types import (
     _DashboardSelection,
     _DeleteAssetsCommandOptions,
     _DeleteAssetsRawOptions,
+    _DeleteResourceName,
     _NonDashboardDeleteOptions,
+    _ResourceSummaryRow,
 )
 from preset_cli.cli.superset.lib import (
     DELETE_FILTER_KEYS,
@@ -52,6 +54,7 @@ from preset_cli.cli.superset.lib import (
     filter_resources_locally,
     parse_filters,
 )
+
 
 @click.command()
 @click.option(
@@ -185,7 +188,7 @@ def _run_delete_assets(
     )
     if resource_name != RESOURCE_DASHBOARD:
         non_dashboard_options = _NonDashboardDeleteOptions(
-            resource_name=resource_name,
+            resource_name=cast(_DeleteResourceName, resource_name),
             dry_run=dry_run,
             confirm=execution_options.confirm,
             rollback=rollback,
@@ -286,19 +289,25 @@ def _delete_resources(
 
 def _fetch_non_dashboard_resources(
     client: SupersetClient,
-    resource_name: str,
+    resource_name: _DeleteResourceName,
     parsed_filters: Dict[str, Any],
-) -> List[Dict[str, Any]]:
+) -> List[_ResourceSummaryRow]:
     if resource_name == RESOURCE_DATABASE:
-        return filter_resources_locally(
-            client.get_resources(resource_name),
-            parsed_filters,
+        return cast(
+            List[_ResourceSummaryRow],
+            filter_resources_locally(
+                client.get_resources(resource_name),
+                parsed_filters,
+            ),
         )
-    return fetch_with_filter_fallback(
-        lambda **kw: client.get_resources(resource_name, **kw),
-        lambda: client.get_resources(resource_name),
-        parsed_filters,
-        f"{resource_name}s",
+    return cast(
+        List[_ResourceSummaryRow],
+        fetch_with_filter_fallback(
+            lambda **kw: client.get_resources(resource_name, **kw),
+            lambda: client.get_resources(resource_name),
+            parsed_filters,
+            f"{resource_name}s",
+        ),
     )
 
 
@@ -367,7 +376,10 @@ def _read_dashboard_backup_data(
     selection: _DashboardSelection,
 ) -> bytes:
     if selection.cascade_buf is None:
-        backup_buf = client.export_zip(RESOURCE_DASHBOARD, list(selection.dashboard_ids))
+        backup_buf = client.export_zip(
+            RESOURCE_DASHBOARD,
+            list(selection.dashboard_ids),
+        )
         return backup_buf.read()
     selection.cascade_buf.seek(0)
     return selection.cascade_buf.read()
@@ -379,7 +391,7 @@ def _execute_dashboard_delete_plan(
     cascade_options: DashboardCascadeOptions,
     execution_options: _DashboardExecutionOptions,
     db_passwords: Dict[str, str],
-) -> None:
+) -> None:  # pylint: disable=too-many-locals
     selection = plan.selection
     resolution = plan.resolution
     _echo_summary(plan.summary, dry_run=False)

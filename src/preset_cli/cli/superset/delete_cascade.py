@@ -5,7 +5,7 @@ Cascade planning helpers for delete assets.
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple, cast
 
 import click
 
@@ -15,20 +15,21 @@ from preset_cli.cli.superset import dependency_utils as dep_utils
 from preset_cli.cli.superset.asset_utils import (
     RESOURCE_CHART,
     RESOURCE_CHARTS,
-    RESOURCE_DATABASE,
-    RESOURCE_DATABASES,
     RESOURCE_DASHBOARD,
     RESOURCE_DASHBOARDS,
+    RESOURCE_DATABASE,
+    RESOURCE_DATABASES,
     RESOURCE_DATASET,
     RESOURCE_DATASETS,
 )
 from preset_cli.cli.superset.delete_types import (
     CascadeDependencies,
-    _CascadeResolution,
     DashboardCascadeOptions,
+    _CascadeResolution,
     _DashboardDeletePlan,
     _DashboardExecutionOptions,
     _DashboardSelection,
+    _DashboardSummaryRow,
     _DeleteSummaryData,
 )
 from preset_cli.cli.superset.lib import (
@@ -70,7 +71,7 @@ def _fetch_dashboard_selection(
         click.echo("No dashboards match the specified filters.")
         return None
     return _DashboardSelection(
-        dashboards=dashboards,
+        dashboards=cast(List[_DashboardSummaryRow], dashboards),
         dashboard_ids={dashboard["id"] for dashboard in dashboards},
     )
 

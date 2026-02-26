@@ -17,10 +17,10 @@ from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.cli.superset.asset_utils import (
     RESOURCE_CHART,
     RESOURCE_CHARTS,
-    RESOURCE_DATABASE,
-    RESOURCE_DATABASES,
     RESOURCE_DASHBOARD,
     RESOURCE_DASHBOARDS,
+    RESOURCE_DATABASE,
+    RESOURCE_DATABASES,
     RESOURCE_DATASET,
     RESOURCE_DATASETS,
     classify_asset_path,
@@ -35,15 +35,15 @@ ExportResourceName = Literal["database", "dataset", "chart", "dashboard"]
 OwnershipResourceName = Literal["dataset", "chart", "dashboard"]
 
 EXPORT_RESOURCE_ORDER: Tuple[ExportResourceName, ...] = (
-    RESOURCE_DATABASE,
-    RESOURCE_DATASET,
-    RESOURCE_CHART,
-    RESOURCE_DASHBOARD,
+    "database",
+    "dataset",
+    "chart",
+    "dashboard",
 )
 OWNERSHIP_RESOURCE_ORDER: Tuple[OwnershipResourceName, ...] = (
-    RESOURCE_DATASET,
-    RESOURCE_CHART,
-    RESOURCE_DASHBOARD,
+    "dataset",
+    "chart",
+    "dashboard",
 )
 
 
@@ -167,7 +167,7 @@ def check_asset_uniqueness(  # pylint: disable=too-many-arguments
 )
 @click.option(
     "--asset-type",
-    type=click.Choice(EXPORT_RESOURCE_ORDER),
+    type=click.Choice(EXPORT_RESOURCE_ORDER, case_sensitive=False),
     help="Asset type",
     multiple=True,
 )
@@ -476,7 +476,7 @@ def export_rls(
 )
 @click.option(
     "--asset-type",
-    type=click.Choice(OWNERSHIP_RESOURCE_ORDER),
+    type=click.Choice(OWNERSHIP_RESOURCE_ORDER, case_sensitive=False),
     help="Asset type",
     multiple=True,
 )

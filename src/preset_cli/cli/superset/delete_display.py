@@ -5,7 +5,7 @@ Display and formatting helpers for delete assets.
 from __future__ import annotations
 
 import shlex
-from typing import Any, Dict, Iterable, List, Set
+from typing import Dict, Iterable, List, Set
 
 import click
 
@@ -15,7 +15,12 @@ from preset_cli.cli.superset.asset_utils import (
     RESOURCE_DATABASES,
     RESOURCE_DATASETS,
 )
-from preset_cli.cli.superset.delete_types import _DeleteSummaryData
+from preset_cli.cli.superset.delete_types import (
+    _DashboardSummaryRow,
+    _DeleteResourceName,
+    _DeleteSummaryData,
+    _ResourceSummaryRow,
+)
 
 
 def _format_restore_command(backup_path: str, asset_type: str) -> str:
@@ -26,7 +31,7 @@ def _format_restore_command(backup_path: str, asset_type: str) -> str:
     )
 
 
-def _format_dashboard_summary(dashboards: Iterable[Dict[str, Any]]) -> List[str]:
+def _format_dashboard_summary(dashboards: Iterable[_DashboardSummaryRow]) -> List[str]:
     lines = []
     for dashboard in dashboards:
         title = dashboard.get("dashboard_title") or dashboard.get("title") or "Unknown"
@@ -36,8 +41,8 @@ def _format_dashboard_summary(dashboards: Iterable[Dict[str, Any]]) -> List[str]
 
 
 def _format_resource_summary(
-    resource_name: str,
-    resources: Iterable[Dict[str, Any]],
+    resource_name: _DeleteResourceName,
+    resources: Iterable[_ResourceSummaryRow],
 ) -> List[str]:
     lines = []
     keys = dep_utils.RESOURCE_NAME_KEYS.get(resource_name, ("name",))
@@ -54,8 +59,8 @@ def _format_resource_summary(
 
 
 def _echo_resource_summary(
-    resource_name: str,
-    resources: List[Dict[str, Any]],
+    resource_name: _DeleteResourceName,
+    resources: List[_ResourceSummaryRow],
     dry_run: bool,
 ) -> None:
     if dry_run:

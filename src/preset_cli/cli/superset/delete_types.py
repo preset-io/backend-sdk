@@ -4,14 +4,35 @@ Internal data models for the delete-assets command.
 
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Any, Dict, List, Set, Tuple, TypedDict
+from typing import Dict, List, Literal, NotRequired, Set, Tuple, TypedDict
+
+_DeleteResourceName = Literal["chart", "dataset", "database"]
+
+
+class _DashboardSummaryRow(TypedDict):
+    """Dashboard fields required for delete summary rendering."""
+
+    id: int
+    dashboard_title: NotRequired[str]
+    title: NotRequired[str]
+    slug: NotRequired[str]
+
+
+class _ResourceSummaryRow(TypedDict):
+    """Non-dashboard resource fields used in delete summary output."""
+
+    id: int
+    name: NotRequired[str]
+    slice_name: NotRequired[str]
+    table_name: NotRequired[str]
+    database_name: NotRequired[str]
 
 
 @dataclass(frozen=True)
 class _NonDashboardDeleteOptions:
     """Execution options for non-dashboard deletes."""
 
-    resource_name: str
+    resource_name: _DeleteResourceName
     dry_run: bool
     confirm: str | None
     rollback: bool
@@ -41,7 +62,7 @@ class _DashboardExecutionOptions:
 class _DashboardSelection:
     """Selected dashboards and optional exported backup buffer."""
 
-    dashboards: List[Dict[str, Any]]
+    dashboards: List[_DashboardSummaryRow]
     dashboard_ids: Set[int]
     cascade_buf: BytesIO | None = None
 
@@ -72,7 +93,7 @@ class _CascadeResolution:
 class _DeleteSummaryData:
     """Summary payload used to render delete previews/output."""
 
-    dashboards: List[Dict[str, Any]]
+    dashboards: List[_DashboardSummaryRow]
     cascade_ids: Dict[str, Set[int]]
     cascade_names: Dict[str, Dict[int, str]]
     chart_dashboard_context: Dict[int, List[str]]

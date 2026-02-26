@@ -171,9 +171,7 @@ def _rollback_non_dashboard_deletion(
         client=client,
         backup_data=backup_data,
         import_resource_name=resource_name,
-        db_passwords=(
-            db_passwords if resource_name == RESOURCE_DATABASE else {}
-        ),
+        db_passwords=(db_passwords if resource_name == RESOURCE_DATABASE else {}),
         expected_types={resource_name},
     )
 

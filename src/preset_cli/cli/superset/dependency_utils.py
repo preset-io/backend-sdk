@@ -10,9 +10,9 @@ from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.cli.superset.asset_utils import (
     RESOURCE_CHART,
     RESOURCE_CHARTS,
+    RESOURCE_DASHBOARD,
     RESOURCE_DATABASE,
     RESOURCE_DATABASES,
-    RESOURCE_DASHBOARD,
     RESOURCE_DATASET,
     RESOURCE_DATASETS,
     iter_yaml_asset_configs,
@@ -27,6 +27,8 @@ RESOURCE_NAME_KEYS = {
 
 
 def extract_backup_uuids_by_type(backup_data: bytes) -> Dict[str, Set[str]]:
+    """Extract UUIDs grouped by singular resource type from a backup ZIP blob."""
+
     uuids: Dict[str, Set[str]] = {
         RESOURCE_DASHBOARD: set(),
         RESOURCE_CHART: set(),
@@ -45,6 +47,8 @@ def extract_backup_uuids_by_type(backup_data: bytes) -> Dict[str, Set[str]]:
 def extract_dependency_maps(
     buf: BytesIO,
 ) -> CascadeDependencies:
+    """Extract dashboard export dependency sets and relationship mappings."""
+
     chart_uuids: Set[str] = set()
     dataset_uuids: Set[str] = set()
     database_uuids: Set[str] = set()
@@ -151,6 +155,8 @@ def build_uuid_map(
     client: SupersetClient,
     resource_name: str,
 ) -> Tuple[Dict[str, int], Dict[int, str], bool]:
+    """Build UUID->ID and ID->name maps for a Superset resource type."""
+
     resources = client.get_resources(resource_name)
     name_keys = RESOURCE_NAME_KEYS.get(resource_name, ("name",))
     name_map: Dict[int, str] = {}
@@ -188,6 +194,8 @@ def resolve_ids(
     resource_name: str,
     uuids: Set[str],
 ) -> Tuple[Set[int], Dict[int, str], List[str], bool]:
+    """Resolve UUIDs to numeric IDs and report unresolved UUIDs."""
+
     if not uuids:
         return set(), {}, [], True
 
@@ -204,6 +212,8 @@ def compute_shared_uuids(
     dependencies: CascadeDependencies,
     protected: Dict[str, Set[str]],
 ) -> Dict[str, Set[str]]:
+    """Compute dependency UUIDs shared with protected dashboards."""
+
     shared_charts = dependencies.chart_uuids & protected[RESOURCE_CHARTS]
     protected_datasets = dependencies.dataset_uuids & protected[RESOURCE_DATASETS]
     protected_databases = dependencies.database_uuids & protected[RESOURCE_DATABASES]

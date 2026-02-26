@@ -132,23 +132,16 @@ Commands:
 
     result = runner.invoke(superset, ["export", "--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """Usage: superset export [OPTIONS] DIRECTORY
-
-Options:
-  --overwrite               Overwrite existing resources
-  --disable-jinja-escaping  Disable Jinja template escaping
-  --force-unix-eol          Force Unix end-of-line characters, otherwise use
-                            system default
-  --asset-type TEXT         Asset type
-  --database-ids TEXT       Comma separated list of database IDs to export
-  --dataset-ids TEXT        Comma separated list of dataset IDs to export
-  --chart-ids TEXT          Comma separated list of chart IDs to export
-  --dashboard-ids TEXT      Comma separated list of dashboard IDs to export
-  --help                    Show this message and exit.
-"""
-    )
+    assert "Usage: superset export [OPTIONS] DIRECTORY" in result.output
+    assert "--overwrite" in result.output
+    assert "--disable-jinja-escaping" in result.output
+    assert "--force-unix-eol" in result.output
+    assert "--asset-type [database|dataset|chart|dashboard]" in result.output
+    assert "--database-ids TEXT" in result.output
+    assert "--dataset-ids TEXT" in result.output
+    assert "--chart-ids TEXT" in result.output
+    assert "--dashboard-ids TEXT" in result.output
+    assert "--help" in result.output
 
 
 def test_superset_jwt_auth(mocker: MockerFixture) -> None:

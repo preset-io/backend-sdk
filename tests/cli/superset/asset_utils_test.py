@@ -1,3 +1,5 @@
+"""Tests for Superset asset path and ZIP config helpers."""
+
 from io import BytesIO
 from zipfile import ZipFile
 
@@ -10,6 +12,8 @@ from preset_cli.cli.superset.asset_utils import (
 
 
 def test_classify_asset_path_returns_singular_and_plural_types() -> None:
+    """Asset path classification should support singular and plural outputs."""
+
     assert classify_asset_path("charts/chart.yaml") == "chart"
     assert classify_asset_path("charts/chart.yaml", plural=True) == "charts"
     assert classify_asset_path("datasets/db/schema.yaml") == "dataset"
@@ -18,6 +22,8 @@ def test_classify_asset_path_returns_singular_and_plural_types() -> None:
 
 
 def test_iter_yaml_asset_configs_reads_supported_asset_yaml_entries() -> None:
+    """ZIP YAML iteration should only include supported asset resource entries."""
+
     buf = BytesIO()
     with ZipFile(buf, "w") as bundle:
         bundle.writestr("bundle/charts/chart.yaml", yaml.dump({"uuid": "chart-uuid"}))

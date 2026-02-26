@@ -16,13 +16,6 @@ import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
-from preset_cli.cli.superset.dependency_utils import (
-    build_uuid_map,
-    compute_shared_uuids,
-    extract_backup_uuids_by_type,
-    extract_dependency_maps,
-    resolve_ids,
-)
 from preset_cli.cli.superset.asset_utils import (
     RESOURCE_CHART,
     RESOURCE_CHARTS,
@@ -30,19 +23,19 @@ from preset_cli.cli.superset.asset_utils import (
     RESOURCE_DATASET,
     RESOURCE_DATASETS,
 )
-from preset_cli.cli.superset.delete_cascade import (
-    _dataset_db_id,
-    _fetch_preflight_datasets,
-    _filter_datasets_for_database_ids,
-    _resolve_chart_targets,
-    _warn_missing_uuids,
-)
 from preset_cli.cli.superset.delete import (
     _delete_non_dashboard_assets,
     _execute_dashboard_delete_plan,
     _parse_delete_command_options,
     _resolve_rollback_settings,
     _validate_delete_option_combinations,
+)
+from preset_cli.cli.superset.delete_cascade import (
+    _dataset_db_id,
+    _fetch_preflight_datasets,
+    _filter_datasets_for_database_ids,
+    _resolve_chart_targets,
+    _warn_missing_uuids,
 )
 from preset_cli.cli.superset.delete_display import (
     _echo_cascade_section,
@@ -67,8 +60,16 @@ from preset_cli.cli.superset.delete_types import (
     _DashboardDeletePlan,
     _DashboardExecutionOptions,
     _DashboardSelection,
+    _DashboardSummaryRow,
     _DeleteSummaryData,
     _NonDashboardDeleteOptions,
+)
+from preset_cli.cli.superset.dependency_utils import (
+    build_uuid_map,
+    compute_shared_uuids,
+    extract_backup_uuids_by_type,
+    extract_dependency_maps,
+    resolve_ids,
 )
 from preset_cli.cli.superset.main import superset_cli
 from preset_cli.exceptions import SupersetError
@@ -119,7 +120,11 @@ def make_export_zip(
 
 def make_dashboard_delete_plan() -> _DashboardDeletePlan:
     """Build a minimal dashboard delete plan for execution flow tests."""
-    dashboard = {"id": 1, "dashboard_title": "Test", "slug": "test"}
+    dashboard: _DashboardSummaryRow = {
+        "id": 1,
+        "dashboard_title": "Test",
+        "slug": "test",
+    }
     return _DashboardDeletePlan(
         selection=_DashboardSelection(
             dashboards=[dashboard],
@@ -2228,7 +2233,9 @@ def test_execute_dashboard_delete_plan_stops_after_failing_stage(
         return_value="/tmp/backup.zip",
     )
     mocker.patch("preset_cli.cli.superset.delete._echo_backup_restore_details")
-    rollback = mocker.patch("preset_cli.cli.superset.delete._rollback_dashboard_deletion")
+    rollback = mocker.patch(
+        "preset_cli.cli.superset.delete._rollback_dashboard_deletion",
+    )
 
     stage_calls = []
 
@@ -2291,7 +2298,9 @@ def test_execute_dashboard_delete_plan_rolls_back_after_partial_stage_failure(
         return_value="/tmp/backup.zip",
     )
     mocker.patch("preset_cli.cli.superset.delete._echo_backup_restore_details")
-    rollback = mocker.patch("preset_cli.cli.superset.delete._rollback_dashboard_deletion")
+    rollback = mocker.patch(
+        "preset_cli.cli.superset.delete._rollback_dashboard_deletion",
+    )
 
     stage_calls = []
 
@@ -2355,7 +2364,9 @@ def test_execute_dashboard_delete_plan_stops_after_dataset_stage_failure(
         return_value="/tmp/backup.zip",
     )
     mocker.patch("preset_cli.cli.superset.delete._echo_backup_restore_details")
-    rollback = mocker.patch("preset_cli.cli.superset.delete._rollback_dashboard_deletion")
+    rollback = mocker.patch(
+        "preset_cli.cli.superset.delete._rollback_dashboard_deletion",
+    )
 
     stage_calls = []
 
