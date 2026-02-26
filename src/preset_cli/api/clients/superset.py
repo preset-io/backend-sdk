@@ -431,12 +431,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return resource
 
-    def get_resources(
-        self,
-        resource_name: str,
-        order_column: str = "changed_on_delta_humanized",
-        **kwargs: Any,
-    ) -> List[Any]:
+    def get_resources(self, resource_name: str, **kwargs: Any) -> List[Any]:
         """
         Return one or more of a resource, possibly filtered.
         """
@@ -454,7 +449,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                         dict(col=col, opr=value.operator, value=value.value)
                         for col, value in operations.items()
                     ],
-                    "order_column": order_column,
+                    "order_column": "changed_on_delta_humanized",
                     "order_direction": "desc",
                     "page": page,
                     "page_size": MAX_PAGE_SIZE,
@@ -511,15 +506,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         resource = response.json()
 
         return resource
-
-    def delete_resource(self, resource_name: str, resource_id: int):
-        """
-        Delete a resource.
-        """
-        url = self.baseurl / "api/v1" / resource_name / str(resource_id)
-
-        response = self.session.delete(url)
-        validate_response(response)
 
     def get_resource_endpoint_info(self, resource_name: str, **kwargs: Any) -> Any:
         """
@@ -693,18 +679,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         return self.get_resources("chart", **kwargs)
 
-    def update_chart(self, chart_id: int, **kwargs: Any) -> Any:
-        """
-        Update a chart.
-        """
-        return self.update_resource("chart", chart_id, **kwargs)
-
-    def delete_chart(self, chart_id):
-        """
-        delete a chart.
-        """
-        self.delete_resource("chart", chart_id)
-
     def get_dashboard(self, dashboard_id: int) -> Any:
         """
         Return a single dashboard.
@@ -728,42 +702,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Update a dashboard.
         """
         return self.update_resource("dashboard", dashboard_id, **kwargs)
-
-    def delete_dashboard(self, dashboard_id: int) -> Any:
-        """
-        Delete a dashboard.
-        """
-        self.delete_resource("dashboard", dashboard_id)
-
-    def get_users(self, **kwargs: str) -> List[Any]:
-        """
-        Return users, possibly filtered.
-        """
-        return self.get_resources("security/users", "id", **kwargs)
-
-    def get_report(self, report_id: int) -> Any:
-        """
-        Return a single report.
-        """
-        return self.get_resource("report", report_id)
-
-    def get_reports(self, **kwargs: str) -> List[Any]:
-        """
-        Return reports, possibly filtered.
-        """
-        return self.get_resources("report", **kwargs)
-
-    def create_report(self, **kwargs: Any) -> Any:
-        """
-        Create a report.
-        """
-        return self.create_resource("report", **kwargs)
-
-    def update_report(self, report_id: int, **kwargs: Any) -> Any:
-        """
-        Update a report.
-        """
-        return self.update_resource("report", report_id, **kwargs)
 
     def export_zip(self, resource_name: str, ids: List[int]) -> BytesIO:
         """
