@@ -165,3 +165,43 @@ def test_superset_jwt_auth(mocker: MockerFixture) -> None:
     )
 
     SupersetJWTAuth.assert_called_with("SECRET", URL("http://localhost:8088/"))
+
+
+def test_superset_cli_default_provider(mocker: MockerFixture) -> None:
+    """
+    Test that the --provider option defaults to 'ldap'.
+    """
+    UsernamePasswordAuth = mocker.patch(
+        "preset_cli.cli.superset.main.UsernamePasswordAuth",
+    )
+
+    runner = CliRunner()
+    runner.invoke(
+        superset_cli,
+        ["http://localhost:8088/", "export"],
+        catch_exceptions=False,
+    )
+
+    UsernamePasswordAuth.assert_called_with(
+        URL("http://localhost:8088/"), "admin", "admin", "ldap",
+    )
+
+
+def test_superset_cli_provider(mocker: MockerFixture) -> None:
+    """
+    Test that --provider db is passed through to UsernamePasswordAuth.
+    """
+    UsernamePasswordAuth = mocker.patch(
+        "preset_cli.cli.superset.main.UsernamePasswordAuth",
+    )
+
+    runner = CliRunner()
+    runner.invoke(
+        superset_cli,
+        ["--provider=db", "http://localhost:8088/", "export"],
+        catch_exceptions=False,
+    )
+
+    UsernamePasswordAuth.assert_called_with(
+        URL("http://localhost:8088/"), "admin", "admin", "db",
+    )

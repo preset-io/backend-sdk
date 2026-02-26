@@ -35,6 +35,11 @@ from preset_cli.lib import setup_logging
     help="Password (leave empty for prompt)",
 )
 @click.option("--loglevel", default="INFO")
+@click.option(
+    "--provider",
+    default="ldap",
+    help="Provider that store the superset credentials (e.g. ldap, db, etc.)",
+)
 @click.version_option()
 @click.pass_context
 def superset_cli(  # pylint: disable=too-many-arguments
@@ -44,6 +49,7 @@ def superset_cli(  # pylint: disable=too-many-arguments
     username: str,
     password: str,
     loglevel: str,
+    provider: str,
 ):
     """
     An Apache Superset CLI.
@@ -59,7 +65,12 @@ def superset_cli(  # pylint: disable=too-many-arguments
         if jwt_token:
             ctx.obj["AUTH"] = SupersetJWTAuth(jwt_token, URL(instance))
         else:
-            ctx.obj["AUTH"] = UsernamePasswordAuth(URL(instance), username, password)
+            ctx.obj["AUTH"] = UsernamePasswordAuth(
+                URL(instance),
+                username,
+                password,
+                provider,
+            )
 
 
 superset_cli.add_command(sql)

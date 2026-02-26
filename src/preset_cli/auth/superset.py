@@ -15,7 +15,13 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
     Auth to Superset via username/password.
     """
 
-    def __init__(self, baseurl: URL, username: str, password: Optional[str] = None, provider: Optional[str] = None):
+    def __init__(
+        self,
+        baseurl: URL,
+        username: str,
+        password: Optional[str] = None,
+        provider: Optional[str] = None,
+    ):
         super().__init__()
 
         self.csrf_token: Optional[str] = None
