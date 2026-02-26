@@ -463,6 +463,21 @@ def test_is_filter_not_allowed_error_uses_error_type() -> None:
     assert is_filter_not_allowed_error(exc) is True
 
 
+def test_is_filter_not_allowed_error_uses_unsupported_filter_error_type() -> None:
+    """
+    Test ``is_filter_not_allowed_error`` detects normalized unsupported filter errors.
+    """
+    exc = SupersetError(
+        errors=[
+            {
+                "message": "Bad request",
+                "error_type": "filter/unsupported",
+            },
+        ],
+    )
+    assert is_filter_not_allowed_error(exc) is True
+
+
 def test_filter_resources_locally_extra_branches() -> None:
     """
     Test ``filter_resources_locally`` branch behavior for bool/int/empty values.
