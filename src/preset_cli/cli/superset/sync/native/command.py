@@ -605,7 +605,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
         clean_logs(LogType.ASSETS, logs)
 
 
-def _dispatch_no_cascade_primary_update(
+def _dispatch_no_cascade_primary_update(  # pylint: disable=too-many-arguments
     resource_name: str,
     asset_type: ResourceType,
     cascade: bool,
