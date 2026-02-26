@@ -44,14 +44,7 @@ def extract_backup_uuids_by_type(backup_data: bytes) -> Dict[str, Set[str]]:
 
 def extract_dependency_maps(
     buf: BytesIO,
-) -> Tuple[
-    Set[str],
-    Set[str],
-    Set[str],
-    Dict[str, str],
-    Dict[str, str],
-    Dict[str, Set[str]],
-]:
+) -> CascadeDependencies:
     chart_uuids: Set[str] = set()
     dataset_uuids: Set[str] = set()
     database_uuids: Set[str] = set()
@@ -86,13 +79,13 @@ def extract_dependency_maps(
                     chart_dashboard_titles,
                 )
 
-    return (
-        chart_uuids,
-        dataset_uuids,
-        database_uuids,
-        chart_dataset_map,
-        dataset_database_map,
-        chart_dashboard_titles,
+    return CascadeDependencies(
+        chart_uuids=chart_uuids,
+        dataset_uuids=dataset_uuids,
+        database_uuids=database_uuids,
+        chart_dataset_map=chart_dataset_map,
+        dataset_database_map=dataset_database_map,
+        chart_dashboard_titles_by_uuid=chart_dashboard_titles,
     )
 
 

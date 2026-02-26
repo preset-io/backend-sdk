@@ -39,13 +39,11 @@ from preset_cli.cli.superset.lib import (
 
 def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
     """Extract UUID sets from a dashboard export ZIP."""
-    chart_uuids, dataset_uuids, database_uuids, _, _, _ = dep_utils.extract_dependency_maps(
-        buf,
-    )
+    dependencies = dep_utils.extract_dependency_maps(buf)
     return {
-        RESOURCE_CHARTS: chart_uuids,
-        RESOURCE_DATASETS: dataset_uuids,
-        RESOURCE_DATABASES: database_uuids,
+        RESOURCE_CHARTS: dependencies.chart_uuids,
+        RESOURCE_DATASETS: dependencies.dataset_uuids,
+        RESOURCE_DATABASES: dependencies.database_uuids,
     }
 
 
@@ -96,14 +94,7 @@ def _load_cascade_dependencies(
             RESOURCE_DASHBOARD,
             list(selection.dashboard_ids),
         )
-        (
-            dependencies.chart_uuids,
-            dependencies.dataset_uuids,
-            dependencies.database_uuids,
-            dependencies.chart_dataset_map,
-            dependencies.dataset_database_map,
-            dependencies.chart_dashboard_titles_by_uuid,
-        ) = dep_utils.extract_dependency_maps(selection.cascade_buf)
+        dependencies = dep_utils.extract_dependency_maps(selection.cascade_buf)
 
         if not cascade_options.datasets:
             dependencies.dataset_uuids = set()

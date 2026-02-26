@@ -1676,8 +1676,8 @@ def test_extract_dependency_maps_handles_invalid_dashboard_nodes() -> None:
             ),
         )
 
-    _, _, _, _, _, chart_context = extract_dependency_maps(buf)
-    assert chart_context == {"chart-uuid": {"Mixed"}}
+    dependencies = extract_dependency_maps(buf)
+    assert dependencies.chart_dashboard_titles_by_uuid == {"chart-uuid": {"Mixed"}}
 
 
 def test_extract_dependency_maps_full_dependency_graph() -> None:
@@ -1728,27 +1728,20 @@ def test_extract_dependency_maps_full_dependency_graph() -> None:
             ),
         )
 
-    (
-        chart_uuids,
-        dataset_uuids,
-        database_uuids,
-        chart_dataset_map,
-        dataset_database_map,
-        chart_context,
-    ) = extract_dependency_maps(buf)
+    dependencies = extract_dependency_maps(buf)
 
-    assert chart_uuids == {"chart-a", "chart-b"}
-    assert dataset_uuids == {"dataset-a", "dataset-b"}
-    assert database_uuids == {"db-a", "db-b"}
-    assert chart_dataset_map == {
+    assert dependencies.chart_uuids == {"chart-a", "chart-b"}
+    assert dependencies.dataset_uuids == {"dataset-a", "dataset-b"}
+    assert dependencies.database_uuids == {"db-a", "db-b"}
+    assert dependencies.chart_dataset_map == {
         "chart-a": "dataset-a",
         "chart-b": "dataset-b",
     }
-    assert dataset_database_map == {
+    assert dependencies.dataset_database_map == {
         "dataset-a": "db-a",
         "dataset-b": "db-b",
     }
-    assert chart_context == {
+    assert dependencies.chart_dashboard_titles_by_uuid == {
         "chart-a": {"Marketing", "Sales"},
         "chart-b": {"Sales"},
     }
@@ -2428,10 +2421,10 @@ def test_extract_dependency_maps_covers_optional_uuid_paths() -> None:
             ),
         )
 
-    chart_uuids, dataset_uuids, database_uuids, *_ = extract_dependency_maps(buf)
-    assert "chart-no-dataset" in chart_uuids
-    assert "dataset-no-database" in dataset_uuids
-    assert database_uuids == set()
+    dependencies = extract_dependency_maps(buf)
+    assert "chart-no-dataset" in dependencies.chart_uuids
+    assert "dataset-no-database" in dependencies.dataset_uuids
+    assert dependencies.database_uuids == set()
 
 
 def test_apply_db_passwords_to_backup_skips_database_without_uuid() -> None:
