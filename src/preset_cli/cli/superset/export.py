@@ -6,7 +6,7 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 from zipfile import ZipFile
 
 import click
@@ -30,6 +30,21 @@ from preset_cli.lib import remove_root, split_comma
 JINJA2_OPEN_MARKER = "__JINJA2_OPEN__"
 JINJA2_CLOSE_MARKER = "__JINJA2_CLOSE__"
 assert JINJA2_OPEN_MARKER != JINJA2_CLOSE_MARKER
+
+ExportResourceName = Literal["database", "dataset", "chart", "dashboard"]
+OwnershipResourceName = Literal["dataset", "chart", "dashboard"]
+
+EXPORT_RESOURCE_ORDER: Tuple[ExportResourceName, ...] = (
+    RESOURCE_DATABASE,
+    RESOURCE_DATASET,
+    RESOURCE_CHART,
+    RESOURCE_DASHBOARD,
+)
+OWNERSHIP_RESOURCE_ORDER: Tuple[OwnershipResourceName, ...] = (
+    RESOURCE_DATASET,
+    RESOURCE_CHART,
+    RESOURCE_DASHBOARD,
+)
 
 
 def get_newline_char(force_unix_eol: bool = False) -> Union[str, None]:
@@ -152,6 +167,7 @@ def check_asset_uniqueness(  # pylint: disable=too-many-arguments
 )
 @click.option(
     "--asset-type",
+    type=click.Choice(EXPORT_RESOURCE_ORDER),
     help="Asset type",
     multiple=True,
 )
@@ -204,12 +220,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
     }
     ids_requested = any([database_ids, dataset_ids, chart_ids, dashboard_ids])
 
-    for resource_name in [
-        RESOURCE_DATABASE,
-        RESOURCE_DATASET,
-        RESOURCE_CHART,
-        RESOURCE_DASHBOARD,
-    ]:
+    for resource_name in EXPORT_RESOURCE_ORDER:
         if (not asset_types or resource_name in asset_types) and (
             ids[resource_name] or not ids_requested
         ):
@@ -226,7 +237,7 @@ def export_assets(  # pylint: disable=too-many-locals, too-many-arguments
 
 
 def export_resource(  # pylint: disable=too-many-arguments, too-many-locals
-    resource_name: str,
+    resource_name: ExportResourceName,
     requested_ids: Set[int],
     root: Path,
     client: SupersetClient,
@@ -465,6 +476,7 @@ def export_rls(
 )
 @click.option(
     "--asset-type",
+    type=click.Choice(OWNERSHIP_RESOURCE_ORDER),
     help="Asset type",
     multiple=True,
 )
@@ -524,7 +536,7 @@ def export_ownership(  # pylint: disable=too-many-locals, too-many-arguments
     ids_requested = any([dataset_ids, chart_ids, dashboard_ids])
 
     ownership = defaultdict(list)
-    for resource_name in [RESOURCE_DATASET, RESOURCE_CHART, RESOURCE_DASHBOARD]:
+    for resource_name in OWNERSHIP_RESOURCE_ORDER:
         if (not asset_types or resource_name in asset_types) and (
             ids[resource_name] or not ids_requested
         ):
