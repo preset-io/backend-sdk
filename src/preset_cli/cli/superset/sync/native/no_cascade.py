@@ -8,7 +8,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, Optional, Set, Tuple
+from typing import AbstractSet, Any, Callable, Dict, Iterator, Optional, Set, Tuple
 
 import yaml
 
@@ -52,7 +52,7 @@ class DashboardContentDeps:
     find_config_by_uuid_fn: FindConfigByUUIDFn
     resolve_uuid_to_id_fn: ResolveUUIDToIDFn
     get_charts_uuids_fn: Callable[[AssetConfig], Iterator[UUIDLike]]
-    get_dataset_filter_uuids_fn: Callable[[AssetConfig], Set[UUIDLike]]
+    get_dataset_filter_uuids_fn: Callable[[AssetConfig], AbstractSet[UUIDLike]]
 
 
 @dataclass(frozen=True)
