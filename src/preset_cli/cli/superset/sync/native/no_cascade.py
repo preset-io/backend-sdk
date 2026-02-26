@@ -8,18 +8,23 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterator, Optional, Set, Tuple
 
 import yaml
 
+from preset_cli.cli.superset.sync.native.types import (
+    AssetConfig,
+    JSONDict,
+    ResourceDir,
+    UUIDLike,
+)
 from preset_cli.exceptions import CLIError, SupersetError
 
-AssetConfig = Dict[str, Any]
 FindConfigByUUIDFn = Callable[
-    [Dict[Path, AssetConfig], str, Any],
+    [Dict[Path, AssetConfig], ResourceDir, UUIDLike | None],
     Optional[Tuple[Path, AssetConfig]],
 ]
-ResolveUUIDToIDFn = Callable[[Any, str, Any], Optional[int]]
+ResolveUUIDToIDFn = Callable[[Any, str, UUIDLike | None], Optional[int]]
 ImportResourcesFn = Callable[[Dict[str, str], Any, bool, Any], None]
 
 
@@ -32,7 +37,7 @@ class NoCascadePrimarySpec:
     resource_name: str
     asset_type: Any
     build_contents: Callable[
-        [Dict[Path, AssetConfig], Any, Any],
+        [Dict[Path, AssetConfig], UUIDLike | None, Any],
         Optional[Dict[str, str]],
     ]
     missing_bundle_error: Callable[[str], str]
@@ -46,8 +51,8 @@ class DashboardContentDeps:
 
     find_config_by_uuid_fn: FindConfigByUUIDFn
     resolve_uuid_to_id_fn: ResolveUUIDToIDFn
-    get_charts_uuids_fn: Callable[[AssetConfig], Any]
-    get_dataset_filter_uuids_fn: Callable[[AssetConfig], Any]
+    get_charts_uuids_fn: Callable[[AssetConfig], Iterator[UUIDLike]]
+    get_dataset_filter_uuids_fn: Callable[[AssetConfig], Set[UUIDLike]]
 
 
 @dataclass(frozen=True)
@@ -73,11 +78,11 @@ class ChartUpdateDeps:
     chart_asset_type: Any
     dataset_asset_type: Any
     build_chart_contents_fn: Callable[
-        [Dict[Path, AssetConfig], Any],
+        [Dict[Path, AssetConfig], UUIDLike | None],
         Optional[Dict[str, str]],
     ]
     build_dataset_contents_fn: Callable[
-        [Dict[Path, AssetConfig], Any],
+        [Dict[Path, AssetConfig], UUIDLike | None],
         Optional[Dict[str, str]],
     ]
     prepare_chart_update_payload_fn: Callable[
@@ -94,7 +99,7 @@ class DashboardUpdateDeps:
 
     dashboard_asset_type: Any
     build_dashboard_contents_fn: Callable[
-        [Dict[Path, AssetConfig], Any, Any, bool],
+        [Dict[Path, AssetConfig], UUIDLike | None, Any, bool],
         Optional[Dict[str, str]],
     ]
     prepare_dashboard_update_payload_fn: Callable[[AssetConfig, Any], Dict[str, Any]]
@@ -125,8 +130,8 @@ def prune_existing_dependency_configs(
 
 def find_config_by_uuid(
     configs: Dict[Path, AssetConfig],
-    resource_dir: str,
-    uuid_value: Any,
+    resource_dir: ResourceDir,
+    uuid_value: UUIDLike | None,
 ) -> Optional[Tuple[Path, AssetConfig]]:
     """
     Find a config by UUID in the given resource directory.
@@ -143,7 +148,7 @@ def find_config_by_uuid(
 
 def build_dataset_contents(
     configs: Dict[Path, AssetConfig],
-    dataset_uuid: Any,
+    dataset_uuid: UUIDLike | None,
     find_config_by_uuid_fn: FindConfigByUUIDFn,
 ) -> Optional[Dict[str, str]]:
     """
@@ -167,10 +172,10 @@ def build_dataset_contents(
 
 def build_chart_contents(
     configs: Dict[Path, AssetConfig],
-    chart_uuid: Any,
+    chart_uuid: UUIDLike | None,
     find_config_by_uuid_fn: FindConfigByUUIDFn,
     build_dataset_contents_fn: Callable[
-        [Dict[Path, AssetConfig], Any, FindConfigByUUIDFn],
+        [Dict[Path, AssetConfig], UUIDLike | None, FindConfigByUUIDFn],
         Optional[Dict[str, str]],
     ],
 ) -> Optional[Dict[str, str]]:
@@ -201,7 +206,7 @@ def _should_include_resource(
     client: Any,
     deps: DashboardContentDeps,
     resource_name: str,
-    uuid_value: Any,
+    uuid_value: UUIDLike | None,
 ) -> bool:
     if not missing_only:
         return True
@@ -212,10 +217,10 @@ def _should_include_resource(
 
 def _add_dataset_contents(
     configs: Dict[Path, AssetConfig],
-    dataset_uuid: Any,
+    dataset_uuid: UUIDLike | None,
     contents: Dict[str, str],
     deps: DashboardContentDeps,
-    should_include_fn: Callable[[str, Any], bool],
+    should_include_fn: Callable[[str, UUIDLike | None], bool],
 ) -> None:
     dataset_entry = deps.find_config_by_uuid_fn(configs, "datasets", dataset_uuid)
     if not dataset_entry:
@@ -235,7 +240,7 @@ def _add_dataset_contents(
 
 def build_dashboard_contents(
     configs: Dict[Path, AssetConfig],
-    dashboard_uuid: Any,
+    dashboard_uuid: UUIDLike | None,
     deps: DashboardContentDeps,
     client: Any = None,
     missing_only: bool = False,
@@ -248,7 +253,7 @@ def build_dashboard_contents(
         return None
     dashboard_path, dashboard_config = dashboard_entry
 
-    def should_include(resource_name: str, uuid_value: Any) -> bool:
+    def should_include(resource_name: str, uuid_value: UUIDLike | None) -> bool:
         return _should_include_resource(
             missing_only,
             client,
@@ -292,7 +297,7 @@ def safe_json_loads(
     value: Any,
     label: str,
     logger: logging.Logger,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[JSONDict]:
     """
     Safely parse JSON content that may be a dict or string.
     """
@@ -310,11 +315,11 @@ def safe_json_loads(
 
 
 def update_chart_datasource_refs(
-    params: Optional[Dict[str, Any]],
-    query_context: Optional[Dict[str, Any]],
+    params: Optional[JSONDict],
+    query_context: Optional[JSONDict],
     datasource_id: int,
     datasource_type: str,
-) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+) -> Tuple[Optional[JSONDict], Optional[JSONDict]]:
     """
     Update datasource references in chart params/query_context.
     """
@@ -621,7 +626,7 @@ def update_chart_no_cascade(
 
     def build_chart_bundle(
         all_configs: Dict[Path, AssetConfig],
-        uuid_value: Any,
+        uuid_value: UUIDLike | None,
         _client: Any,
     ) -> Optional[Dict[str, str]]:
         return deps.build_chart_contents_fn(all_configs, uuid_value)
@@ -699,7 +704,7 @@ def update_dashboard_no_cascade(
 
     def build_dashboard_bundle(
         all_configs: Dict[Path, AssetConfig],
-        uuid_value: Any,
+        uuid_value: UUIDLike | None,
         update_client: Any,
     ) -> Optional[Dict[str, str]]:
         return deps.build_dashboard_contents_fn(

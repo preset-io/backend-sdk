@@ -17,7 +17,18 @@ from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypeAlias,
+    cast,
+)
 from zipfile import ZipFile
 
 import backoff
@@ -38,6 +49,12 @@ from preset_cli.cli.superset.lib import (
     write_logs_to_file,
 )
 from preset_cli.cli.superset.sync.native import no_cascade as no_cascade_lib
+from preset_cli.cli.superset.sync.native.types import (
+    AssetConfig,
+    JSONDict,
+    ResourceDir,
+    UUIDLike,
+)
 from preset_cli.exceptions import SupersetError
 from preset_cli.lib import dict_merge
 
@@ -51,7 +68,10 @@ OVERRIDES_SUFFIX = ".overrides"
 # because we don't want to have the CLI to depend on the ``superset`` package.
 PASSWORD_MASK = "X" * 10
 
-AssetConfig = Dict[str, Any]
+NoCascadeUpdateFn: TypeAlias = Callable[
+    [Path, AssetConfig, Dict[Path, AssetConfig], SupersetClient, bool],
+    None,
+]
 
 
 class ResourceType(Enum):
@@ -543,32 +563,16 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
 
                     _logger.info("Importing %s", path.relative_to("bundle"))
 
-                    if (
-                        resource_name == "charts"
-                        and asset_type == ResourceType.CHART
-                        and not cascade
+                    if _dispatch_no_cascade_primary_update(
+                        resource_name=resource_name,
+                        asset_type=asset_type,
+                        cascade=cascade,
+                        path=path,
+                        config=config,
+                        configs=configs,
+                        client=client,
+                        overwrite=overwrite,
                     ):
-                        _update_chart_no_cascade(
-                            path,
-                            config,
-                            configs,
-                            client,
-                            overwrite,
-                        )
-                        continue
-
-                    if (
-                        resource_name == "dashboards"
-                        and asset_type == ResourceType.DASHBOARD
-                        and not cascade
-                    ):
-                        _update_dashboard_no_cascade(
-                            path,
-                            config,
-                            configs,
-                            client,
-                            overwrite,
-                        )
                         continue
 
                     contents = {str(k): yaml.dump(v) for k, v in asset_configs.items()}
@@ -599,6 +603,38 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
         log["status"] == "FAILED" for log in logs[LogType.ASSETS]
     ):
         clean_logs(LogType.ASSETS, logs)
+
+
+def _dispatch_no_cascade_primary_update(
+    resource_name: str,
+    asset_type: ResourceType,
+    cascade: bool,
+    path: Path,
+    config: AssetConfig,
+    configs: Dict[Path, AssetConfig],
+    client: SupersetClient,
+    overwrite: bool,
+) -> bool:
+    """
+    Dispatch no-cascade primary updates for resources with dedicated API flows.
+    """
+    if cascade:
+        return False
+
+    update_specs: Dict[str, Tuple[ResourceType, NoCascadeUpdateFn]] = {
+        "charts": (ResourceType.CHART, _update_chart_no_cascade),
+        "dashboards": (ResourceType.DASHBOARD, _update_dashboard_no_cascade),
+    }
+    update_spec = update_specs.get(resource_name)
+    if not update_spec:
+        return False
+
+    expected_asset_type, update_fn = update_spec
+    if asset_type != expected_asset_type:
+        return False
+
+    update_fn(path, config, configs, client, overwrite)
+    return True
 
 
 def get_dashboard_related_uuids(config: AssetConfig) -> Iterator[str]:
@@ -703,7 +739,7 @@ def add_password_to_config(
 def _resolve_uuid_to_id(
     client: SupersetClient,
     resource_name: str,
-    uuid_value: Any,
+    uuid_value: UUIDLike | None,
     resources: List[Dict[str, Any]] | None = None,
 ) -> Optional[int]:
     """
@@ -734,8 +770,8 @@ def _resolve_uuid_to_id(
 
 def _find_config_by_uuid(
     configs: Dict[Path, AssetConfig],
-    resource_dir: str,
-    uuid_value: Any,
+    resource_dir: ResourceDir,
+    uuid_value: UUIDLike | None,
 ) -> Optional[Tuple[Path, AssetConfig]]:
     """
     Find a config by UUID in the given resource directory.
@@ -745,7 +781,7 @@ def _find_config_by_uuid(
 
 def _build_dataset_contents(
     configs: Dict[Path, AssetConfig],
-    dataset_uuid: Any,
+    dataset_uuid: UUIDLike | None,
 ) -> Optional[Dict[str, str]]:
     """
     Build a minimal bundle for a dataset (dataset + database).
@@ -759,7 +795,7 @@ def _build_dataset_contents(
 
 def _build_chart_contents(
     configs: Dict[Path, AssetConfig],
-    chart_uuid: Any,
+    chart_uuid: UUIDLike | None,
 ) -> Optional[Dict[str, str]]:
     """
     Build a minimal bundle for a chart (chart + dataset + database).
@@ -774,7 +810,7 @@ def _build_chart_contents(
 
 def _build_dashboard_contents(
     configs: Dict[Path, AssetConfig],
-    dashboard_uuid: Any,
+    dashboard_uuid: UUIDLike | None,
     client: SupersetClient | None = None,
     missing_only: bool = False,
 ) -> Optional[Dict[str, str]]:
@@ -795,27 +831,33 @@ def _build_dashboard_contents(
     )
 
 
-def _safe_json_loads(value: Any, label: str) -> Optional[Dict[str, Any]]:
+def _safe_json_loads(value: Any, label: str) -> Optional[JSONDict]:
     """
     Safely parse JSON content that may be a dict or string.
     """
-    return no_cascade_lib.safe_json_loads(value, label, _logger)
+    return cast(
+        Optional[JSONDict],
+        no_cascade_lib.safe_json_loads(value, label, _logger),
+    )
 
 
 def _update_chart_datasource_refs(
-    params: Optional[Dict[str, Any]],
-    query_context: Optional[Dict[str, Any]],
+    params: Optional[JSONDict],
+    query_context: Optional[JSONDict],
     datasource_id: int,
     datasource_type: str,
-) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+) -> Tuple[Optional[JSONDict], Optional[JSONDict]]:
     """
     Update datasource references in chart params/query_context.
     """
-    return no_cascade_lib.update_chart_datasource_refs(
-        params,
-        query_context,
-        datasource_id,
-        datasource_type,
+    return cast(
+        Tuple[Optional[JSONDict], Optional[JSONDict]],
+        no_cascade_lib.update_chart_datasource_refs(
+            params,
+            query_context,
+            datasource_id,
+            datasource_type,
+        ),
     )
 
 
