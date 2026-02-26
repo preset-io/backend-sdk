@@ -4,33 +4,47 @@ Helper functions for the Superset commands
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from pathlib import Path
-from typing import IO, Any, Callable, Dict, List, Tuple
+from typing import IO, Any, Callable, Dict, List, Tuple, TypeAlias
 
 import click
 import yaml
 
 from preset_cli.api.operators import Contains
-from preset_cli.exceptions import SupersetError
+from preset_cli.exceptions import ErrorPayload, SupersetError
 from preset_cli.lib import dict_merge
 
 LOG_FILE_PATH = Path("progress.log")
+FilterValueType: TypeAlias = type[str] | type[int] | type[bool]
+FilterValue: TypeAlias = str | int | bool
+ParsedFilterValue: TypeAlias = FilterValue | Contains
+
 CONTAINS_FILTER_KEYS = {"dashboard_title"}
 LOCAL_FILTER_KEYS = {"certified_by", "is_managed_externally"}
 FILTER_ALIASES = {"managed_externally": "is_managed_externally"}
-DASHBOARD_FILTER_KEYS: Dict[str, type] = {
+DASHBOARD_FILTER_KEYS: Dict[str, FilterValueType] = {
     "id": int,
     "slug": str,
     "dashboard_title": str,
     "certified_by": str,
     "is_managed_externally": bool,
 }
-DELETE_FILTER_KEYS: Dict[str, Dict[str, type]] = {
+DELETE_FILTER_KEYS: Dict[str, Dict[str, FilterValueType]] = {
     "dashboard": DASHBOARD_FILTER_KEYS,
     "chart": {"id": int},
     "dataset": {"id": int},
     "database": {"id": int},
+}
+FILTER_NOT_ALLOWED_RE = re.compile(
+    r"\bfilter(?:\s+column)?\b.*\bnot\s+allowed\s+to\s+filter\b",
+)
+FILTER_NOT_ALLOWED_ERROR_TYPES = {
+    "FILTER_NOT_ALLOWED",
+    "FILTER_NOT_ALLOWED_ERROR",
+    "INVALID_FILTER_COLUMN",
+    "INVALID_FILTER_COLUMN_ERROR",
 }
 
 
@@ -99,7 +113,7 @@ def clean_logs(log_type: LogType, logs: Dict[LogType, Any]) -> None:
         LOG_FILE_PATH.unlink(missing_ok=True)
 
 
-def _normalize_bool(value: Any) -> bool | None:
+def _normalize_bool(value: object) -> bool | None:
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -115,9 +129,9 @@ def _normalize_bool(value: Any) -> bool | None:
 
 def _coerce_filter_value(
     value: str,
-    value_type: type,
+    value_type: FilterValueType,
     key: str,
-) -> Any:
+) -> FilterValue:
     """
     Coerce a filter value to the desired type.
     """
@@ -138,7 +152,7 @@ def _coerce_filter_value(
 
 
 def coerce_bool_option(
-    value: Any,
+    value: bool | str,
     key: str,
 ) -> bool:
     """
@@ -162,28 +176,47 @@ def is_filter_not_allowed_error(exc: Exception) -> bool:
         return False
 
     for error in exc.errors:
-        message = str(error.get("message", "")).lower()
-        if "filter column" in message and "not allowed to filter" in message:
+        if _is_filter_not_allowed_payload(error):
             return True
 
     return False
 
 
-def _matches_contains(actual: Any, expected: Contains) -> bool:
+def _normalize_error_type(error_type: object) -> str:
+    if not isinstance(error_type, str):
+        return ""
+    return re.sub(r"[^A-Z0-9]+", "_", error_type.upper()).strip("_")
+
+
+def _is_filter_not_allowed_payload(error: ErrorPayload) -> bool:
+    normalized_error_type = _normalize_error_type(error.get("error_type"))
+    if normalized_error_type in FILTER_NOT_ALLOWED_ERROR_TYPES:
+        return True
+    if (
+        "FILTER" in normalized_error_type
+        and ("NOT_ALLOWED" in normalized_error_type or "UNSUPPORTED" in normalized_error_type)
+    ):
+        return True
+
+    message = str(error.get("message", "")).lower()
+    return bool(FILTER_NOT_ALLOWED_RE.search(message))
+
+
+def _matches_contains(actual: object | None, expected: Contains) -> bool:
     actual_text = "" if actual is None else str(actual)
     return str(expected.value).lower() in actual_text.lower()
 
 
-def _matches_bool(actual: Any, expected: bool) -> bool:
+def _matches_bool(actual: object | None, expected: bool) -> bool:
     actual_bool = _normalize_bool(actual)
     return actual_bool is not None and actual_bool == expected
 
 
-def _matches_empty_string(actual: Any, expected: Any) -> bool:
+def _matches_empty_string(actual: object | None, expected: ParsedFilterValue) -> bool:
     return expected == "" and (actual is None or actual == "")
 
 
-def _matches_int(actual: Any, expected: int) -> bool:
+def _matches_int(actual: object | None, expected: int) -> bool:
     try:
         if actual is None:
             return False
@@ -192,13 +225,13 @@ def _matches_int(actual: Any, expected: int) -> bool:
         return False
 
 
-def _matches_exact(actual: Any, expected: Any) -> bool:
+def _matches_exact(actual: object | None, expected: str) -> bool:
     return str(actual) == str(expected)
 
 
 def filter_resources_locally(  # pylint: disable=too-many-return-statements
     resources: list[dict[str, Any]],
-    filters: dict[str, Any],
+    filters: dict[str, ParsedFilterValue],
 ) -> list[dict[str, Any]]:
     """
     Apply parsed filters to a list of resources locally.
@@ -231,12 +264,12 @@ def filter_resources_locally(  # pylint: disable=too-many-return-statements
 
 def parse_filters(
     filters: Tuple[str, ...],
-    allowed_keys: Dict[str, type],
-) -> Dict[str, Any]:
+    allowed_keys: Dict[str, FilterValueType],
+) -> Dict[str, ParsedFilterValue]:
     """
     Parse repeatable key=value filter strings into kwargs for get_resources().
     """
-    parsed: Dict[str, Any] = {}
+    parsed: Dict[str, ParsedFilterValue] = {}
     for item in filters:
         if "=" not in item:
             raise click.BadParameter(
@@ -276,7 +309,7 @@ def parse_filters(
 def fetch_with_filter_fallback(
     fetch_filtered: Callable[..., List[Dict[str, Any]]],
     fetch_all: Callable[[], List[Dict[str, Any]]],
-    parsed_filters: Dict[str, Any],
+    parsed_filters: Dict[str, ParsedFilterValue],
     resource_label: str,
 ) -> List[Dict[str, Any]]:
     """

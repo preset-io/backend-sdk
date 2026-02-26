@@ -448,6 +448,21 @@ def test_is_filter_not_allowed_error_false_for_other_message() -> None:
     assert is_filter_not_allowed_error(exc) is False
 
 
+def test_is_filter_not_allowed_error_uses_error_type() -> None:
+    """
+    Test ``is_filter_not_allowed_error`` detects structured error_type values.
+    """
+    exc = SupersetError(
+        errors=[
+            {
+                "message": "Bad request",
+                "error_type": "FILTER_NOT_ALLOWED_ERROR",
+            },
+        ],
+    )
+    assert is_filter_not_allowed_error(exc) is True
+
+
 def test_filter_resources_locally_extra_branches() -> None:
     """
     Test ``filter_resources_locally`` branch behavior for bool/int/empty values.
