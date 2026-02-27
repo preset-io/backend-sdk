@@ -41,6 +41,8 @@ from preset_cli.cli.superset.sync.native.command import (
     _update_chart_no_cascade,
     _update_dashboard_no_cascade,
     add_password_to_config,
+    get_charts_uuids,
+    get_dataset_filter_uuids,
     import_resources,
     import_resources_individually,
     load_user_modules,
@@ -3900,6 +3902,103 @@ def test_resolve_uuid_to_id_with_prefetched_resources() -> None:
     client.get_uuids.return_value = {30: "eee-fff"}
     result = _resolve_uuid_to_id(client, "chart", "eee-fff", resources=resources)
     assert result == 30
+
+
+def test_resolve_uuid_to_id_skips_non_integer_matching_id() -> None:
+    """
+    Test ``_resolve_uuid_to_id`` keeps scanning when a matching UUID has a non-int ID.
+    """
+    client = mock.MagicMock()
+    resources: List[AssetConfig] = [
+        {"id": "not-an-int", "uuid": "same-uuid"},
+        {"id": 42, "uuid": "same-uuid"},
+    ]
+    assert _resolve_uuid_to_id(client, "chart", "same-uuid", resources=resources) == 42
+
+
+def test_get_charts_uuids_handles_non_dashboard_nodes() -> None:
+    """
+    Test ``get_charts_uuids`` ignores invalid position structures and non-chart nodes.
+    """
+    assert list(get_charts_uuids({"position": []})) == []
+    assert list(
+        get_charts_uuids(
+            {
+                "position": {
+                    "A": "not-a-dict",
+                    "B": {"type": "ROW"},
+                    "C": {"type": "CHART", "meta": {"uuid": "chart-1"}},
+                },
+            },
+        ),
+    ) == ["chart-1"]
+
+
+def test_get_dataset_filter_uuids_handles_invalid_filter_shapes() -> None:
+    """
+    Test ``get_dataset_filter_uuids`` ignores malformed metadata/targets entries.
+    """
+    assert get_dataset_filter_uuids({"metadata": "invalid"}) == set()
+    assert (
+        get_dataset_filter_uuids({"metadata": {"native_filter_configuration": {}}})
+        == set()
+    )
+    assert get_dataset_filter_uuids(
+        {
+            "metadata": {
+                "native_filter_configuration": [
+                    "not-a-dict",
+                    {"targets": "not-a-list"},
+                    {"targets": [None, {"datasetUuid": "dataset-1"}]},
+                ],
+            },
+        },
+    ) == {"dataset-1"}
+
+
+def test_import_resources_individually_dashboard_uses_multiple_related_configs(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,  # pylint: disable=unused-argument
+) -> None:
+    """
+    Test dashboard import picks up both chart and dataset related configs.
+    """
+    client = mocker.MagicMock()
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    import_resources = mocker.patch(
+        "preset_cli.cli.superset.sync.native.command.import_resources",
+    )
+    configs: Dict[Path, AssetConfig] = {
+        Path("bundle/databases/db.yaml"): {"uuid": "db-1"},
+        Path("bundle/datasets/ds.yaml"): {"uuid": "ds-1", "database_uuid": "db-1"},
+        Path("bundle/charts/chart.yaml"): {"uuid": "chart-1", "dataset_uuid": "ds-1"},
+        Path("bundle/dashboards/dash.yaml"): {
+            "uuid": "dash-1",
+            "position": {
+                "CHART-0": {"type": "CHART", "meta": {"uuid": "chart-missing"}},
+                "CHART-1": {"type": "CHART", "meta": {"uuid": "chart-1"}},
+            },
+            "metadata": {
+                "native_filter_configuration": [
+                    {"targets": [{"datasetUuid": "ds-1"}]},
+                ],
+            },
+        },
+    }
+
+    import_resources_individually(configs, client, True, ResourceType.DASHBOARD)
+
+    dashboard_calls = [
+        call
+        for call in import_resources.call_args_list
+        if call.args[3] == ResourceType.DASHBOARD
+    ]
+    assert len(dashboard_calls) == 1
+    dashboard_contents = dashboard_calls[0].args[0]
+    assert "bundle/dashboards/dash.yaml" in dashboard_contents
+    assert "bundle/charts/chart.yaml" in dashboard_contents
+    assert "bundle/datasets/ds.yaml" in dashboard_contents
+    assert "bundle/databases/db.yaml" in dashboard_contents
 
 
 def test_safe_json_loads_decode_failure() -> None:
