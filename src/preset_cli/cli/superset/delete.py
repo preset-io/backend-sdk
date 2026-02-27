@@ -6,7 +6,7 @@ Delete Superset assets.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Tuple, cast
+from typing import Dict, Iterable, List, Tuple, cast
 
 import click
 from yarl import URL
@@ -132,7 +132,7 @@ from preset_cli.cli.superset.lib import (
 @click.pass_context
 def delete_assets(
     ctx: click.core.Context,
-    **raw_options: Any,
+    **raw_options: object,
 ) -> None:
     """
     Delete assets by filters.
@@ -182,9 +182,12 @@ def _run_delete_assets(
     )
     client = _build_superset_client(ctx)
 
-    parsed_filters = parse_filters(
-        command_options.filters,
-        DELETE_FILTER_KEYS[resource_name],
+    parsed_filters = cast(
+        Dict[str, object],
+        parse_filters(
+            command_options.filters,
+            DELETE_FILTER_KEYS[resource_name],
+        ),
     )
     if resource_name != RESOURCE_DASHBOARD:
         non_dashboard_options = _NonDashboardDeleteOptions(
@@ -290,7 +293,7 @@ def _delete_resources(
 def _fetch_non_dashboard_resources(
     client: SupersetClient,
     resource_name: _DeleteResourceName,
-    parsed_filters: Dict[str, Any],
+    parsed_filters: Dict[str, object],
 ) -> List[_ResourceSummaryRow]:
     if resource_name == RESOURCE_DATABASE:
         return cast(
@@ -313,7 +316,7 @@ def _fetch_non_dashboard_resources(
 
 def _delete_non_dashboard_assets(
     client: SupersetClient,
-    parsed_filters: Dict[str, Any],
+    parsed_filters: Dict[str, object],
     options: _NonDashboardDeleteOptions,
 ) -> None:
     resource_name = options.resource_name
@@ -442,7 +445,7 @@ def _execute_dashboard_delete_plan(
 
 def _delete_dashboard_assets(
     client: SupersetClient,
-    parsed_filters: Dict[str, Any],
+    parsed_filters: Dict[str, object],
     cascade_options: DashboardCascadeOptions,
     execution_options: _DashboardExecutionOptions,
     db_passwords: Dict[str, str],

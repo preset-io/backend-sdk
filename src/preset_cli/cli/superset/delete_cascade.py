@@ -5,7 +5,7 @@ Cascade planning helpers for delete assets.
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, Dict, List, Set, Tuple, cast
+from typing import Dict, List, Mapping, Sequence, Set, Tuple, cast
 
 import click
 
@@ -48,18 +48,20 @@ def _extract_uuids_from_export(buf: BytesIO) -> Dict[str, Set[str]]:
     }
 
 
-def _dataset_db_id(dataset: Dict[str, Any]) -> int | None:
+def _dataset_db_id(dataset: Mapping[str, object]) -> int | None:
     if "database_id" in dataset:
-        return dataset["database_id"]
+        database_id = dataset["database_id"]
+        return database_id if isinstance(database_id, int) else None
     database = dataset.get("database")
     if isinstance(database, dict):
-        return database.get("id")
+        database_id = database.get("id")
+        return database_id if isinstance(database_id, int) else None
     return None
 
 
 def _fetch_dashboard_selection(
     client: SupersetClient,
-    parsed_filters: Dict[str, Any],
+    parsed_filters: Dict[str, object],
 ) -> _DashboardSelection | None:
     dashboards = fetch_with_filter_fallback(
         client.get_dashboards,
@@ -306,27 +308,33 @@ def _preflight_database_deletion(
 def _fetch_preflight_datasets(
     client: SupersetClient,
     database_ids: Set[int],
-) -> Tuple[List[Dict[str, Any]], bool]:
+) -> Tuple[List[Dict[str, object]], bool]:
     try:
         return (
-            client.get_resources(
-                RESOURCE_DATASET,
-                database_id=In(list(database_ids)),
+            cast(
+                List[Dict[str, object]],
+                client.get_resources(
+                    RESOURCE_DATASET,
+                    database_id=In(list(database_ids)),
+                ),
             ),
             True,
         )
     except Exception as exc:  # pylint: disable=broad-except
         if is_filter_not_allowed_error(exc):
-            return client.get_resources(RESOURCE_DATASET), False
+            return (
+                cast(List[Dict[str, object]], client.get_resources(RESOURCE_DATASET)),
+                False,
+            )
         raise click.ClickException(
             f"Failed to preflight datasets ({exc}).",
         ) from exc
 
 
 def _filter_datasets_for_database_ids(
-    datasets: List[Dict[str, Any]],
+    datasets: Sequence[Mapping[str, object]],
     database_ids: Set[int],
-) -> List[Dict[str, Any]]:
+) -> List[Dict[str, object]]:
     filtered_datasets = []
     missing_db_info = False
     for dataset in datasets:
@@ -335,7 +343,10 @@ def _filter_datasets_for_database_ids(
             missing_db_info = True
             continue
         if db_id in database_ids:
-            filtered_datasets.append(dataset)
+            if isinstance(dataset, dict):
+                filtered_datasets.append(dataset)
+            else:
+                filtered_datasets.append(dict(dataset))
     if missing_db_info:
         click.echo(
             "Warning: Cannot verify all datasets for target databases; "
@@ -345,7 +356,7 @@ def _filter_datasets_for_database_ids(
 
 
 def _raise_if_extra_preflight_datasets(
-    datasets: List[Dict[str, Any]],
+    datasets: Sequence[Mapping[str, object]],
     dataset_ids: Set[int],
 ) -> None:
     extra = [dataset for dataset in datasets if dataset.get("id") not in dataset_ids]
@@ -374,7 +385,7 @@ def _build_dashboard_summary(
 
 def _prepare_dashboard_delete_plan(
     client: SupersetClient,
-    parsed_filters: Dict[str, Any],
+    parsed_filters: Dict[str, object],
     cascade_options: DashboardCascadeOptions,
 ) -> _DashboardDeletePlan | None:
     selection = _fetch_dashboard_selection(client, parsed_filters)
