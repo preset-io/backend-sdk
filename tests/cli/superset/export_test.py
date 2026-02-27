@@ -21,16 +21,18 @@ from pytest_mock import MockerFixture
 from preset_cli.api.operators import Contains
 from preset_cli.auth.main import Auth
 from preset_cli.cli.superset.export import (
+    _unique_simple_name,
+    build_local_uuid_mapping,
+    check_asset_uniqueness,
+    export_resource,
+)
+from preset_cli.cli.superset.export_helpers import (
     _build_resource_uuid_map,
     _cleanup_resource_directory,
     _copy_chart_dependencies,
     _copy_dataset_dependencies,
     _get_dashboard_chart_uuids,
     _get_dashboard_dataset_filter_uuids,
-    _unique_simple_name,
-    build_local_uuid_mapping,
-    check_asset_uniqueness,
-    export_resource,
     extract_uuid_from_asset,
     restructure_per_asset_folder,
 )
