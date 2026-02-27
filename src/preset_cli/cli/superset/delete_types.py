@@ -4,7 +4,9 @@ Internal data models for the delete-assets command.
 
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Dict, List, Literal, NotRequired, Set, Tuple, TypedDict
+from typing import Dict, List, Literal, Set, Tuple, TypedDict
+
+from typing_extensions import NotRequired
 
 _DeleteResourceName = Literal["chart", "dataset", "database"]
 
