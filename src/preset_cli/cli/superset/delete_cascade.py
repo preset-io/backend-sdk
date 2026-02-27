@@ -33,6 +33,7 @@ from preset_cli.cli.superset.delete_types import (
     _DeleteSummaryData,
 )
 from preset_cli.cli.superset.lib import (
+    ParsedFilterValue,
     fetch_with_filter_fallback,
     is_filter_not_allowed_error,
 )
@@ -61,7 +62,7 @@ def _dataset_db_id(dataset: Mapping[str, object]) -> int | None:
 
 def _fetch_dashboard_selection(
     client: SupersetClient,
-    parsed_filters: Dict[str, object],
+    parsed_filters: Dict[str, ParsedFilterValue],
 ) -> _DashboardSelection | None:
     dashboards = fetch_with_filter_fallback(
         client.get_dashboards,
@@ -72,9 +73,10 @@ def _fetch_dashboard_selection(
     if not dashboards:
         click.echo("No dashboards match the specified filters.")
         return None
+    summary_dashboards = cast(List[_DashboardSummaryRow], dashboards)
     return _DashboardSelection(
-        dashboards=cast(List[_DashboardSummaryRow], dashboards),
-        dashboard_ids={dashboard["id"] for dashboard in dashboards},
+        dashboards=summary_dashboards,
+        dashboard_ids={dashboard["id"] for dashboard in summary_dashboards},
     )
 
 
@@ -385,7 +387,7 @@ def _build_dashboard_summary(
 
 def _prepare_dashboard_delete_plan(
     client: SupersetClient,
-    parsed_filters: Dict[str, object],
+    parsed_filters: Dict[str, ParsedFilterValue],
     cascade_options: DashboardCascadeOptions,
 ) -> _DashboardDeletePlan | None:
     selection = _fetch_dashboard_selection(client, parsed_filters)

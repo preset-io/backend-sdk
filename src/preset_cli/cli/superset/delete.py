@@ -49,6 +49,7 @@ from preset_cli.cli.superset.delete_types import (
 )
 from preset_cli.cli.superset.lib import (
     DELETE_FILTER_KEYS,
+    ParsedFilterValue,
     coerce_bool_option,
     fetch_with_filter_fallback,
     filter_resources_locally,
@@ -182,12 +183,9 @@ def _run_delete_assets(
     )
     client = _build_superset_client(ctx)
 
-    parsed_filters = cast(
-        Dict[str, object],
-        parse_filters(
-            command_options.filters,
-            DELETE_FILTER_KEYS[resource_name],
-        ),
+    parsed_filters: Dict[str, ParsedFilterValue] = parse_filters(
+        command_options.filters,
+        DELETE_FILTER_KEYS[resource_name],
     )
     if resource_name != RESOURCE_DASHBOARD:
         non_dashboard_options = _NonDashboardDeleteOptions(
@@ -293,7 +291,7 @@ def _delete_resources(
 def _fetch_non_dashboard_resources(
     client: SupersetClient,
     resource_name: _DeleteResourceName,
-    parsed_filters: Dict[str, object],
+    parsed_filters: Dict[str, ParsedFilterValue],
 ) -> List[_ResourceSummaryRow]:
     if resource_name == RESOURCE_DATABASE:
         return cast(
@@ -316,7 +314,7 @@ def _fetch_non_dashboard_resources(
 
 def _delete_non_dashboard_assets(
     client: SupersetClient,
-    parsed_filters: Dict[str, object],
+    parsed_filters: Dict[str, ParsedFilterValue],
     options: _NonDashboardDeleteOptions,
 ) -> None:
     resource_name = options.resource_name
@@ -445,7 +443,7 @@ def _execute_dashboard_delete_plan(
 
 def _delete_dashboard_assets(
     client: SupersetClient,
-    parsed_filters: Dict[str, object],
+    parsed_filters: Dict[str, ParsedFilterValue],
     cascade_options: DashboardCascadeOptions,
     execution_options: _DashboardExecutionOptions,
     db_passwords: Dict[str, str],
