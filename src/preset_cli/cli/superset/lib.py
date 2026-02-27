@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from enum import Enum
 from pathlib import Path
-from typing import IO, Any, Callable, Dict, List, Tuple, TypeAlias
+from typing import IO, Callable, Dict, List, Tuple, TypeAlias, cast
 
 import click
 import yaml
@@ -20,6 +20,11 @@ LOG_FILE_PATH = Path("progress.log")
 FilterValueType: TypeAlias = type[str] | type[int] | type[bool]
 FilterValue: TypeAlias = str | int | bool
 ParsedFilterValue: TypeAlias = FilterValue | Contains
+LogEntry: TypeAlias = Dict[str, object]
+LogsByType: TypeAlias = Dict["LogType", List[LogEntry]]
+SerializedLogs: TypeAlias = Dict[str, List[LogEntry]]
+ResourceRecord: TypeAlias = Dict[str, object]
+ResourceList: TypeAlias = List[ResourceRecord]
 
 CONTAINS_FILTER_KEYS = {"dashboard_title"}
 LOCAL_FILTER_KEYS = {"certified_by", "is_managed_externally"}
@@ -57,38 +62,38 @@ class LogType(str, Enum):
     OWNERSHIP = "ownership"
 
 
-def get_logs(log_type: LogType) -> Tuple[Path, Dict[LogType, Any]]:
+def get_logs(log_type: LogType) -> Tuple[Path, LogsByType]:
     """
     Returns the path and content of the progress log file.
 
     Creates the file if it does not exist yet. Filters out FAILED
     entries for the particular log type. Defaults to an empty list.
     """
-    base_logs: Dict[LogType, Any] = {log_type_: [] for log_type_ in LogType}
+    base_logs: LogsByType = {log_type_: [] for log_type_ in LogType}
 
     if not LOG_FILE_PATH.exists():
         LOG_FILE_PATH.touch()
         return LOG_FILE_PATH, base_logs
 
     with open(LOG_FILE_PATH, "r", encoding="utf-8") as log_file:
-        logs = yaml.load(log_file, Loader=yaml.SafeLoader) or {}
+        logs = cast(SerializedLogs, yaml.load(log_file, Loader=yaml.SafeLoader) or {})
 
     logs = {LogType(log_type): log_entries for log_type, log_entries in logs.items()}
     dict_merge(base_logs, logs)
     base_logs[log_type] = [
-        log for log in base_logs[log_type] if log["status"] != "FAILED"
+        log for log in base_logs[log_type] if log.get("status") != "FAILED"
     ]
     return LOG_FILE_PATH, base_logs
 
 
-def serialize_enum_logs_to_string(logs: Dict[LogType, Any]) -> Dict[str, Any]:
+def serialize_enum_logs_to_string(logs: LogsByType) -> SerializedLogs:
     """
     Helper method to serialize the enum keys in the logs dict to str.
     """
     return {log_type.value: log_entries for log_type, log_entries in logs.items()}
 
 
-def write_logs_to_file(log_file: IO[str], logs: Dict[LogType, Any]) -> None:
+def write_logs_to_file(log_file: IO[str], logs: LogsByType) -> None:
     """
     Writes logs list to .log file.
     """
@@ -98,7 +103,7 @@ def write_logs_to_file(log_file: IO[str], logs: Dict[LogType, Any]) -> None:
     log_file.truncate()
 
 
-def clean_logs(log_type: LogType, logs: Dict[LogType, Any]) -> None:
+def clean_logs(log_type: LogType, logs: LogsByType) -> None:
     """
     Cleans the progress log file for the specific log type.
 
@@ -229,16 +234,16 @@ def _matches_exact(actual: object | None, expected: str) -> bool:
 
 
 def filter_resources_locally(  # pylint: disable=too-many-return-statements
-    resources: list[dict[str, Any]],
+    resources: ResourceList,
     filters: dict[str, ParsedFilterValue],
-) -> list[dict[str, Any]]:
+) -> ResourceList:
     """
     Apply parsed filters to a list of resources locally.
 
     Empty-string filter values match both missing and empty values.
     """
 
-    def matches(resource: dict[str, Any]) -> bool:
+    def matches(resource: ResourceRecord) -> bool:
         for key, expected in filters.items():
             actual = resource.get(key)
 
@@ -306,17 +311,17 @@ def parse_filters(
 
 
 def fetch_with_filter_fallback(
-    fetch_filtered: Callable[..., List[Dict[str, Any]]],
-    fetch_all: Callable[[], List[Dict[str, Any]]],
+    fetch_filtered: Callable[..., ResourceList],
+    fetch_all: Callable[[], ResourceList],
     parsed_filters: Dict[str, ParsedFilterValue],
     resource_label: str,
-) -> List[Dict[str, Any]]:
+) -> ResourceList:
     """
     Try fetching with server-side filters; fall back to local filtering.
 
     If any filter key is in LOCAL_FILTER_KEYS the local path is used immediately.
     On a ``filter not allowed`` API error, results are fetched unfiltered and
-    filtered locally.  Any other exception is wrapped in a click.ClickException.
+    filtered locally. Other exceptions are wrapped in a click.ClickException.
     """
     if set(parsed_filters) & LOCAL_FILTER_KEYS:
         return filter_resources_locally(fetch_all(), parsed_filters)

@@ -362,7 +362,11 @@ def import_resources_individually(  # pylint: disable=too-many-locals
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
 
     log_file_path, logs = get_logs(LogType.ASSETS)
-    assets_to_skip = {Path(log["path"]) for log in logs[LogType.ASSETS]}
+    assets_to_skip = {
+        Path(path_value)
+        for log in logs[LogType.ASSETS]
+        if isinstance((path_value := log.get("path")), str)
+    }
 
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for resource_name, get_related_uuids in imports:
