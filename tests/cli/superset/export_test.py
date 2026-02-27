@@ -3124,6 +3124,13 @@ def test_get_dashboard_chart_uuids_skips_non_chart_nodes() -> None:
     assert list(_get_dashboard_chart_uuids(config)) == ["chart-1"]
 
 
+def test_get_dashboard_chart_uuids_handles_non_dict_position() -> None:
+    """
+    Test chart UUID extraction returns empty when ``position`` is not a dict.
+    """
+    assert list(_get_dashboard_chart_uuids({"position": "invalid"})) == []
+
+
 def test_get_dashboard_dataset_filter_uuids_skips_targets_without_uuid() -> None:
     """
     Test dataset UUID extraction ignores filter targets without ``datasetUuid``.
@@ -3136,6 +3143,25 @@ def test_get_dashboard_dataset_filter_uuids_skips_targets_without_uuid() -> None
         },
     }
     assert _get_dashboard_dataset_filter_uuids(config) == {"dataset-1"}
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"metadata": "invalid"},
+        {"metadata": {"native_filter_configuration": "invalid"}},
+        {"metadata": {"native_filter_configuration": [123]}},
+        {"metadata": {"native_filter_configuration": [{"targets": "invalid"}]}},
+        {"metadata": {"native_filter_configuration": [{"targets": [123]}]}},
+    ],
+)
+def test_get_dashboard_dataset_filter_uuids_handles_invalid_shapes(
+    config: Dict[str, object],
+) -> None:
+    """
+    Test dataset UUID extraction tolerates malformed filter metadata.
+    """
+    assert _get_dashboard_dataset_filter_uuids(config) == set()
 
 
 def test_build_resource_uuid_map_skips_files_without_uuid(
