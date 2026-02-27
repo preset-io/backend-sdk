@@ -5,7 +5,6 @@ Tests for ``preset_cli.cli.superset.lib``.
 # pylint: disable=unused-argument, invalid-name
 
 from pathlib import Path
-from typing import Any
 
 import click
 import pytest
@@ -117,7 +116,7 @@ def test_write_logs_to_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", root / "progress.log")
 
-    new_logs = {
+    new_logs: dict[LogType, list[dict[str, object]]] = {
         LogType.ASSETS: [
             {
                 "path": "/path/to/root/second_path",
@@ -171,7 +170,7 @@ def test_clean_logs_delete_file(mocker: MockerFixture, fs: FakeFilesystem) -> No
     )
     assert logs_path.exists()
 
-    current_logs = {
+    current_logs: dict[LogType, list[dict[str, object]]] = {
         LogType.ASSETS: [
             {
                 "path": "/path/to/root/first_path",
@@ -215,7 +214,7 @@ def test_clean_logs_keep_file(mocker: MockerFixture, fs: FakeFilesystem) -> None
     )
     assert logs_path.exists()
 
-    current_logs = {
+    current_logs: dict[LogType, list[dict[str, object]]] = {
         LogType.ASSETS: [
             {
                 "path": "/path/to/root/first_path",
@@ -251,7 +250,7 @@ def test_clean_logs_missing_file_no_error(
     fs.create_dir(root)
     assert not logs_path.exists()
 
-    current_logs = {
+    current_logs: dict[LogType, list[dict[str, object]]] = {
         LogType.ASSETS: [
             {
                 "path": "/path/to/root/first_path",
@@ -380,7 +379,7 @@ def test_filter_resources_locally() -> None:
     """
     Test ``filter_resources_locally`` with contains and bool filters.
     """
-    resources: list[dict[str, Any]] = [
+    resources: list[dict[str, object]] = [
         {
             "id": 1,
             "dashboard_title": "Sales Overview",
@@ -448,11 +447,41 @@ def test_is_filter_not_allowed_error_false_for_other_message() -> None:
     assert is_filter_not_allowed_error(exc) is False
 
 
+def test_is_filter_not_allowed_error_uses_error_type() -> None:
+    """
+    Test ``is_filter_not_allowed_error`` detects structured error_type values.
+    """
+    exc = SupersetError(
+        errors=[
+            {
+                "message": "Bad request",
+                "error_type": "FILTER_NOT_ALLOWED_ERROR",
+            },
+        ],
+    )
+    assert is_filter_not_allowed_error(exc) is True
+
+
+def test_is_filter_not_allowed_error_uses_unsupported_filter_error_type() -> None:
+    """
+    Test ``is_filter_not_allowed_error`` detects normalized unsupported filter errors.
+    """
+    exc = SupersetError(
+        errors=[
+            {
+                "message": "Bad request",
+                "error_type": "filter/unsupported",
+            },
+        ],
+    )
+    assert is_filter_not_allowed_error(exc) is True
+
+
 def test_filter_resources_locally_extra_branches() -> None:
     """
     Test ``filter_resources_locally`` branch behavior for bool/int/empty values.
     """
-    resources: list[dict[str, Any]] = [
+    resources: list[dict[str, object]] = [
         {"id": "10", "is_managed_externally": "true", "certified_by": ""},
         {"id": 11, "is_managed_externally": 0, "certified_by": None},
         {"id": "bad", "is_managed_externally": "false", "certified_by": "x"},
@@ -491,19 +520,37 @@ def test_filter_resources_locally_extra_branches() -> None:
         coerce_bool_option(1, "dry_run")
 
 
+def test_filter_resources_locally_bool_does_not_match_numeric_strings() -> None:
+    """
+    Test bool filters do not match numeric-string values.
+    """
+    resources: list[dict[str, object]] = [
+        {"id": 1, "is_managed_externally": "1"},
+        {"id": 2, "is_managed_externally": "0"},
+    ]
+    parsed_true = parse_filters(("is_managed_externally=true",), DASHBOARD_FILTER_KEYS)
+    parsed_false = parse_filters(
+        ("is_managed_externally=false",),
+        DASHBOARD_FILTER_KEYS,
+    )
+
+    assert filter_resources_locally(resources, parsed_true) == []
+    assert filter_resources_locally(resources, parsed_false) == []
+
+
 def test_fetch_with_filter_fallback_local_keys() -> None:
     """
     Test ``fetch_with_filter_fallback`` takes the local path when LOCAL_FILTER_KEYS are present.
     """
-    all_resources = [
+    all_resources: list[dict[str, object]] = [
         {"id": 1, "is_managed_externally": True},
         {"id": 2, "is_managed_externally": False},
     ]
 
-    def fetch_filtered(**_kw: Any):
+    def fetch_filtered(**_kw: object):
         raise AssertionError("should not be called")
 
-    def fetch_all() -> list[dict[str, Any]]:
+    def fetch_all() -> list[dict[str, object]]:
         return all_resources
 
     result = fetch_with_filter_fallback(
@@ -521,10 +568,10 @@ def test_fetch_with_filter_fallback_api_success() -> None:
     """
     api_result = [{"id": 5, "slug": "test"}]
 
-    def fetch_filtered(**_kw: Any):
+    def fetch_filtered(**_kw: object):
         return api_result
 
-    def fetch_all() -> list[dict[str, Any]]:
+    def fetch_all() -> list[dict[str, object]]:
         raise AssertionError("should not be called")
 
     result = fetch_with_filter_fallback(
@@ -545,10 +592,10 @@ def test_fetch_with_filter_fallback_api_success_reverifies_locally() -> None:
         {"id": 2, "slug": "other"},
     ]
 
-    def fetch_filtered(**_kw: Any):
+    def fetch_filtered(**_kw: object):
         return api_result
 
-    def fetch_all() -> list[dict[str, Any]]:
+    def fetch_all() -> list[dict[str, object]]:
         raise AssertionError("should not be called")
 
     result = fetch_with_filter_fallback(
@@ -578,10 +625,10 @@ def test_fetch_with_filter_fallback_missing_keys_refetches_for_local_filter() ->
     ]
     called = {"fetch_all": 0}
 
-    def fetch_filtered(**_kw: Any):
+    def fetch_filtered(**_kw: object):
         return api_result
 
-    def fetch_all() -> list[dict[str, Any]]:
+    def fetch_all() -> list[dict[str, object]]:
         called["fetch_all"] += 1
         return full_result
 
@@ -603,12 +650,12 @@ def test_fetch_with_filter_fallback_not_allowed_fallback() -> None:
         errors=[{"message": "Filter column: slug not allowed to filter"}],
     )
 
-    def fetch_filtered(**kw: Any):
+    def fetch_filtered(**kw: object):
         raise exc
 
     all_resources = [{"id": 1, "slug": "test"}, {"id": 2, "slug": "other"}]
 
-    def fetch_all() -> list[dict[str, Any]]:
+    def fetch_all() -> list[dict[str, object]]:
         return all_resources
 
     result = fetch_with_filter_fallback(
@@ -625,10 +672,10 @@ def test_fetch_with_filter_fallback_unexpected_error() -> None:
     Test ``fetch_with_filter_fallback`` wraps unexpected errors in ClickException.
     """
 
-    def fetch_filtered(**kw: Any):
+    def fetch_filtered(**kw: object):
         raise RuntimeError("500 Internal Server Error")
 
-    def fetch_all() -> list[dict[str, Any]]:
+    def fetch_all() -> list[dict[str, object]]:
         return []
 
     with pytest.raises(click.ClickException, match="may not be supported"):
