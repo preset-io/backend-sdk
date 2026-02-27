@@ -6,7 +6,7 @@ Tests for the native import command.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Dict, List, Tuple, cast
 from unittest import mock
 from zipfile import ZipFile
 
@@ -47,6 +47,7 @@ from preset_cli.cli.superset.sync.native.command import (
     raise_helper,
     verify_db_connectivity,
 )
+from preset_cli.cli.superset.sync.native.types import AssetConfig
 from preset_cli.exceptions import CLIError, ErrorLevel, ErrorPayload, SupersetError
 
 
@@ -1543,7 +1544,7 @@ def test_import_resources_individually_retries(
         requests.exceptions.ConnectionError("Connection aborted."),
         None,
     ]
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
     }
     import_resources_individually(configs, client, True, ResourceType.ASSET)
@@ -1572,7 +1573,7 @@ def test_import_resources_individually_resource_endpoints(
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {"uuid": "db1"},
         Path("bundle/datasets/ds.yaml"): {"uuid": "ds1", "database_uuid": "db1"},
         Path("bundle/charts/chart.yaml"): {"uuid": "chart1", "dataset_uuid": "ds1"},
@@ -1601,7 +1602,7 @@ def test_import_resources_individually_skips_existing_database(
     import_resources = mocker.patch(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {"uuid": "db1"},
         Path("bundle/datasets/ds.yaml"): {"uuid": "ds1", "database_uuid": "db1"},
         Path("bundle/charts/chart.yaml"): {"uuid": "chart1", "dataset_uuid": "ds1"},
@@ -1639,7 +1640,7 @@ def test_import_resources_individually_checkpoint(
     """
     client = mocker.MagicMock()
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
         Path("bundle/databases/psql.yaml"): {
             "name": "my other database",
@@ -1720,7 +1721,7 @@ def test_import_resources_individually_continue(
     """
     client = mocker.MagicMock()
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
-    configs = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/gsheets.yaml"): {"name": "my database", "uuid": "uuid1"},
         Path("bundle/databases/gsheets_two.yaml"): {"name": "other", "uuid": "uuid2"},
         Path("bundle/databases/psql.yaml"): {
@@ -1832,19 +1833,19 @@ def test_import_resources_individually_debug(mocker: MockerFixture) -> None:
     Test the ``import_resources_individually`` method with logger set
     to debug mode.
     """
-    db_config: Dict[str, Any] = {
+    db_config: Dict[str, object] = {
         "database_name": "GSheets",
         "sqlalchemy_uri": "gsheets://",
         "is_managed_externally": False,
         "uuid": "uuid1",
     }
-    dataset_config: Dict[str, Any] = {
+    dataset_config: Dict[str, object] = {
         "table_name": "test",
         "is_managed_externally": False,
         "uuid": "uuid2",
         "database_uuid": "uuid1",
     }
-    chart_config: Dict[str, Any] = {
+    chart_config: Dict[str, object] = {
         "slice_name": "test",
         "viz_type": "big_number_total",
         "params": {
@@ -2407,7 +2408,7 @@ def test_native_cascade_default(mocker: MockerFixture, fs: FakeFilesystem) -> No
     root = Path("/path/to/root")
     fs.create_dir(root)
 
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -2456,7 +2457,7 @@ def test_native_no_cascade(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     root = Path("/path/to/root")
     fs.create_dir(root)
 
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -2626,7 +2627,7 @@ def test_update_chart_no_cascade_updates_chart(mocker: MockerFixture) -> None:
         side_effect=resolve_side_effect,
     )
 
-    chart_config = {
+    chart_config: AssetConfig = {
         "uuid": "chart-uuid",
         "dataset_uuid": "ds-uuid",
         "slice_name": "Chart Name",
@@ -2640,7 +2641,7 @@ def test_update_chart_no_cascade_updates_chart(mocker: MockerFixture) -> None:
             },
         ),
     }
-    configs = {Path("bundle/charts/chart.yaml"): chart_config}
+    configs: Dict[Path, AssetConfig] = {Path("bundle/charts/chart.yaml"): chart_config}
 
     _update_chart_no_cascade(
         Path("bundle/charts/chart.yaml"),
@@ -2676,14 +2677,14 @@ def test_update_chart_no_cascade_skips_when_overwrite_false(
         return_value=11,
     )
 
-    chart_config = {
+    chart_config: AssetConfig = {
         "uuid": "chart-uuid",
         "dataset_uuid": "ds-uuid",
         "slice_name": "Chart Name",
         "viz_type": "table",
         "params": {"datasource": "1__table"},
     }
-    configs = {Path("bundle/charts/chart.yaml"): chart_config}
+    configs: Dict[Path, AssetConfig] = {Path("bundle/charts/chart.yaml"): chart_config}
 
     _update_chart_no_cascade(
         Path("bundle/charts/chart.yaml"),
@@ -2724,24 +2725,24 @@ def test_update_chart_no_cascade_creates_missing_dataset(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
 
-    chart_config = {
+    chart_config: AssetConfig = {
         "uuid": "chart-uuid",
         "dataset_uuid": "ds-uuid",
         "slice_name": "Chart Name",
         "viz_type": "table",
         "params": {"datasource": "1__table"},
     }
-    dataset_config = {
+    dataset_config: AssetConfig = {
         "uuid": "ds-uuid",
         "database_uuid": "db-uuid",
         "params": {},
     }
-    database_config = {
+    database_config: AssetConfig = {
         "uuid": "db-uuid",
         "sqlalchemy_uri": "sqlite://",
         "database_name": "db",
     }
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/charts/chart.yaml"): chart_config,
         Path("bundle/datasets/db/ds.yaml"): dataset_config,
         Path("bundle/databases/db.yaml"): database_config,
@@ -2791,24 +2792,24 @@ def test_update_chart_no_cascade_creates_missing_chart(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
 
-    chart_config = {
+    chart_config: AssetConfig = {
         "uuid": "chart-uuid",
         "dataset_uuid": "ds-uuid",
         "slice_name": "Chart Name",
         "viz_type": "table",
         "params": {"datasource": "1__table"},
     }
-    dataset_config = {
+    dataset_config: AssetConfig = {
         "uuid": "ds-uuid",
         "database_uuid": "db-uuid",
         "params": {},
     }
-    database_config = {
+    database_config: AssetConfig = {
         "uuid": "db-uuid",
         "sqlalchemy_uri": "sqlite://",
         "database_name": "db",
     }
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/charts/chart.yaml"): chart_config,
         Path("bundle/datasets/db/ds.yaml"): dataset_config,
         Path("bundle/databases/db.yaml"): database_config,
@@ -2854,7 +2855,7 @@ def test_no_cascade_skips_existing_dependencies(
         side_effect=resolve_side_effect,
     )
 
-    configs = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
         },
@@ -2905,7 +2906,7 @@ def test_native_no_cascade_dashboard_uses_update_helper(
         ),
     )
 
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -2954,7 +2955,7 @@ def test_build_dashboard_contents_returns_none_when_dashboard_missing() -> None:
     """
     Test dashboard bundle builder returns None when dashboard config is missing.
     """
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/charts/chart.yaml"): {
             "uuid": "chart-uuid",
             "dataset_uuid": "ds-uuid",
@@ -2967,7 +2968,7 @@ def test_build_dashboard_contents_includes_all_dependencies() -> None:
     """
     Test dashboard bundle builder includes chart, dataset, and database assets.
     """
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
         Path("bundle/datasets/ds.yaml"): {
             "uuid": "ds-uuid",
@@ -3009,7 +3010,7 @@ def test_build_dashboard_contents_missing_only_skips_existing_dependencies(
     """
     Test missing-only dashboard bundle excludes dependencies that already exist.
     """
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
         Path("bundle/datasets/ds.yaml"): {
             "uuid": "ds-uuid",
@@ -3059,7 +3060,7 @@ def test_build_dashboard_contents_missing_only_with_no_client_includes_dependenc
     """
     Test missing-only dashboard bundle includes dependencies when no client is provided.
     """
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {"uuid": "db-uuid", "database_name": "db"},
         Path("bundle/datasets/ds.yaml"): {
             "uuid": "ds-uuid",
@@ -3100,7 +3101,7 @@ def test_build_dashboard_contents_tolerates_missing_dependency_references() -> N
     """
     Test dashboard bundle builder skips missing chart, dataset, and database references.
     """
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/datasets/ds-without-db.yaml"): {
             "uuid": "ds-without-db",
             "database_uuid": "missing-db",
@@ -3169,8 +3170,12 @@ def test_prepare_dashboard_update_payload_handles_non_integer_roles_and_json_fie
 
     assert "owners" not in payload
     assert "roles" not in payload
-    assert json.loads(payload["position_json"]) == {"ROOT_ID": {"type": "ROOT"}}
-    assert json.loads(payload["json_metadata"]) == {"native_filter_configuration": []}
+    assert json.loads(cast(str, payload["position_json"])) == {
+        "ROOT_ID": {"type": "ROOT"},
+    }
+    assert json.loads(cast(str, payload["json_metadata"])) == {
+        "native_filter_configuration": [],
+    }
     assert warning_mock.call_count == 2
 
 
@@ -3297,13 +3302,15 @@ def test_update_dashboard_no_cascade_skips_when_overwrite_false(
         "preset_cli.cli.superset.sync.native.command.import_resources",
     )
 
-    dashboard_config = {
+    dashboard_config: AssetConfig = {
         "uuid": "dash-uuid",
         "dashboard_title": "Dashboard Name",
         "position": {"ROOT_ID": {"type": "ROOT"}},
         "metadata": {"native_filter_configuration": []},
     }
-    configs = {Path("bundle/dashboards/dash.yaml"): dashboard_config}
+    configs: Dict[Path, AssetConfig] = {
+        Path("bundle/dashboards/dash.yaml"): dashboard_config,
+    }
 
     _update_dashboard_no_cascade(
         Path("bundle/dashboards/dash.yaml"),
@@ -3342,13 +3349,13 @@ def test_update_dashboard_no_cascade_creates_missing_dashboard(
         side_effect=resolve_side_effect,
     )
 
-    dashboard_config = {
+    dashboard_config: AssetConfig = {
         "uuid": "dash-uuid",
         "dashboard_title": "Dashboard Name",
         "position": {},
         "metadata": {},
     }
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/dashboards/dash.yaml"): dashboard_config,
     }
 
@@ -3496,7 +3503,7 @@ def test_native_no_cascade_dataset_keeps_existing_database_in_primary_bundle(
         ),
     )
 
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -3547,7 +3554,7 @@ def test_native_no_cascade_dataset_keeps_missing_database(
         return_value=None,
     )
 
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -3588,7 +3595,7 @@ def test_prune_existing_dependency_configs_keeps_non_existing_dependencies() -> 
     """
     dashboard_path = Path("bundle/dashboards/dash.yaml")
     chart_path = Path("bundle/charts/chart.yaml")
-    asset_configs: Dict[Path, Dict[str, Any]] = {
+    asset_configs: Dict[Path, AssetConfig] = {
         dashboard_path: {"uuid": "dash-uuid"},
         chart_path: {"uuid": "chart-uuid"},
     }
@@ -3615,7 +3622,7 @@ def test_native_no_cascade_dataset(mocker: MockerFixture, fs: FakeFilesystem) ->
     root = Path("/path/to/root")
     fs.create_dir(root)
 
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -3658,7 +3665,7 @@ def test_native_no_cascade_database(mocker: MockerFixture, fs: FakeFilesystem) -
     root = Path("/path/to/root")
     fs.create_dir(root)
 
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {
             "uuid": "db-uuid",
             "database_name": "db",
@@ -3919,7 +3926,7 @@ def test_no_cascade_wrapper_helpers() -> None:
     assert params == {"datasource": "42__table"}
     assert query_context == {"datasource": {"id": 42, "type": "table"}}
 
-    payload: Dict[str, Any] = {}
+    payload: Dict[str, object] = {}
     _set_integer_list_payload_field(
         payload,
         {"owners": [1, 2]},
@@ -4033,7 +4040,7 @@ def test_find_config_by_uuid_none_and_not_found() -> None:
     """
     Test ``_find_config_by_uuid`` for empty UUID and missing entries.
     """
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/charts/chart.yaml"): {"uuid": "chart-1"},
     }
     assert _find_config_by_uuid(configs, "charts", None) is None
@@ -4045,7 +4052,7 @@ def test_build_dataset_contents_missing_entries() -> None:
     Test ``_build_dataset_contents`` returns None when dataset/database configs are absent.
     """
     assert _build_dataset_contents({}, "ds-uuid") is None
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/datasets/ds.yaml"): {
             "uuid": "ds-uuid",
             "database_uuid": "db-uuid",
@@ -4059,7 +4066,7 @@ def test_build_chart_contents_missing_entries() -> None:
     Test ``_build_chart_contents`` returns None when chart or dependencies are absent.
     """
     assert _build_chart_contents({}, "chart-uuid") is None
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/charts/chart.yaml"): {
             "uuid": "chart-uuid",
             "dataset_uuid": "ds-uuid",
@@ -4078,7 +4085,7 @@ def test_filter_payload_to_schema_falls_back_on_superset_error(
     client.get_resource_endpoint_info.side_effect = SupersetError(
         errors=[{"message": "boom"}],
     )
-    payload = {"slice_name": "Chart", "not_allowed": "x"}
+    payload: Dict[str, object] = {"slice_name": "Chart", "not_allowed": "x"}
     result = _filter_payload_to_schema(client, "chart", payload, {"slice_name"})
     assert result == {"slice_name": "Chart"}
 
@@ -4321,7 +4328,7 @@ def test_import_resources_individually_handles_none_uuid_dependency_check(
         "preset_cli.cli.superset.sync.native.command._resolve_uuid_to_id",
         return_value=None,
     )
-    configs: Dict[Path, Dict[str, Any]] = {
+    configs: Dict[Path, AssetConfig] = {
         Path("bundle/databases/db.yaml"): {"uuid": None, "database_name": "db"},
     }
 
@@ -4363,6 +4370,6 @@ def test_prepare_chart_update_payload_without_params_updates_query_context_only(
         client=client,
     )
     assert "params" not in payload
-    query_context = json.loads(payload["query_context"])
+    query_context = json.loads(cast(str, payload["query_context"]))
     assert query_context["datasource"]["id"] == 24
     assert query_context["form_data"]["datasource"] == "24__table"

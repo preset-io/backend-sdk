@@ -4,10 +4,10 @@ Shared type aliases for native sync modules.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, TypeAlias
+from typing import Dict, List, Literal, TypeAlias
 from uuid import UUID
 
-AssetConfig = Dict[str, Any]
+AssetConfig = Dict[str, object]
 JSONValue: TypeAlias = (
     str | int | float | bool | None | Dict[str, "JSONValue"] | List["JSONValue"]
 )

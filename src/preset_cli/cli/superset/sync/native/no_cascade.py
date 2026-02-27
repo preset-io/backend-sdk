@@ -8,10 +8,12 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AbstractSet, Any, Callable, Dict, Iterator, Optional, Set, Tuple
+from typing import AbstractSet, Callable, Dict, Iterator, Optional, Set, Tuple
+from uuid import UUID
 
 import yaml
 
+from preset_cli.api.clients.superset import SupersetClient
 from preset_cli.cli.superset.sync.native.types import (
     AssetConfig,
     JSONDict,
@@ -24,8 +26,8 @@ FindConfigByUUIDFn = Callable[
     [Dict[Path, AssetConfig], ResourceDir, UUIDLike | None],
     Optional[Tuple[Path, AssetConfig]],
 ]
-ResolveUUIDToIDFn = Callable[[Any, str, UUIDLike | None], Optional[int]]
-ImportResourcesFn = Callable[[Dict[str, str], Any, bool, Any], None]
+ResolveUUIDToIDFn = Callable[[SupersetClient, str, UUIDLike | None], Optional[int]]
+ImportResourcesFn = Callable[[Dict[str, str], SupersetClient, bool, object], None]
 
 
 @dataclass(frozen=True)
@@ -35,9 +37,9 @@ class NoCascadePrimarySpec:
     """
 
     resource_name: str
-    asset_type: Any
+    asset_type: object
     build_contents: Callable[
-        [Dict[Path, AssetConfig], UUIDLike | None, Any],
+        [Dict[Path, AssetConfig], UUIDLike | None, SupersetClient],
         Optional[Dict[str, str]],
     ]
     missing_bundle_error: Callable[[str], str]
@@ -62,7 +64,7 @@ class NoCascadeContext:
     """
 
     configs: Dict[Path, AssetConfig]
-    client: Any
+    client: SupersetClient
     overwrite: bool
     resolve_uuid_to_id_fn: ResolveUUIDToIDFn
     import_resources_fn: ImportResourcesFn
@@ -75,8 +77,8 @@ class ChartUpdateDeps:
     Chart-specific dependencies required for no-cascade update flow.
     """
 
-    chart_asset_type: Any
-    dataset_asset_type: Any
+    chart_asset_type: object
+    dataset_asset_type: object
     build_chart_contents_fn: Callable[
         [Dict[Path, AssetConfig], UUIDLike | None],
         Optional[Dict[str, str]],
@@ -86,8 +88,8 @@ class ChartUpdateDeps:
         Optional[Dict[str, str]],
     ]
     prepare_chart_update_payload_fn: Callable[
-        [AssetConfig, int, str, Any],
-        Dict[str, Any],
+        [AssetConfig, int, str, SupersetClient],
+        Dict[str, object],
     ]
 
 
@@ -97,12 +99,21 @@ class DashboardUpdateDeps:
     Dashboard-specific dependencies required for no-cascade update flow.
     """
 
-    dashboard_asset_type: Any
+    dashboard_asset_type: object
     build_dashboard_contents_fn: Callable[
-        [Dict[Path, AssetConfig], UUIDLike | None, Any, bool],
+        [Dict[Path, AssetConfig], UUIDLike | None, SupersetClient | None, bool],
         Optional[Dict[str, str]],
     ]
-    prepare_dashboard_update_payload_fn: Callable[[AssetConfig, Any], Dict[str, Any]]
+    prepare_dashboard_update_payload_fn: Callable[
+        [AssetConfig, SupersetClient],
+        Dict[str, object],
+    ]
+
+
+def _as_uuid_like(value: object) -> UUIDLike | None:
+    if isinstance(value, (str, UUID)):
+        return value
+    return None
 
 
 def prune_existing_dependency_configs(
@@ -158,7 +169,7 @@ def build_dataset_contents(
     if not dataset_entry:
         return None
     dataset_path, dataset_config = dataset_entry
-    database_uuid = dataset_config.get("database_uuid")
+    database_uuid = _as_uuid_like(dataset_config.get("database_uuid"))
     database_entry = find_config_by_uuid_fn(configs, "databases", database_uuid)
     if not database_entry:
         return None
@@ -187,7 +198,7 @@ def build_chart_contents(
         return None
     chart_path, chart_config = chart_entry
 
-    dataset_uuid = chart_config.get("dataset_uuid")
+    dataset_uuid = _as_uuid_like(chart_config.get("dataset_uuid"))
     dataset_contents = build_dataset_contents_fn(
         configs,
         dataset_uuid,
@@ -203,7 +214,7 @@ def build_chart_contents(
 
 def _should_include_resource(
     missing_only: bool,
-    client: Any,
+    client: SupersetClient | None,
     deps: DashboardContentDeps,
     resource_name: str,
     uuid_value: UUIDLike | None,
@@ -229,7 +240,7 @@ def _add_dataset_contents(
     if should_include_fn("dataset", dataset_uuid):
         contents[str(dataset_path)] = yaml.dump(dataset_config)
 
-    database_uuid = dataset_config.get("database_uuid")
+    database_uuid = _as_uuid_like(dataset_config.get("database_uuid"))
     database_entry = deps.find_config_by_uuid_fn(configs, "databases", database_uuid)
     if not database_entry:
         return
@@ -242,7 +253,7 @@ def build_dashboard_contents(
     configs: Dict[Path, AssetConfig],
     dashboard_uuid: UUIDLike | None,
     deps: DashboardContentDeps,
-    client: Any = None,
+    client: SupersetClient | None = None,
     missing_only: bool = False,
 ) -> Optional[Dict[str, str]]:
     """
@@ -275,7 +286,7 @@ def build_dashboard_contents(
             contents[str(chart_path)] = yaml.dump(chart_config)
         _add_dataset_contents(
             configs,
-            chart_config.get("dataset_uuid"),
+            _as_uuid_like(chart_config.get("dataset_uuid")),
             contents,
             deps,
             should_include,
@@ -294,7 +305,7 @@ def build_dashboard_contents(
 
 
 def safe_json_loads(
-    value: Any,
+    value: object,
     label: str,
     logger: logging.Logger,
 ) -> Optional[JSONDict]:
@@ -343,11 +354,11 @@ def update_chart_datasource_refs(
 
 
 def filter_payload_to_schema(
-    client: Any,
+    client: SupersetClient,
     resource_name: str,
-    payload: Dict[str, Any],
+    payload: Dict[str, object],
     fallback_allowed: Set[str],
-) -> Dict[str, Any]:
+) -> Dict[str, object]:
     """
     Filter payload keys based on API schema info when available.
     """
@@ -366,13 +377,13 @@ def prepare_chart_update_payload(  # pylint: disable=too-many-branches
     config: AssetConfig,
     datasource_id: int,
     datasource_type: str,
-    client: Any,
+    client: SupersetClient,
     logger: logging.Logger,
-) -> Dict[str, Any]:
+) -> Dict[str, object]:
     """
     Build a chart update payload from export config.
     """
-    payload: Dict[str, Any] = {}
+    payload: Dict[str, object] = {}
 
     for key in [
         "slice_name",
@@ -389,14 +400,14 @@ def prepare_chart_update_payload(  # pylint: disable=too-many-branches
 
     owners = config.get("owners")
     if owners:
-        if all(isinstance(owner, int) for owner in owners):
+        if isinstance(owners, list) and all(isinstance(owner, int) for owner in owners):
             payload["owners"] = owners
         else:
             logger.warning("Skipping owners update for chart; owner IDs not available")
 
     tags = config.get("tags")
     if tags:
-        if all(isinstance(tag, int) for tag in tags):
+        if isinstance(tags, list) and all(isinstance(tag, int) for tag in tags):
             payload["tags"] = tags
         else:
             logger.warning("Skipping tags update for chart; tag IDs not available")
@@ -449,7 +460,7 @@ def prepare_chart_update_payload(  # pylint: disable=too-many-branches
 
 
 def set_integer_list_payload_field(
-    payload: Dict[str, Any],
+    payload: Dict[str, object],
     config: AssetConfig,
     field_name: str,
     warning_message: str,
@@ -461,14 +472,14 @@ def set_integer_list_payload_field(
     values = config.get(field_name)
     if not values:
         return
-    if all(isinstance(value, int) for value in values):
+    if isinstance(values, list) and all(isinstance(value, int) for value in values):
         payload[field_name] = values
     else:
         logger.warning(warning_message)
 
 
 def set_json_payload_field(
-    payload: Dict[str, Any],
+    payload: Dict[str, object],
     config: AssetConfig,
     preferred_field: str,
     fallback_field: str,
@@ -489,13 +500,13 @@ def set_json_payload_field(
 
 def prepare_dashboard_update_payload(
     config: AssetConfig,
-    client: Any,
+    client: SupersetClient,
     logger: logging.Logger,
-) -> Dict[str, Any]:
+) -> Dict[str, object]:
     """
     Build a dashboard update payload from export config.
     """
-    payload: Dict[str, Any] = {}
+    payload: Dict[str, object] = {}
 
     for key in [
         "dashboard_title",
@@ -557,7 +568,7 @@ def prepare_dashboard_update_payload(
 
 
 def resolve_or_create_primary_no_cascade(
-    resource_uuid: str,
+    resource_uuid: UUIDLike,
     context: NoCascadeContext,
     spec: NoCascadePrimarySpec,
 ) -> Optional[int]:
@@ -579,7 +590,7 @@ def resolve_or_create_primary_no_cascade(
         )
         contents = spec.build_contents(context.configs, resource_uuid, context.client)
         if not contents:
-            raise CLIError(spec.missing_bundle_error(resource_uuid), 1)
+            raise CLIError(spec.missing_bundle_error(str(resource_uuid)), 1)
         context.import_resources_fn(
             contents,
             context.client,
@@ -621,13 +632,14 @@ def update_chart_no_cascade(
     Update a chart via API without cascading to dependencies.
     """
     chart_uuid = config.get("uuid")
+    chart_uuid = _as_uuid_like(chart_uuid)
     if not chart_uuid:
         raise CLIError(f"Chart config missing UUID: {path}", 1)
 
     def build_chart_bundle(
         all_configs: Dict[Path, AssetConfig],
         uuid_value: UUIDLike | None,
-        _client: Any,
+        _client: SupersetClient,
     ) -> Optional[Dict[str, str]]:
         return deps.build_chart_contents_fn(all_configs, uuid_value)
 
@@ -646,7 +658,7 @@ def update_chart_no_cascade(
     if chart_id is None:
         return
 
-    dataset_uuid = config.get("dataset_uuid")
+    dataset_uuid = _as_uuid_like(config.get("dataset_uuid"))
     if not dataset_uuid:
         raise CLIError(f"Chart {chart_uuid} missing dataset_uuid", 1)
 
@@ -699,13 +711,14 @@ def update_dashboard_no_cascade(
     Update a dashboard via API without cascading to dependencies.
     """
     dashboard_uuid = config.get("uuid")
+    dashboard_uuid = _as_uuid_like(dashboard_uuid)
     if not dashboard_uuid:
         raise CLIError(f"Dashboard config missing UUID: {path}", 1)
 
     def build_dashboard_bundle(
         all_configs: Dict[Path, AssetConfig],
         uuid_value: UUIDLike | None,
-        update_client: Any,
+        update_client: SupersetClient,
     ) -> Optional[Dict[str, str]]:
         return deps.build_dashboard_contents_fn(
             all_configs,

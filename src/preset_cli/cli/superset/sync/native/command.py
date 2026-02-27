@@ -18,17 +18,18 @@ from io import BytesIO
 from pathlib import Path
 from types import ModuleType
 from typing import (
-    Any,
     Callable,
     Dict,
     Iterator,
     List,
+    Mapping,
     Optional,
     Set,
     Tuple,
     TypeAlias,
     cast,
 )
+from uuid import UUID
 from zipfile import ZipFile
 
 import backoff
@@ -142,7 +143,7 @@ def load_user_modules(root: Path) -> Dict[str, ModuleType]:
     return modules
 
 
-def raise_helper(message: str, *args: Any) -> None:
+def raise_helper(message: str, *args: object) -> None:
     """
     Macro for Jinja2 so users can raise exceptions.
     """
@@ -160,21 +161,25 @@ def is_yaml_config(path: Path) -> bool:
     )
 
 
-def load_yaml(path: Path) -> Dict[str, Any]:
+def load_yaml(path: Path) -> Dict[str, object]:
     """
     Load a YAML file and returns it as a dictionary.
     """
     with open(path, encoding="utf-8") as input_:
         content = input_.read()
 
-    return yaml.load(content, Loader=yaml.SafeLoader)
+    return cast(Dict[str, object], yaml.load(content, Loader=yaml.SafeLoader))
 
 
-def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
+def render_yaml(
+    path: Path,
+    env: Dict[str, object] | Dict[str, str],
+) -> Dict[str, object]:
     """
     Load a YAML file as a template, render it, and deserialize it.
     """
-    env["filepath"] = path
+    render_env = cast(Dict[str, object], env)
+    render_env["filepath"] = path
 
     with open(path, encoding="utf-8") as input_:
         asset_content = input_.read()
@@ -189,8 +194,8 @@ def render_yaml(path: Path, env: Dict[str, Any]) -> Dict[str, Any]:
         content = json.dumps(content)
         template = Template(content)
 
-    content = template.render(**env)
-    return yaml.load(content, Loader=yaml.SafeLoader)
+    content = template.render(**render_env)
+    return cast(Dict[str, object], yaml.load(content, Loader=yaml.SafeLoader))
 
 
 def _is_bundle_root(path: Path) -> bool:
@@ -410,7 +415,7 @@ def native(  # pylint: disable=too-many-locals, too-many-arguments, too-many-bra
                     config.get("params"),
                     str,
                 ):
-                    config["params"] = json.loads(config["params"])
+                    config["params"] = json.loads(cast(str, config["params"]))
 
                 configs["bundle" / relative_path] = config
 
@@ -484,7 +489,7 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
 
     def _resource_exists(resource_name: str, config: AssetConfig) -> bool:
         uuid_value = config.get("uuid")
-        if not uuid_value:
+        if not isinstance(uuid_value, (str, UUID)):
             return False
         cache_key = (resource_name, str(uuid_value))
         if cache_key not in existing_uuid_cache:
@@ -512,17 +517,19 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
                 }
                 try:
                     for uuid in get_related_uuids(config):
-                        if uuid in related_configs:
-                            asset_configs.update(related_configs[uuid])
+                        related_uuid = str(uuid)
+                        if related_uuid in related_configs:
+                            asset_configs.update(related_configs[related_uuid])
 
+                    config_uuid = str(config["uuid"])
                     skip_database_import = (
                         resource_name == "databases"
                         and asset_type != ResourceType.DATABASE
-                        and config["uuid"] in existing_databases
+                        and config_uuid in existing_databases
                     )
                     # Always keep database configs so dependent assets (datasets/charts)
                     # can include the database YAML even when the DB already exists.
-                    related_configs[config["uuid"]] = asset_configs
+                    related_configs[config_uuid] = asset_configs
 
                     is_primary = asset_type == ResourceType.ASSET or (
                         asset_type.resource_name in resource_name
@@ -670,35 +677,52 @@ def get_charts_uuids(config: AssetConfig) -> Iterator[str]:
     """
     Extract chart UUID from a dashboard config.
     """
-    for child in config["position"].values():
-        if (
-            isinstance(child, dict)
-            and child["type"] == "CHART"
-            and "uuid" in child["meta"]
-        ):
-            yield child["meta"]["uuid"]
+    position = config.get("position")
+    if not isinstance(position, dict):
+        return
+    for child in position.values():
+        if not isinstance(child, dict):
+            continue
+        if child.get("type") != "CHART":
+            continue
+        meta = child.get("meta")
+        if isinstance(meta, dict) and isinstance(meta.get("uuid"), str):
+            yield meta["uuid"]
 
 
 def get_dataset_filter_uuids(config: AssetConfig) -> Set[str]:
     """
     Extract dataset UUID for datasets that are used in dashboard filters.
     """
-    dataset_uuids = set()
-    for filter_config in config["metadata"].get("native_filter_configuration", []):
-        for target in filter_config.get("targets", {}):
-            if uuid := target.get("datasetUuid"):
-                if uuid not in dataset_uuids:
-                    dataset_uuids.add(uuid)
+    dataset_uuids: Set[str] = set()
+    metadata = config.get("metadata")
+    if not isinstance(metadata, dict):
+        return dataset_uuids
+    native_filter_config = metadata.get("native_filter_configuration", [])
+    if not isinstance(native_filter_config, list):
+        return dataset_uuids
+    for filter_config in native_filter_config:
+        if not isinstance(filter_config, dict):
+            continue
+        targets = filter_config.get("targets", [])
+        if not isinstance(targets, list):
+            continue
+        for target in targets:
+            if not isinstance(target, dict):
+                continue
+            uuid = target.get("datasetUuid")
+            if isinstance(uuid, str) and uuid not in dataset_uuids:
+                dataset_uuids.add(uuid)
     return dataset_uuids
 
 
-def verify_db_connectivity(config: Dict[str, Any]) -> None:
+def verify_db_connectivity(config: Mapping[str, object]) -> None:
     """
     Test if we can connect to a given database.
     """
-    uri = make_url(config["sqlalchemy_uri"])
+    uri = make_url(cast(str, config["sqlalchemy_uri"]))
     if config.get("password"):
-        uri = uri.set(password=config["password"])
+        uri = uri.set(password=cast(str, config["password"]))
 
     try:
         engine = create_engine(uri)
@@ -711,8 +735,8 @@ def verify_db_connectivity(config: Dict[str, Any]) -> None:
 
 def add_password_to_config(
     path: Path,
-    config: Dict[str, Any],
-    pwds: Dict[str, Any],
+    config: Dict[str, object] | Dict[str, str],
+    pwds: Dict[str, str],
     new_conn: bool,
 ) -> None:
     """
@@ -721,11 +745,12 @@ def add_password_to_config(
     Prompt user for masked passwords for new connections if not provided. Modify
     the config in place.
     """
-    uri = config["sqlalchemy_uri"]
+    uri = cast(str, config["sqlalchemy_uri"])
     password = make_url(uri).password
 
-    if config["uuid"] in pwds:
-        config["password"] = pwds[config["uuid"]]
+    uuid = str(config["uuid"])
+    if uuid in pwds:
+        config["password"] = pwds[uuid]
         verify_db_connectivity(config)
     elif password != PASSWORD_MASK or config.get("password"):
         verify_db_connectivity(config)
@@ -740,7 +765,7 @@ def _resolve_uuid_to_id(
     client: SupersetClient,
     resource_name: str,
     uuid_value: UUIDLike | None,
-    resources: List[Dict[str, Any]] | None = None,
+    resources: List[AssetConfig] | None = None,
 ) -> Optional[int]:
     """
     Resolve a UUID to a resource ID using the API, with fallbacks for older versions.
@@ -753,10 +778,16 @@ def _resolve_uuid_to_id(
         resources = client.get_resources(resource_name)
     for resource in resources:
         if str(resource.get("uuid")) == uuid_str:
-            return resource["id"]
+            resource_id = resource.get("id")
+            if isinstance(resource_id, int):
+                return resource_id
 
     # fallback for older versions that don't expose UUIDs in the API
-    ids = {resource["id"] for resource in resources}
+    ids = {
+        resource_id
+        for resource in resources
+        if isinstance((resource_id := resource.get("id")), int)
+    }
     if not ids:
         return None
 
@@ -831,7 +862,7 @@ def _build_dashboard_contents(
     )
 
 
-def _safe_json_loads(value: Any, label: str) -> Optional[JSONDict]:
+def _safe_json_loads(value: object, label: str) -> Optional[JSONDict]:
     """
     Safely parse JSON content that may be a dict or string.
     """
@@ -864,9 +895,9 @@ def _update_chart_datasource_refs(
 def _filter_payload_to_schema(
     client: SupersetClient,
     resource_name: str,
-    payload: Dict[str, Any],
+    payload: Dict[str, object],
     fallback_allowed: Set[str],
-) -> Dict[str, Any]:
+) -> Dict[str, object]:
     """
     Filter payload keys based on API schema info when available.
     """
@@ -883,7 +914,7 @@ def _prepare_chart_update_payload(  # pylint: disable=too-many-branches
     datasource_id: int,
     datasource_type: str,
     client: SupersetClient,
-) -> Dict[str, Any]:
+) -> Dict[str, object]:
     """
     Build a chart update payload from export config.
     """
@@ -897,7 +928,7 @@ def _prepare_chart_update_payload(  # pylint: disable=too-many-branches
 
 
 def _set_integer_list_payload_field(
-    payload: Dict[str, Any],
+    payload: Dict[str, object],
     config: AssetConfig,
     field_name: str,
     warning_message: str,
@@ -915,7 +946,7 @@ def _set_integer_list_payload_field(
 
 
 def _set_json_payload_field(
-    payload: Dict[str, Any],
+    payload: Dict[str, object],
     config: AssetConfig,
     preferred_field: str,
     fallback_field: str,
@@ -936,7 +967,7 @@ def _set_json_payload_field(
 def _prepare_dashboard_update_payload(
     config: AssetConfig,
     client: SupersetClient,
-) -> Dict[str, Any]:
+) -> Dict[str, object]:
     """
     Build a dashboard update payload from export config.
     """
