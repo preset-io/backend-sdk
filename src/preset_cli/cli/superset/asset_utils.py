@@ -2,7 +2,7 @@
 Shared helpers for Superset asset paths and ZIP YAML traversal.
 """
 
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Dict, Iterator, Literal, Optional, Tuple, cast, overload
 from zipfile import ZipFile
 
 import yaml
@@ -19,13 +19,31 @@ RESOURCE_CHARTS = "charts"
 RESOURCE_DATASETS = "datasets"
 RESOURCE_DATABASES = "databases"
 
+AssetSingularName = Literal["dashboard", "chart", "dataset", "database"]
+AssetPluralName = Literal["dashboards", "charts", "datasets", "databases"]
+YamlAssetConfig = Dict[str, object]
+
 YAML_EXTENSIONS = (".yaml", ".yml")
-_ASSET_PATH_PREFIXES = (
-    (f"{RESOURCE_DASHBOARDS}/", RESOURCE_DASHBOARD, RESOURCE_DASHBOARDS),
-    (f"{RESOURCE_CHARTS}/", RESOURCE_CHART, RESOURCE_CHARTS),
-    (f"{RESOURCE_DATASETS}/", RESOURCE_DATASET, RESOURCE_DATASETS),
-    (f"{RESOURCE_DATABASES}/", RESOURCE_DATABASE, RESOURCE_DATABASES),
+_ASSET_PATH_PREFIXES: Tuple[Tuple[str, AssetSingularName, AssetPluralName], ...] = (
+    ("dashboards/", "dashboard", "dashboards"),
+    ("charts/", "chart", "charts"),
+    ("datasets/", "dataset", "datasets"),
+    ("databases/", "database", "databases"),
 )
+
+
+@overload
+def classify_asset_path(
+    relative_path: str,
+    plural: Literal[False] = False,
+) -> Optional[AssetSingularName]: ...
+
+
+@overload
+def classify_asset_path(
+    relative_path: str,
+    plural: Literal[True],
+) -> Optional[AssetPluralName]: ...
 
 
 def classify_asset_path(relative_path: str, plural: bool = False) -> Optional[str]:
@@ -38,7 +56,9 @@ def classify_asset_path(relative_path: str, plural: bool = False) -> Optional[st
     return None
 
 
-def iter_yaml_asset_configs(bundle: ZipFile) -> Iterator[Tuple[str, Dict[str, Any]]]:
+def iter_yaml_asset_configs(
+    bundle: ZipFile,
+) -> Iterator[Tuple[AssetSingularName, YamlAssetConfig]]:
     """
     Yield (singular_asset_type, yaml_config) from supported YAML asset entries.
     """
@@ -50,4 +70,6 @@ def iter_yaml_asset_configs(bundle: ZipFile) -> Iterator[Tuple[str, Dict[str, An
         if not asset_type:
             continue
         config = yaml.load(bundle.read(file_name), Loader=yaml.SafeLoader) or {}
-        yield asset_type, config
+        if not isinstance(config, dict):
+            continue
+        yield cast(AssetSingularName, asset_type), cast(YamlAssetConfig, config)

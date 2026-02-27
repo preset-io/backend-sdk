@@ -3,7 +3,7 @@ Reusable dependency and UUID resolution helpers for Superset CLI commands.
 """
 
 from io import BytesIO
-from typing import Any, Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple
 from zipfile import ZipFile
 
 from preset_cli.api.clients.superset import SupersetClient
@@ -15,6 +15,7 @@ from preset_cli.cli.superset.asset_utils import (
     RESOURCE_DATABASES,
     RESOURCE_DATASET,
     RESOURCE_DATASETS,
+    YamlAssetConfig,
     iter_yaml_asset_configs,
 )
 from preset_cli.cli.superset.delete_types import CascadeDependencies
@@ -94,44 +95,50 @@ def extract_dependency_maps(
 
 
 def _collect_chart_dependencies(
-    config: Dict[str, Any],
+    config: YamlAssetConfig,
     chart_uuids: Set[str],
     dataset_uuids: Set[str],
     chart_dataset_map: Dict[str, str],
 ) -> None:
     if uuid := config.get("uuid"):
-        chart_uuids.add(uuid)
+        chart_uuid = str(uuid)
+        chart_uuids.add(chart_uuid)
         if dataset_uuid := config.get("dataset_uuid"):
-            chart_dataset_map[uuid] = dataset_uuid
-            dataset_uuids.add(dataset_uuid)
+            dataset_uuid_str = str(dataset_uuid)
+            chart_dataset_map[chart_uuid] = dataset_uuid_str
+            dataset_uuids.add(dataset_uuid_str)
 
 
 def _collect_dataset_dependencies(
-    config: Dict[str, Any],
+    config: YamlAssetConfig,
     dataset_uuids: Set[str],
     database_uuids: Set[str],
     dataset_database_map: Dict[str, str],
 ) -> None:
     if uuid := config.get("uuid"):
-        dataset_uuids.add(uuid)
+        dataset_uuid = str(uuid)
+        dataset_uuids.add(dataset_uuid)
         if database_uuid := config.get("database_uuid"):
-            dataset_database_map[uuid] = database_uuid
-            database_uuids.add(database_uuid)
+            database_uuid_str = str(database_uuid)
+            dataset_database_map[dataset_uuid] = database_uuid_str
+            database_uuids.add(database_uuid_str)
 
 
 def _collect_database_dependencies(
-    config: Dict[str, Any],
+    config: YamlAssetConfig,
     database_uuids: Set[str],
 ) -> None:
     if uuid := config.get("uuid"):
-        database_uuids.add(uuid)
+        database_uuids.add(str(uuid))
 
 
 def _collect_dashboard_chart_context(
-    config: Dict[str, Any],
+    config: YamlAssetConfig,
     chart_dashboard_titles: Dict[str, Set[str]],
 ) -> None:
-    dashboard_title = config.get("dashboard_title") or config.get("title") or "Unknown"
+    dashboard_title = str(
+        config.get("dashboard_title") or config.get("title") or "Unknown",
+    )
     position = config.get("position")
     if not isinstance(position, dict):
         return
