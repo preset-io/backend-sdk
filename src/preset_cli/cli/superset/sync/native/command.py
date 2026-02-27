@@ -483,7 +483,11 @@ def import_resources_individually(  # pylint: disable=too-many-locals, too-many-
     related_configs: Dict[str, Dict[Path, AssetConfig]] = {}
 
     log_file_path, logs = get_logs(LogType.ASSETS)
-    assets_to_skip = {Path(log["path"]) for log in logs[LogType.ASSETS]}
+    assets_to_skip = {
+        Path(path_value)
+        for log in logs[LogType.ASSETS]
+        if isinstance((path_value := log.get("path")), str)
+    }
     existing_databases = existing_databases or set()
     existing_uuid_cache: Dict[Tuple[str, str], bool] = {}
 
