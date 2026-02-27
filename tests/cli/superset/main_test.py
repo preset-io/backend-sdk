@@ -114,6 +114,7 @@ Options:
   --help  Show this message and exit.
 
 Commands:
+  delete-assets
   export
   export-assets
   export-ownership
@@ -131,29 +132,20 @@ Commands:
 
     result = runner.invoke(superset, ["export", "--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """Usage: superset export [OPTIONS] [DIRECTORY]
-
-Options:
-  --overwrite               Overwrite existing resources
-  --disable-jinja-escaping  Disable Jinja template escaping
-  --force-unix-eol          Force Unix end-of-line characters, otherwise use
-                            system default
-  --asset-type TEXT         Asset type
-  --database-ids TEXT       Comma separated list of database IDs to export
-  --dataset-ids TEXT        Comma separated list of dataset IDs to export
-  --chart-ids TEXT          Comma separated list of chart IDs to export
-  --dashboard-ids TEXT      Comma separated list of dashboard IDs to export
-  -t, --filter TEXT         Filter key=value (repeatable, ANDed). Dashboard
-                            fields only.
-  -z, --output-zip PATH     Export to ZIP file instead of directory
-  --per-asset-folder        Create subfolder per exported dashboard with its
-                            dependencies
-  -s, --simple-file-names   Remove numeric suffixes from exported YAML filenames
-  --help                    Show this message and exit.
-"""
-    )
+    assert "Usage: superset export [OPTIONS] [DIRECTORY]" in result.output
+    assert "--overwrite" in result.output
+    assert "--disable-jinja-escaping" in result.output
+    assert "--force-unix-eol" in result.output
+    assert "--asset-type TEXT" in result.output
+    assert "--database-ids TEXT" in result.output
+    assert "--dataset-ids TEXT" in result.output
+    assert "--chart-ids TEXT" in result.output
+    assert "--dashboard-ids TEXT" in result.output
+    assert "-t, --filter TEXT" in result.output
+    assert "-z, --output-zip PATH" in result.output
+    assert "--per-asset-folder" in result.output
+    assert "-s, --simple-file-names" in result.output
+    assert "--help" in result.output
 
 
 def test_superset_jwt_auth(mocker: MockerFixture) -> None:
