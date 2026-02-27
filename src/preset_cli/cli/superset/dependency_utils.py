@@ -66,19 +66,16 @@ def extract_dependency_maps(
                     dataset_uuids,
                     chart_dataset_map,
                 )
-                continue
-            if resource_name == RESOURCE_DATASET:
+            elif resource_name == RESOURCE_DATASET:
                 _collect_dataset_dependencies(
                     config,
                     dataset_uuids,
                     database_uuids,
                     dataset_database_map,
                 )
-                continue
-            if resource_name == RESOURCE_DATABASE:
+            elif resource_name == RESOURCE_DATABASE:
                 _collect_database_dependencies(config, database_uuids)
-                continue
-            if resource_name == RESOURCE_DASHBOARD:
+            else:
                 _collect_dashboard_chart_context(
                     config,
                     chart_dashboard_titles,

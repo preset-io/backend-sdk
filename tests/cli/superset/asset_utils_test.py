@@ -42,3 +42,17 @@ def test_iter_yaml_asset_configs_reads_supported_asset_yaml_entries() -> None:
         ("chart", {"uuid": "chart-uuid"}),
         ("dataset", {"uuid": "dataset-uuid"}),
     ]
+
+
+def test_iter_yaml_asset_configs_skips_non_mapping_yaml_payloads() -> None:
+    """ZIP YAML iteration should skip supported asset entries with non-dict YAML."""
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        bundle.writestr("bundle/charts/chart.yaml", yaml.dump(["not-a-dict"]))
+
+    buf.seek(0)
+    with ZipFile(buf) as bundle:
+        entries = list(iter_yaml_asset_configs(bundle))
+
+    assert entries == []

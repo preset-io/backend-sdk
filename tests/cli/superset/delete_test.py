@@ -7,6 +7,7 @@ Tests for delete assets command.
 import tempfile
 from io import BytesIO
 from pathlib import Path
+from types import MappingProxyType
 from typing import Dict
 from zipfile import ZipFile
 
@@ -1403,6 +1404,20 @@ def test_dataset_db_id_nested_dict() -> None:
 
     # database field is not a dict
     assert _dataset_db_id({"database": "not-a-dict"}) is None
+
+
+def test_filter_datasets_for_database_ids_converts_non_dict_mappings() -> None:
+    """
+    Test ``_filter_datasets_for_database_ids`` converts mapping rows to dict.
+    """
+    datasets = [
+        MappingProxyType({"id": 1, "database_id": 7}),
+        MappingProxyType({"id": 2, "database_id": 8}),
+    ]
+
+    result = _filter_datasets_for_database_ids(datasets, {7})
+    assert result == [{"id": 1, "database_id": 7}]
+    assert isinstance(result[0], dict)
 
 
 def test_delete_assets_dataset_by_id_dry_run(mocker: MockerFixture) -> None:

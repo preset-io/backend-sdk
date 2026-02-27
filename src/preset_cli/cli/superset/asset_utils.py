@@ -2,7 +2,7 @@
 Shared helpers for Superset asset paths and ZIP YAML traversal.
 """
 
-from typing import Dict, Iterator, Literal, Optional, Tuple, cast, overload
+from typing import Dict, Iterator, Literal, Optional, Tuple, cast
 from zipfile import ZipFile
 
 import yaml
@@ -32,21 +32,10 @@ _ASSET_PATH_PREFIXES: Tuple[Tuple[str, AssetSingularName, AssetPluralName], ...]
 )
 
 
-@overload
 def classify_asset_path(
     relative_path: str,
-    plural: Literal[False] = False,
-) -> Optional[AssetSingularName]: ...
-
-
-@overload
-def classify_asset_path(
-    relative_path: str,
-    plural: Literal[True],
-) -> Optional[AssetPluralName]: ...
-
-
-def classify_asset_path(relative_path: str, plural: bool = False) -> Optional[str]:
+    plural: bool = False,
+) -> Optional[AssetSingularName | AssetPluralName]:
     """
     Return the asset type for a relative export path.
     """
