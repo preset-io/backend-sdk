@@ -89,13 +89,34 @@ def is_help() -> bool:
 
 workspace_role_identifiers = {
     "workspace admin": "Admin",
-    "primary contributor": "PresetAlpha",
-    "secondary contributor": "PresetBeta",
-    "limited contributor": "PresetGamma",
+    "primary creator": "PresetAlpha",
+    "secondary creator": "PresetBeta",
+    "limited creator": "PresetGamma",
     "viewer": "PresetReportsOnly",
     "dashboard viewer": "PresetDashboardsOnly",
     "no access": "PresetNoAccess",
 }
+
+# Deprecated names — will be removed in a future version
+deprecated_role_names = {
+    "primary contributor": "primary creator",
+    "secondary contributor": "secondary creator",
+    "limited contributor": "limited creator",
+}
+
+
+def resolve_workspace_role(role_name: str) -> str:
+    """Resolve a workspace role name to its identifier, warning on deprecated names."""
+    if role_name in deprecated_role_names:
+        new_name = deprecated_role_names[role_name]
+        _logger.warning(
+            "Workspace role '%s' is deprecated and will be removed in a future version. "
+            "Please use '%s' instead.",
+            role_name,
+            new_name,
+        )
+        role_name = new_name
+    return workspace_role_identifiers[role_name]
 
 
 @click.group()
@@ -507,7 +528,10 @@ def _set_user_workspace_role(
         workspace_id = workspace_ids[workspace_name]
 
         # Map workspace role to role identifier
-        if workspace_role not in workspace_role_identifiers:
+        if (
+            workspace_role not in workspace_role_identifiers
+            and workspace_role not in deprecated_role_names
+        ):
             _logger.warning(
                 "Unknown workspace role %s for user %s, skipping",
                 workspace_role,
@@ -515,7 +539,7 @@ def _set_user_workspace_role(
             )
             continue
 
-        role_identifier = workspace_role_identifiers[workspace_role]
+        role_identifier = resolve_workspace_role(workspace_role)
 
         _logger.info(
             "Setting workspace role of user %s to %s (%s) in workspace %s",
@@ -802,7 +826,7 @@ def sync_user_role_to_workspace(
     Sync user role to a given workspace.
     """
     workspace_role = workspace_roles["workspace_role"].lower()
-    role_identifier = workspace_role_identifiers[workspace_role]
+    role_identifier = resolve_workspace_role(workspace_role)
 
     _logger.info(
         "Setting workspace role of user %s to %s (%s)",
