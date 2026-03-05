@@ -5,10 +5,15 @@ Changelog
 Next
 ====
 
-- The ``delete-assets`` command now supports ``chart``, ``dataset``, and ``database`` asset types with ``id`` filters only.
-- The ``delete-assets`` command accepts ``--dry-run=false`` as an alias for ``--no-dry-run``.
-- The ``delete-assets`` rollback behavior is now documented as best-effort (backup + re-import), not transactional.
-- The ``export-assets`` command now writes per-asset dashboard files as ``dashboard.yaml`` inside each dashboard folder (previously the original dashboard filename).
+Version 0.3.11 - 2026-03-05
+==========================
+
+- ``datajunction`` is now an optional dependency (`#372 <https://github.com/preset-io/backend-sdk/pull/372>`_).
+- The ``delete-assets`` command now supports ``chart``, ``dataset``, and ``database`` asset types with ``id`` filters only (`#376 <https://github.com/preset-io/backend-sdk/pull/376>`_).
+- The ``delete-assets`` command accepts ``--dry-run=false`` as an alias for ``--no-dry-run`` (`#378 <https://github.com/preset-io/backend-sdk/pull/378>`_).
+- The ``delete-assets`` rollback behavior is now documented as best-effort (backup + re-import), not transactional (`#378 <https://github.com/preset-io/backend-sdk/pull/378>`_).
+- The ``export-assets`` command now writes per-asset dashboard files as ``dashboard.yaml`` inside each dashboard folder (previously the original dashboard filename) (`#377 <https://github.com/preset-io/backend-sdk/pull/377>`_).
+- Re-named ``Contributor`` roles to ``Creator`` to support new role naming in Preset Cloud (backwards compatible) (`#373 <https://github.com/preset-io/backend-sdk/pull/373>`_).
 
 Version 0.3.10 - 2026-01-16
 ==========================
