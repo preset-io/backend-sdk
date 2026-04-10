@@ -37,7 +37,7 @@ from preset_cli.lib import setup_logging
 @click.option("--loglevel", default="INFO")
 @click.option(
     "--provider",
-    default="ldap",
+    default="db",
     help="Provider that store the superset credentials (e.g. ldap, db, etc.)",
 )
 @click.version_option()
