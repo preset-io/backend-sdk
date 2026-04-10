@@ -28,7 +28,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         self.baseurl = baseurl
         self.username = username
         self.password = password
-        self.provider = provider or "ldap"
+        self.provider = provider or "db"
         self.auth()
 
     def get_headers(self) -> Dict[str, str]:
