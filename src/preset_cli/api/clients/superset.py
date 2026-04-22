@@ -277,7 +277,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         data = {
             "client_id": shortid()[:10],
             "database_id": database_id,
-            "json": True,
             "runAsync": False,
             "schema": schema,
             "sql": sql,
