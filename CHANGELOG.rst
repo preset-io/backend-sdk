@@ -5,6 +5,12 @@ Changelog
 Next
 ====
 
+Version 0.3.12 - 2026-04-22
+==========================
+
+- The ``sqlglot`` dependency now has an upper bound limit to avoid incompatibility issues (`#382 <https://github.com/preset-io/backend-sdk/pull/382>`_).
+- The ``sql`` command is now fixed and works with both ``v6.x`` and older instances (`#383 <https://github.com/preset-io/backend-sdk/pull/383>`_).
+
 Version 0.3.11 - 2026-03-05
 ==========================
 
