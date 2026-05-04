@@ -171,7 +171,7 @@ def test_superset_cli_default_provider(mocker: MockerFixture) -> None:
     """
     Test that the --provider option defaults to 'db'.
     """
-    UsernamePasswordAuth = mocker.patch(
+    username_password_auth = mocker.patch(
         "preset_cli.cli.superset.main.UsernamePasswordAuth",
     )
 
@@ -182,7 +182,7 @@ def test_superset_cli_default_provider(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
 
-    UsernamePasswordAuth.assert_called_with(
+    username_password_auth.assert_called_with(
         URL("http://localhost:8088/"), "admin", "admin", "db",
     )
 
@@ -191,7 +191,7 @@ def test_superset_cli_provider(mocker: MockerFixture) -> None:
     """
     Test that --provider db is passed through to UsernamePasswordAuth.
     """
-    UsernamePasswordAuth = mocker.patch(
+    username_password_auth = mocker.patch(
         "preset_cli.cli.superset.main.UsernamePasswordAuth",
     )
 
@@ -202,6 +202,6 @@ def test_superset_cli_provider(mocker: MockerFixture) -> None:
         catch_exceptions=False,
     )
 
-    UsernamePasswordAuth.assert_called_with(
+    username_password_auth.assert_called_with(
         URL("http://localhost:8088/"), "admin", "admin", "ldap",
     )
