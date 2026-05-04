@@ -2,12 +2,17 @@
 Mechanisms for authentication and authorization for Superset instances.
 """
 
+import logging
 from typing import Dict, Optional
 
+from bs4 import BeautifulSoup
+from requests.exceptions import RequestException
 from yarl import URL
 
 from preset_cli.auth.main import Auth
 from preset_cli.auth.token import TokenAuth
+
+_logger = logging.getLogger(__name__)
 
 
 class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
@@ -60,9 +65,25 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
     def auth(self) -> None:
         """
         Login to get CSRF token and cookies.
+
+        Try the documented REST API first; fall back to the legacy HTML-scraping
+        flow if the API is unavailable (e.g. on older Superset versions that do
+        not expose ``/api/v1/security/login``).
         """
-        self.session.headers["Authorization"] = f"Bearer {self.get_access_token()}"
-        csrf_token = self.get_csrf_token()
+        try:
+            self.session.headers["Authorization"] = (
+                f"Bearer {self.get_access_token()}"
+            )
+            csrf_token = self.get_csrf_token()
+        except (RequestException, KeyError, ValueError) as ex:
+            _logger.warning(
+                "API authentication failed (%s); falling back to legacy "
+                "HTML-based login flow.",
+                ex,
+            )
+            self.session.headers.pop("Authorization", None)
+            self._legacy_auth()
+            return
 
         if csrf_token:
             self.session.headers["X-CSRFToken"] = csrf_token
@@ -70,6 +91,25 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
                 self.baseurl / "api/v1/security/csrf_token/",
             )
             self.csrf_token = csrf_token
+
+    def _legacy_auth(self) -> None:
+        """
+        Legacy login flow: scrape the CSRF token from ``/login/`` and POST
+        credentials as form data. Kept as a fallback for older Superset
+        instances that don't expose the security API.
+        """
+        data = {"username": self.username, "password": self.password}
+
+        response = self.session.get(self.baseurl / "login/")
+        soup = BeautifulSoup(response.text, "html.parser")
+        input_ = soup.find("input", {"id": "csrf_token"})
+        csrf_token = input_["value"] if input_ else None
+        if csrf_token:
+            self.session.headers["X-CSRFToken"] = csrf_token
+            data["csrf_token"] = csrf_token
+            self.csrf_token = csrf_token
+
+        self.session.post(self.baseurl / "login/", data=data)
 
 
 class SupersetJWTAuth(TokenAuth):  # pylint: disable=abstract-method

@@ -57,6 +57,34 @@ def test_username_password_auth_no_csrf(requests_mock: Mocker) -> None:
     assert auth.get_headers() == {}
 
 
+def test_username_password_auth_legacy_fallback(requests_mock: Mocker) -> None:
+    """
+    When the security API is unavailable, fall back to the legacy
+    HTML-scraping login flow.
+    """
+    csrf_token = "LEGACY_CSRF"
+    requests_mock.post(
+        "https://superset.example.org/api/v1/security/login",
+        status_code=404,
+    )
+    requests_mock.get(
+        "https://superset.example.org/login/",
+        text=(
+            f'<html><body><input id="csrf_token" name="csrf_token" '
+            f'value="{csrf_token}" /></body></html>'
+        ),
+    )
+    requests_mock.post("https://superset.example.org/login/")
+
+    auth = UsernamePasswordAuth(
+        URL("https://superset.example.org/"),
+        "admin",
+        "password123",
+    )
+    assert auth.get_headers() == {"X-CSRFToken": csrf_token}
+    assert "Authorization" not in auth.session.headers
+
+
 def test_jwt_auth_superset(mocker: MockerFixture) -> None:
     """
     Test the ``JWTAuth`` authentication mechanism for Superset tenant.
