@@ -20,7 +20,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         baseurl: URL,
         username: str,
         password: Optional[str] = None,
-        provider: Optional[str] = None,
+        provider: Optional[str] = "db",
     ):
         super().__init__()
 
