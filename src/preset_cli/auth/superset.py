@@ -71,9 +71,7 @@ class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
         not expose ``/api/v1/security/login``).
         """
         try:
-            self.session.headers["Authorization"] = (
-                f"Bearer {self.get_access_token()}"
-            )
+            self.session.headers["Authorization"] = f"Bearer {self.get_access_token()}"
             csrf_token = self.get_csrf_token()
         except (RequestException, KeyError, ValueError) as ex:
             _logger.warning(

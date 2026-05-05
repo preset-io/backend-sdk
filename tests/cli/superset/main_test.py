@@ -67,16 +67,13 @@ def test_mutate_commands() -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """
+    assert result.output == """
 instance1
 Hello, Alice!
 
 instance2
 Hello, Alice!
 """
-    )
 
     result = runner.invoke(
         target_group,
@@ -84,16 +81,13 @@ Hello, Alice!
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """
+    assert result.output == """
 instance1
 Goodbye, Alice!
 
 instance2
 Goodbye, Alice!
 """
-    )
 
 
 def test_superset() -> None:
@@ -104,9 +98,7 @@ def test_superset() -> None:
 
     result = runner.invoke(superset, ["--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """Usage: superset [OPTIONS] COMMAND [ARGS]...
+    assert result.output == """Usage: superset [OPTIONS] COMMAND [ARGS]...
 
   Send commands to one or more Superset instances.
 
@@ -127,13 +119,10 @@ Commands:
   sql
   sync
 """
-    )
 
     result = runner.invoke(superset, ["export", "--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """Usage: superset export [OPTIONS] DIRECTORY
+    assert result.output == """Usage: superset export [OPTIONS] DIRECTORY
 
 Options:
   --overwrite               Overwrite existing resources
@@ -147,7 +136,6 @@ Options:
   --dashboard-ids TEXT      Comma separated list of dashboard IDs to export
   --help                    Show this message and exit.
 """
-    )
 
 
 def test_superset_jwt_auth(mocker: MockerFixture) -> None:
@@ -183,7 +171,10 @@ def test_superset_cli_default_provider(mocker: MockerFixture) -> None:
     )
 
     username_password_auth.assert_called_with(
-        URL("http://localhost:8088/"), "admin", "admin", "db",
+        URL("http://localhost:8088/"),
+        "admin",
+        "admin",
+        "db",
     )
 
 
@@ -203,5 +194,8 @@ def test_superset_cli_provider(mocker: MockerFixture) -> None:
     )
 
     username_password_auth.assert_called_with(
-        URL("http://localhost:8088/"), "admin", "admin", "ldap",
+        URL("http://localhost:8088/"),
+        "admin",
+        "admin",
+        "ldap",
     )
