@@ -158,9 +158,9 @@ def sync_exposures(  # pylint: disable=too-many-locals
             "name": asset_title + "_dashboard_" + str(dashboard_id),
             "label": dashboard["dashboard_title"] + " [dashboard]",
             "type": "dashboard",
-            "maturity": "high"
-            if dashboard["published"] or dashboard["certified_by"]
-            else "low",
+            "maturity": (
+                "high" if dashboard["published"] or dashboard["certified_by"] else "low"
+            ),
             "url": str(client.baseurl / dashboard["url"].lstrip("/")),
             "description": "",
             "depends_on": get_dashboard_depends_on(client, dashboard, model_map),

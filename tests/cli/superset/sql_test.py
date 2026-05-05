@@ -1,6 +1,7 @@
 """
 Test the ``sql`` command.
 """
+
 # pylint: disable=invalid-name, unused-argument, redefined-outer-name
 
 from io import StringIO

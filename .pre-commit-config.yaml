@@ -2,7 +2,7 @@ exclude: '^docs/conf.py'
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v3.4.0
+  rev: v4.6.0
   hooks:
     #- id: check-added-large-files
   - id: check-ast
@@ -29,12 +29,12 @@ repos:
 #     ]
 
 - repo: https://github.com/pycqa/isort
-  rev: 5.11.5
+  rev: 5.13.2
   hooks:
   - id: isort
 
 - repo: https://github.com/psf/black
-  rev: 22.10.0
+  rev: 24.10.0
   hooks:
   - id: black
     language_version: python3
@@ -47,14 +47,13 @@ repos:
 #     additional_dependencies: [black]
 
 - repo: https://github.com/PyCQA/flake8
-  rev: 3.9.2
+  rev: 7.1.1
   hooks:
   - id: flake8
-  ## You can add flake8 plugins via `additional_dependencies`:
-  #  additional_dependencies: [flake8-bugbear]
+    args: ['--extend-ignore=E501,W293']
 
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: 'v0.981'  # Use the sha / tag you want to point at
+  rev: 'v1.13.0'
   hooks:
   - id: mypy
     additional_dependencies:
@@ -65,7 +64,7 @@ repos:
     - types-PyYAML
     - types-tabulate
 - repo: https://github.com/asottile/add-trailing-comma
-  rev: v2.1.0
+  rev: v3.1.0
   hooks:
   - id: add-trailing-comma
 #- repo: https://github.com/asottile/reorder_python_imports
@@ -82,6 +81,6 @@ repos:
   hooks:
   - id: pylint
     name: pylint
-    entry: pylint --disable=use-implicit-booleaness-not-comparison,fixme,duplicate-code
+    entry: pylint --disable=use-implicit-booleaness-not-comparison,fixme,duplicate-code,unsubscriptable-object,broad-exception-raised,too-many-positional-arguments,use-dict-literal,possibly-used-before-assignment,use-yield-from,consider-using-join
     language: system
     types: [python]

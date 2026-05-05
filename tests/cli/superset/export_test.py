@@ -1,11 +1,13 @@
 """
 Tests for the export commands.
 """
+
 # pylint: disable=redefined-outer-name, invalid-name, unused-argument, too-many-lines
 
 import json
 from io import BytesIO
 from pathlib import Path
+from typing import Dict, List
 from unittest import mock
 from uuid import UUID
 from zipfile import ZipFile
@@ -16,9 +18,83 @@ from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
 
+from preset_cli.api.operators import Contains
 from preset_cli.auth.main import Auth
-from preset_cli.cli.superset.export import export_resource
+from preset_cli.cli.superset.export import (
+    _unique_simple_name,
+    build_local_uuid_mapping,
+    check_asset_uniqueness,
+    export_resource,
+)
+from preset_cli.cli.superset.export_helpers import (
+    _build_resource_uuid_map,
+    _cleanup_resource_directory,
+    _copy_chart_dependencies,
+    _copy_dataset_dependencies,
+    _get_dashboard_chart_uuids,
+    _get_dashboard_dataset_filter_uuids,
+    extract_uuid_from_asset,
+    restructure_per_asset_folder,
+)
 from preset_cli.cli.superset.main import superset_cli
+from preset_cli.exceptions import SupersetError
+
+
+def make_dashboard_export_zip(  # pylint: disable=too-many-arguments
+    dashboard_file: str = "dashboards/quarterly_sales_123.yaml",
+    chart_file: str = "charts/sales_chart_456.yaml",
+    dataset_file: str = "datasets/db1/sales_dataset_789.yaml",
+    database_file: str = "databases/db1.yaml",
+    dashboard_uuid: str = "dash-uuid",
+    chart_uuid: str = "chart-uuid",
+    dataset_uuid: str = "dataset-uuid",
+    database_uuid: str = "db-uuid",
+) -> BytesIO:
+    """
+    Build a minimal dashboard export zip with dependencies.
+    """
+    contents = {
+        f"dashboard_export/{dashboard_file}": yaml.dump(
+            {
+                "uuid": dashboard_uuid,
+                "position": {
+                    "CHART1": {
+                        "type": "CHART",
+                        "meta": {"uuid": chart_uuid},
+                    },
+                },
+                "metadata": {
+                    "native_filter_configuration": [
+                        {"targets": [{"datasetUuid": dataset_uuid}]},
+                    ],
+                },
+            },
+        ),
+        f"dashboard_export/{chart_file}": yaml.dump(
+            {
+                "uuid": chart_uuid,
+                "dataset_uuid": dataset_uuid,
+            },
+        ),
+        f"dashboard_export/{dataset_file}": yaml.dump(
+            {
+                "uuid": dataset_uuid,
+                "database_uuid": database_uuid,
+            },
+        ),
+        f"dashboard_export/{database_file}": yaml.dump(
+            {
+                "uuid": database_uuid,
+            },
+        ),
+    }
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+    return buf
 
 
 @pytest.fixture
@@ -124,6 +200,8 @@ def test_export_resource(
     )
     with open(root / "databases/gsheets.yaml", encoding="utf-8") as input_:
         assert input_.read() == "database_name: GSheets\nsqlalchemy_uri: gsheets://\n"
+
+    client.get_resources.assert_called_once_with("database")
 
     # check that Jinja2 was escaped
     export_resource(
@@ -260,6 +338,34 @@ def test_export_resource_overwrite(
     )
 
 
+def test_export_resource_with_ids(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    chart_export: BytesIO,
+) -> None:
+    """
+    Test ``export_resource`` with ``requested_ids``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    client = mocker.MagicMock()
+    client.export_zip.return_value = chart_export
+
+    export_resource(
+        resource_name="database",
+        requested_ids={1, 2, 3},
+        root=root,
+        client=client,
+        overwrite=False,
+        disable_jinja_escaping=False,
+        force_unix_eol=False,
+    )
+
+    client.get_resources.assert_not_called()
+    client.export_zip.assert_called_once_with("database", [1, 2, 3])
+
+
 def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     """
     Test the ``export_assets`` command.
@@ -291,6 +397,8 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dataset",
@@ -301,6 +409,8 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "chart",
@@ -311,6 +421,8 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -321,6 +433,8 @@ def test_export_assets(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -363,6 +477,8 @@ def test_export_assets_by_id(mocker: MockerFixture, fs: FakeFilesystem) -> None:
                 False,
                 skip_related=False,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -407,6 +523,8 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -417,6 +535,8 @@ def test_export_assets_by_type(mocker: MockerFixture, fs: FakeFilesystem) -> Non
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -453,6 +573,8 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dataset",
@@ -463,6 +585,8 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "chart",
@@ -473,6 +597,8 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -483,6 +609,8 @@ def test_export_with_custom_auth(mocker: MockerFixture, fs: FakeFilesystem) -> N
                 False,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -738,6 +866,10 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+        {"id": 2, "email": "bdoe@example.com"},
+    ]
     client.export_ownership.side_effect = [
         [],
         [
@@ -757,6 +889,13 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
+
+    # Verify export_ownership was called with users dict and exclude_old_users=False
+    expected_users = {1: "adoe@example.com", 2: "bdoe@example.com"}
+    assert client.export_ownership.call_count == 3
+    client.export_ownership.assert_any_call("dataset", set(), expected_users, False)
+    client.export_ownership.assert_any_call("chart", set(), expected_users, False)
+    client.export_ownership.assert_any_call("dashboard", set(), expected_users, False)
 
     with open("ownership.yaml", encoding="utf-8") as input_:
         contents = yaml.load(input_, Loader=yaml.SafeLoader)
@@ -781,6 +920,10 @@ def test_export_ownership_force_unix_eol_enable(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+        {"id": 2, "email": "bdoe@example.com"},
+    ]
     client.export_ownership.side_effect = [
         [],
         [
@@ -809,6 +952,135 @@ def test_export_ownership_force_unix_eol_enable(
                 "name": "My chart",
                 "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
                 "owners": ["adoe@example.com", "bdoe@example.com"],
+            },
+        ],
+    }
+
+
+def test_export_ownership_by_asset_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command with ``--asset-type`` filter.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+        {"id": 2, "email": "bdoe@example.com"},
+    ]
+    client.export_ownership.side_effect = [
+        [
+            {
+                "name": "My chart",
+                "uuid": UUID("e0d20af0-cef9-4bdb-80b4-745827f441bf"),
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        [
+            {
+                "name": "My dashboard",
+                "uuid": UUID("a1b2c3d4-1234-5678-90ab-cdefabcd1234"),
+                "owners": ["bdoe@example.com"],
+            },
+        ],
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-ownership",
+            "--asset-type",
+            "chart",
+            "--asset-type",
+            "dashboard",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Verify that export_ownership was called only for chart and dashboard, not dataset
+    expected_users = {1: "adoe@example.com", 2: "bdoe@example.com"}
+    assert client.export_ownership.call_count == 2
+    client.export_ownership.assert_any_call("chart", set(), expected_users, False)
+    client.export_ownership.assert_any_call("dashboard", set(), expected_users, False)
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "chart": [
+            {
+                "name": "My chart",
+                "uuid": "e0d20af0-cef9-4bdb-80b4-745827f441bf",
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        "dashboard": [
+            {
+                "name": "My dashboard",
+                "uuid": "a1b2c3d4-1234-5678-90ab-cdefabcd1234",
+                "owners": ["bdoe@example.com"],
+            },
+        ],
+    }
+
+
+def test_export_ownership_single_asset_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command with a single ``--asset-type``.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 3, "email": "cdoe@example.com"},
+    ]
+    client.export_ownership.return_value = [
+        {
+            "name": "My dataset",
+            "uuid": UUID("12345678-1234-5678-90ab-cdefabcd5678"),
+            "owners": ["cdoe@example.com"],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-ownership",
+            "--asset-type",
+            "dataset",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    # Verify that export_ownership was called only once for dataset
+    expected_users = {3: "cdoe@example.com"}
+    assert client.export_ownership.call_count == 1
+    client.export_ownership.assert_called_once_with(
+        "dataset",
+        set(),
+        expected_users,
+        False,
+    )
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "dataset": [
+            {
+                "name": "My dataset",
+                "uuid": "12345678-1234-5678-90ab-cdefabcd5678",
+                "owners": ["cdoe@example.com"],
             },
         ],
     }
@@ -896,6 +1168,8 @@ def test_export_resource_jinja_escaping_disabled_command(
                 True,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dataset",
@@ -906,6 +1180,8 @@ def test_export_resource_jinja_escaping_disabled_command(
                 True,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "chart",
@@ -916,6 +1192,8 @@ def test_export_resource_jinja_escaping_disabled_command(
                 True,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -926,6 +1204,8 @@ def test_export_resource_jinja_escaping_disabled_command(
                 True,
                 skip_related=True,
                 force_unix_eol=False,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
@@ -1000,6 +1280,8 @@ def test_export_resource_force_unix_eol_command(
                 False,
                 skip_related=True,
                 force_unix_eol=True,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dataset",
@@ -1010,6 +1292,8 @@ def test_export_resource_force_unix_eol_command(
                 False,
                 skip_related=True,
                 force_unix_eol=True,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "chart",
@@ -1020,6 +1304,8 @@ def test_export_resource_force_unix_eol_command(
                 False,
                 skip_related=True,
                 force_unix_eol=True,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
             mock.call(
                 "dashboard",
@@ -1030,6 +1316,1907 @@ def test_export_resource_force_unix_eol_command(
                 False,
                 skip_related=True,
                 force_unix_eol=True,
+                simple_file_names=False,
+                simple_name_registry={},
             ),
         ],
     )
+
+
+def test_extract_uuid_from_asset() -> None:
+    """
+    Test the extract_uuid_from_asset helper function.
+    """
+    # Test valid YAML with UUID
+    yaml_content = """
+slice_name: Test Chart
+uuid: 3f966611-8afc-4841-abdc-fa4361ff69f8
+version: 1.0.0
+"""
+    assert (
+        extract_uuid_from_asset(file_content=yaml_content)
+        == "3f966611-8afc-4841-abdc-fa4361ff69f8"
+    )
+
+    # Test YAML without UUID
+    yaml_content_no_uuid = """
+slice_name: Test Chart
+version: 1.0.0
+"""
+    assert extract_uuid_from_asset(file_content=yaml_content_no_uuid) is None
+
+
+def test_build_local_uuid_mapping(fs: FakeFilesystem) -> None:
+    """
+    Test the build_local_uuid_mapping function.
+    """
+    root = Path("/test/root")
+
+    # Create test directory structure with YAML files
+    fs.create_dir(root / "dashboards")
+    fs.create_dir(root / "charts")
+    fs.create_dir(root / "datasets/db1")
+    fs.create_dir(root / "databases")
+
+    # Dashboard with UUID
+    with open(root / "dashboards/dashboard1.yaml", "w", encoding="utf-8") as f:
+        f.write("uuid: dashboard-uuid-1\nname: Dashboard 1")
+
+    # Chart with UUID
+    with open(root / "charts/chart1.yaml", "w", encoding="utf-8") as f:
+        f.write("uuid: chart-uuid-1\nname: Chart 1")
+
+    # Dataset with UUID (in subdirectory)
+    with open(root / "datasets/db1/dataset1.yaml", "w", encoding="utf-8") as f:
+        f.write("uuid: dataset-uuid-1\nname: Dataset 1")
+
+    # Database with UUID
+    with open(root / "databases/db1.yaml", "w", encoding="utf-8") as f:
+        f.write("uuid: database-uuid-1\nname: Database 1")
+
+    # File without UUID (should be ignored)
+    with open(root / "charts/chart_no_uuid.yaml", "w", encoding="utf-8") as f:
+        f.write("name: Chart without UUID")
+
+    mapping = build_local_uuid_mapping(root)
+
+    assert (
+        mapping["dashboards"]["dashboard-uuid-1"] == root / "dashboards/dashboard1.yaml"
+    )
+    assert mapping["charts"]["chart-uuid-1"] == root / "charts/chart1.yaml"
+    assert mapping["datasets"]["dataset-uuid-1"] == root / "datasets/db1/dataset1.yaml"
+    assert mapping["databases"]["database-uuid-1"] == root / "databases/db1.yaml"
+    assert "chart-no-uuid" not in mapping["charts"]
+
+
+def test_export_resource_uuid_validation(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test export_resource with UUID-based overwrite validation.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing chart with UUID
+    fs.create_dir(root / "charts")
+    with open(root / "charts/old_name.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Old Name", "uuid": "same-uuid-123"}))
+
+    # Create ZIP with chart that has the same UUID but different name
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/new_name.yaml": yaml.dump(
+            {"slice_name": "New Name", "uuid": "same-uuid-123"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should raise exception without overwrite flag
+    with pytest.raises(Exception) as excinfo:
+        export_resource(
+            resource_name="chart",
+            requested_ids=set(),
+            root=root,
+            client=client,
+            overwrite=False,
+            disable_jinja_escaping=True,
+            force_unix_eol=False,
+        )
+    assert "Resource with UUID same-uuid-123 already exists" in str(excinfo.value)
+    assert "old_name.yaml" in str(excinfo.value)
+
+
+def test_export_resource_uuid_with_overwrite(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test export_resource with UUID-based overwrite enabled.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing chart with UUID
+    fs.create_dir(root / "charts")
+    with open(root / "charts/old_name.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Old Name", "uuid": "same-uuid-123"}))
+
+    # Create ZIP with chart that has the same UUID but different name
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/new_name.yaml": yaml.dump(
+            {"slice_name": "New Name", "uuid": "same-uuid-123"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should succeed with overwrite flag and delete old file
+    export_resource(
+        resource_name="chart",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=True,
+        disable_jinja_escaping=True,
+        force_unix_eol=False,
+    )
+
+    # Old file should be deleted
+    assert not (root / "charts/old_name.yaml").exists()
+    # New file should exist
+    assert (root / "charts/new_name.yaml").exists()
+
+    with open(root / "charts/new_name.yaml", encoding="utf-8") as f:
+        content = yaml.load(f.read(), Loader=yaml.SafeLoader)
+        assert content["slice_name"] == "New Name"
+        assert content["uuid"] == "same-uuid-123"
+
+
+def test_export_resource_uuid_with_overrides(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test that multiple resources with same UUID are handled correctly.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing dashboards with different UUIDs
+    fs.create_dir(root / "dashboards")
+    with open(root / "dashboards/dashboard1.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"dashboard_title": "Dashboard 1", "uuid": "uuid-1"}))
+    with open(root / "dashboards/dashboard2.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"dashboard_title": "Dashboard 2", "uuid": "uuid-2"}))
+
+    # Create ZIP with renamed dashboards (same UUIDs, different names)
+    contents = {
+        "dashboard_export/metadata.yaml": "Metadata",
+        "dashboard_export/dashboards/renamed_dashboard1.yaml": yaml.dump(
+            {"dashboard_title": "Renamed Dashboard 1", "uuid": "uuid-1"},
+        ),
+        "dashboard_export/dashboards/renamed_dashboard2.yaml": yaml.dump(
+            {"dashboard_title": "Renamed Dashboard 2", "uuid": "uuid-2"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should succeed with overwrite flag and delete both old files
+    export_resource(
+        resource_name="dashboard",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=True,
+        disable_jinja_escaping=True,
+        force_unix_eol=False,
+    )
+
+    # Old files should be deleted
+    assert not (root / "dashboards/dashboard1.yaml").exists()
+    assert not (root / "dashboards/dashboard2.yaml").exists()
+    # New files should exist
+    assert (root / "dashboards/renamed_dashboard1.yaml").exists()
+    assert (root / "dashboards/renamed_dashboard2.yaml").exists()
+
+
+def test_export_resource_backward_compatibility(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test that export still works for resources without UUID fields.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create ZIP with resources without UUID
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/chart_no_uuid.yaml": yaml.dump(
+            {"slice_name": "Chart without UUID"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should succeed for resources without UUID
+    export_resource(
+        resource_name="chart",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=False,
+        disable_jinja_escaping=True,
+        force_unix_eol=False,
+    )
+
+    assert (root / "charts/chart_no_uuid.yaml").exists()
+
+    # Second export of same file without UUID should fail without overwrite
+    buf.seek(0)
+    client.export_zip.return_value = buf
+
+    with pytest.raises(Exception) as excinfo:
+        export_resource(
+            resource_name="chart",
+            requested_ids=set(),
+            root=root,
+            client=client,
+            overwrite=False,
+            disable_jinja_escaping=True,
+            force_unix_eol=False,
+        )
+    assert "File already exists" in str(excinfo.value)
+
+
+def test_extract_uuid_from_asset_file_path(fs: FakeFilesystem) -> None:
+    """
+    Test extract_uuid_from_asset with file path parameter.
+    """
+    # Test with file path
+    fs.create_dir("/test")
+    test_file = Path("/test/chart.yaml")
+    with open(test_file, "w", encoding="utf-8") as f:
+        f.write("slice_name: Test\nuuid: test-uuid-123")
+
+    assert extract_uuid_from_asset(file_path=test_file) == "test-uuid-123"
+
+    # Test with empty file
+    empty_file = Path("/test/empty.yaml")
+    with open(empty_file, "w", encoding="utf-8") as f:
+        f.write("")
+    assert extract_uuid_from_asset(file_path=empty_file) is None
+
+
+def test_check_asset_uniqueness_no_uuid(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test check_asset_uniqueness with file content that has no UUID.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create empty UUID mapping
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "charts": {},
+        "dashboards": {},
+        "datasets": {},
+        "databases": {},
+    }
+    files_to_delete: List[Path] = []
+
+    # File content without UUID
+    file_content = yaml.dump({"slice_name": "Test Chart"})
+    target = root / "charts/test.yaml"
+
+    # Should return early without doing anything
+    check_asset_uniqueness(
+        overwrite=False,
+        file_content=file_content,
+        file_name="charts/test.yaml",
+        file_path=target,
+        uuid_mapping=uuid_mapping,
+        files_to_delete=files_to_delete,
+    )
+
+    # No files should be added to deletion queue
+    assert len(files_to_delete) == 0
+
+
+def test_check_asset_uniqueness_unknown_resource_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test check_asset_uniqueness with unknown resource type.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create empty UUID mapping
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "charts": {},
+        "dashboards": {},
+        "datasets": {},
+        "databases": {},
+    }
+    files_to_delete: List[Path] = []
+
+    # File content with UUID but unknown resource type
+    file_content = yaml.dump({"slice_name": "Test Chart", "uuid": "test-uuid"})
+    target = root / "unknown/test.yaml"
+
+    # Should return early without doing anything
+    check_asset_uniqueness(
+        overwrite=False,
+        file_content=file_content,
+        file_name="unknown/test.yaml",  # Unknown resource type
+        file_path=target,
+        uuid_mapping=uuid_mapping,
+        files_to_delete=files_to_delete,
+    )
+
+    # No files should be added to deletion queue
+    assert len(files_to_delete) == 0
+
+
+def test_check_asset_uniqueness_uuid_conflict_no_overwrite() -> None:
+    """
+    Test check_asset_uniqueness when UUID conflict exists but overwrite is False.
+    """
+    root = Path("/test/root")
+
+    # Create UUID mapping with existing UUID
+    existing_file = root / "charts/existing.yaml"
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "charts": {"conflict-uuid": existing_file},
+        "dashboards": {},
+        "datasets": {},
+        "databases": {},
+    }
+    files_to_delete: List[Path] = []
+
+    # File content with conflicting UUID
+    file_content = yaml.dump({"slice_name": "New Chart", "uuid": "conflict-uuid"})
+    target = root / "charts/new.yaml"
+
+    # Should raise exception when overwrite=False and UUID conflicts
+    with pytest.raises(Exception) as excinfo:
+        check_asset_uniqueness(
+            overwrite=False,
+            file_content=file_content,
+            file_name="charts/new.yaml",
+            file_path=target,
+            uuid_mapping=uuid_mapping,
+            files_to_delete=files_to_delete,
+        )
+
+    assert "Resource with UUID conflict-uuid already exists" in str(excinfo.value)
+    assert "existing.yaml" in str(excinfo.value)
+    assert "Use --overwrite flag" in str(excinfo.value)
+
+
+def test_build_local_uuid_mapping_with_db_subdirs(fs: FakeFilesystem) -> None:
+    """
+    Test build_local_uuid_mapping handles dataset subdirectories correctly.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create datasets with database subdirectories
+    fs.create_dir(root / "datasets/postgres")
+    fs.create_dir(root / "datasets/mysql")
+
+    # IMPORTANT: Create a file (not directory) in datasets to test line 67
+    with open(root / "datasets/not_a_dir.txt", "w", encoding="utf-8") as f:
+        f.write("This is not a directory")
+
+    # Dataset with UUID in postgres subdir
+    with open(root / "datasets/postgres/table1.yaml", "w", encoding="utf-8") as f:
+        f.write("table_name: table1\nuuid: postgres-table-uuid")
+
+    # Dataset with UUID in mysql subdir
+    with open(root / "datasets/mysql/table2.yaml", "w", encoding="utf-8") as f:
+        f.write("table_name: table2\nuuid: mysql-table-uuid")
+
+    # Dataset without UUID
+    with open(
+        root / "datasets/postgres/no_uuid_table.yaml",
+        "w",
+        encoding="utf-8",
+    ) as f:
+        f.write("table_name: no_uuid_table")
+
+    mapping = build_local_uuid_mapping(root)
+
+    assert (
+        mapping["datasets"]["postgres-table-uuid"]
+        == root / "datasets/postgres/table1.yaml"
+    )
+    assert (
+        mapping["datasets"]["mysql-table-uuid"] == root / "datasets/mysql/table2.yaml"
+    )
+    assert "no-uuid" not in mapping["datasets"]
+
+
+def test_check_asset_uniqueness_all_resource_types() -> None:
+    """
+    Test check_asset_uniqueness with all resource types to ensure full coverage.
+    """
+    root = Path("/test/root")
+
+    # Test with databases resource type
+    uuid_mapping: Dict[str, Dict[str, Path]] = {
+        "charts": {},
+        "dashboards": {},
+        "datasets": {},
+        "databases": {"db-uuid": root / "databases/existing_db.yaml"},
+    }
+    files_to_delete: List[Path] = []
+
+    # Test databases conflict
+    file_content = yaml.dump({"database_name": "New DB", "uuid": "db-uuid"})
+    target = root / "databases/new_db.yaml"
+
+    with pytest.raises(Exception) as excinfo:
+        check_asset_uniqueness(
+            overwrite=False,
+            file_content=file_content,
+            file_name="databases/new_db.yaml",
+            file_path=target,
+            uuid_mapping=uuid_mapping,
+            files_to_delete=files_to_delete,
+        )
+
+    assert "Resource with UUID db-uuid already exists" in str(excinfo.value)
+
+    # Test with overwrite=True for databases
+    check_asset_uniqueness(
+        overwrite=True,
+        file_content=file_content,
+        file_name="databases/new_db.yaml",
+        file_path=target,
+        uuid_mapping=uuid_mapping,
+        files_to_delete=files_to_delete,
+    )
+
+    # Should have added the existing file to deletion queue
+    assert len(files_to_delete) == 1
+    assert files_to_delete[0] == root / "databases/existing_db.yaml"
+
+    # Test datasets type as well
+    uuid_mapping = {
+        "charts": {},
+        "dashboards": {},
+        "datasets": {"dataset-uuid": root / "datasets/postgres/existing.yaml"},
+        "databases": {},
+    }
+    files_to_delete = []
+
+    file_content = yaml.dump({"table_name": "New Table", "uuid": "dataset-uuid"})
+    target = root / "datasets/mysql/new_table.yaml"
+
+    check_asset_uniqueness(
+        overwrite=True,
+        file_content=file_content,
+        file_name="datasets/mysql/new_table.yaml",
+        file_path=target,
+        uuid_mapping=uuid_mapping,
+        files_to_delete=files_to_delete,
+    )
+
+    assert len(files_to_delete) == 1
+    assert files_to_delete[0] == root / "datasets/postgres/existing.yaml"
+
+
+def test_export_resource_deletion_failure_with_unlink(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test export_resource when file deletion with unlink fails.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing chart with UUID
+    fs.create_dir(root / "charts")
+    with open(root / "charts/old_name.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Old Name", "uuid": "same-uuid-123"}))
+
+    # Create ZIP with chart that has the same UUID but different name
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/new_name.yaml": yaml.dump(
+            {"slice_name": "New Name", "uuid": "same-uuid-123"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Mock unlink to raise an error
+    def mock_unlink(self):
+        if str(self).endswith("old_name.yaml"):
+            raise OSError("Permission denied")
+
+    # Patch the unlink method directly on pathlib.Path
+    mocker.patch("pathlib.Path.unlink", mock_unlink)
+    mock_echo = mocker.patch("preset_cli.cli.superset.export.click.echo")
+
+    # Should raise SystemExit(1) when deletion fails
+    with pytest.raises(SystemExit) as excinfo:
+        export_resource(
+            resource_name="chart",
+            requested_ids=set(),
+            root=root,
+            client=client,
+            overwrite=True,
+            disable_jinja_escaping=True,
+            force_unix_eol=False,
+        )
+
+    assert excinfo.value.code == 1
+    mock_echo.assert_called_once()
+    error_msg = mock_echo.call_args[0][0]
+    assert "Failed to delete the following files:" in error_msg
+    assert "old_name.yaml" in error_msg
+
+
+def test_export_resource_mixed_uuid_conflicts(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test export with both UUID conflicts and regular file conflicts.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create existing files
+    fs.create_dir(root / "charts")
+    # File with UUID that will conflict
+    with open(root / "charts/old_uuid_file.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Old UUID File", "uuid": "conflict-uuid"}))
+
+    # File without UUID that will conflict by name
+    with open(root / "charts/same_name.yaml", "w", encoding="utf-8") as f:
+        f.write(yaml.dump({"slice_name": "Same Name"}))
+
+    # Create ZIP with conflicting files
+    contents = {
+        "chart_export/metadata.yaml": "Metadata",
+        "chart_export/charts/new_uuid_file.yaml": yaml.dump(
+            {"slice_name": "New UUID File", "uuid": "conflict-uuid"},
+        ),
+        "chart_export/charts/same_name.yaml": yaml.dump(
+            {"slice_name": "Same Name Updated"},
+        ),
+    }
+
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    client = mocker.MagicMock()
+    client.get_resources.return_value = []
+    client.export_zip.return_value = buf
+
+    # Should succeed with overwrite flag
+    export_resource(
+        resource_name="chart",
+        requested_ids=set(),
+        root=root,
+        client=client,
+        overwrite=True,
+        disable_jinja_escaping=True,
+        force_unix_eol=False,
+    )
+
+    # UUID conflict: old file should be deleted, new file created
+    assert not (root / "charts/old_uuid_file.yaml").exists()
+    assert (root / "charts/new_uuid_file.yaml").exists()
+
+    # Name conflict: file should be overwritten
+    assert (root / "charts/same_name.yaml").exists()
+    with open(root / "charts/same_name.yaml", encoding="utf-8") as f:
+        content = yaml.load(f.read(), Loader=yaml.SafeLoader)
+        assert content["slice_name"] == "Same Name Updated"
+
+
+def test_build_local_uuid_mapping_empty_dirs(fs: FakeFilesystem) -> None:
+    """
+    Test build_local_uuid_mapping with empty or non-existent directories.
+    """
+    root = Path("/test/root")
+    fs.create_dir(root)
+
+    # Create empty directories
+    fs.create_dir(root / "dashboards")
+    fs.create_dir(root / "charts")
+    # Don't create datasets and databases dirs
+
+    mapping = build_local_uuid_mapping(root)
+
+    # Should return empty mappings for all resource types
+    assert mapping["dashboards"] == {}
+    assert mapping["charts"] == {}
+    assert mapping["datasets"] == {}
+    assert mapping["databases"] == {}
+
+
+def test_export_ownership_by_ids(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command with ID filters.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+    ]
+    client.export_ownership.side_effect = [
+        [
+            {
+                "name": "Dataset 1",
+                "uuid": UUID("11111111-1111-1111-1111-111111111111"),
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        [
+            {
+                "name": "Chart 5",
+                "uuid": UUID("55555555-5555-5555-5555-555555555555"),
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        [],
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-ownership",
+            "--dataset-ids",
+            "1,2",
+            "--chart-ids",
+            "5",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    expected_users = {1: "adoe@example.com"}
+    assert client.export_ownership.call_count == 2
+    client.export_ownership.assert_any_call("dataset", {1, 2}, expected_users, False)
+    client.export_ownership.assert_any_call("chart", {5}, expected_users, False)
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "dataset": [
+            {
+                "name": "Dataset 1",
+                "uuid": "11111111-1111-1111-1111-111111111111",
+                "owners": ["adoe@example.com"],
+            },
+        ],
+        "chart": [
+            {
+                "name": "Chart 5",
+                "uuid": "55555555-5555-5555-5555-555555555555",
+                "owners": ["adoe@example.com"],
+            },
+        ],
+    }
+
+
+def test_export_ownership_by_ids_and_asset_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``export_ownership`` command with both ID and asset-type filters.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_users.return_value = [
+        {"id": 1, "email": "adoe@example.com"},
+    ]
+    client.export_ownership.return_value = [
+        {
+            "name": "Dashboard 10",
+            "uuid": UUID("10101010-1010-1010-1010-101010101010"),
+            "owners": ["adoe@example.com"],
+        },
+    ]
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-ownership",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "10,20",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    expected_users = {1: "adoe@example.com"}
+    assert client.export_ownership.call_count == 1
+    client.export_ownership.assert_called_once_with(
+        "dashboard",
+        {10, 20},
+        expected_users,
+        False,
+    )
+
+    with open("ownership.yaml", encoding="utf-8") as input_:
+        contents = yaml.load(input_, Loader=yaml.SafeLoader)
+    assert contents == {
+        "dashboard": [
+            {
+                "name": "Dashboard 10",
+                "uuid": "10101010-1010-1010-1010-101010101010",
+                "owners": ["adoe@example.com"],
+            },
+        ],
+    }
+
+
+def test_export_assets_with_filter(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test ``export_assets`` with ``--filter``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [{"id": 11, "slug": "test"}]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    client.get_dashboards.assert_called_once_with(slug="test")
+    export_resource.assert_called_once_with(
+        "dashboard",
+        {11},
+        Path("/path/to/root"),
+        client,
+        False,
+        False,
+        skip_related=False,
+        force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry={},
+    )
+
+
+def test_export_assets_with_certified_by_local_filter(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` uses local filtering for certified_by.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [
+        {"id": 11, "certified_by": "Alice"},
+        {"id": 12, "certified_by": "Bob"},
+    ]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "certified_by=Alice",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    client.get_dashboards.assert_called_once_with()
+    export_resource.assert_called_once_with(
+        "dashboard",
+        {11},
+        Path("/path/to/root"),
+        client,
+        False,
+        False,
+        skip_related=False,
+        force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry={},
+    )
+
+
+def test_export_assets_with_multiple_filters(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with multiple ``--filter`` flags.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [
+        {"id": 22, "slug": "test", "certified_by": "Data Team"},
+    ]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+            "--filter",
+            "certified_by=Data Team",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    client.get_dashboards.assert_called_once_with()
+    export_resource.assert_called_once_with(
+        "dashboard",
+        {22},
+        Path("/path/to/root"),
+        client,
+        False,
+        False,
+        skip_related=False,
+        force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry={},
+    )
+
+
+def test_export_assets_filter_requires_dashboard_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--filter`` requires dashboard type.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "chart",
+            "--filter",
+            "slug=test",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0
+    assert "dashboard" in result.output.lower()
+
+
+def test_export_assets_filter_no_matches(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with filters that return no matches.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = []
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=missing",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "no dashboards match the specified filters" in result.output.lower()
+    export_resource.assert_not_called()
+
+
+def test_export_assets_output_zip(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test ``export_assets`` with ``--output-zip``.
+    """
+    output_zip = Path("/path/to/output.zip")
+    fs.create_dir(output_zip.parent)
+
+    mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    def _fake_export_resource(  # pylint: disable=unused-argument, too-many-arguments
+        resource_name,
+        requested_ids,
+        root,
+        client,
+        overwrite,
+        disable_jinja_escaping,
+        skip_related=True,
+        force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry=None,
+    ):
+        target = root / "dashboards" / "test_123.yaml"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w", encoding="utf-8") as output:
+            output.write("uuid: dash-uuid\n")
+
+    mocker.patch(
+        "preset_cli.cli.superset.export.export_resource",
+        side_effect=_fake_export_resource,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "1",
+            "--output-zip",
+            str(output_zip),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert output_zip.exists()
+
+    with ZipFile(output_zip) as bundle:
+        assert "dashboards/test_123.yaml" in bundle.namelist()
+
+
+def test_export_assets_output_zip_and_directory_error(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with both directory and ``--output-zip``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+    output_zip = Path("/path/to/output.zip")
+
+    mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--output-zip",
+            str(output_zip),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0
+    assert "output-zip" in result.output.lower()
+
+
+def test_export_assets_neither_directory_nor_zip_error(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with neither directory nor ``--output-zip``.
+    """
+    mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0
+    assert "directory" in result.output.lower()
+
+
+def test_export_assets_simple_file_names(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--simple-file-names``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_zip.return_value = make_dashboard_export_zip(
+        dashboard_file="dashboards/quarterly_sales_123.yaml",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "1",
+            "--simple-file-names",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert (root / "dashboards/quarterly_sales.yaml").exists()
+    assert not (root / "dashboards/quarterly_sales_123.yaml").exists()
+
+
+def test_export_assets_simple_file_names_collision(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` simple file name collisions.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    contents = {
+        "dashboard_export/dashboards/sales_1.yaml": yaml.dump({"uuid": "uuid1"}),
+        "dashboard_export/dashboards/sales_2.yaml": yaml.dump({"uuid": "uuid2"}),
+    }
+    buf = BytesIO()
+    with ZipFile(buf, "w") as bundle:
+        for file_name, file_contents in contents.items():
+            with bundle.open(file_name, "w") as output:
+                output.write(file_contents.encode())
+    buf.seek(0)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_zip.return_value = buf
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "1",
+            "--simple-file-names",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert (root / "dashboards/sales.yaml").exists()
+    assert (root / "dashboards/sales_2.yaml").exists()
+
+
+def test_export_assets_per_asset_folder(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--per-asset-folder``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_zip.return_value = make_dashboard_export_zip()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "1",
+            "--per-asset-folder",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    dashboard_dir = root / "dashboards/quarterly_sales_123"
+    assert (dashboard_dir / "dashboard.yaml").exists()
+    assert (dashboard_dir / "charts/sales_chart_456.yaml").exists()
+    assert (dashboard_dir / "datasets/db1/sales_dataset_789.yaml").exists()
+    assert (dashboard_dir / "databases/db1.yaml").exists()
+    assert not (root / "charts").exists()
+    assert not (root / "datasets").exists()
+    assert not (root / "databases").exists()
+
+
+def test_export_assets_per_asset_folder_with_simple_names(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--per-asset-folder`` and ``--simple-file-names``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_zip.return_value = make_dashboard_export_zip(
+        dashboard_file="dashboards/quarterly_sales_123.yaml",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "1",
+            "--per-asset-folder",
+            "--simple-file-names",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+
+    dashboard_dir = root / "dashboards/quarterly_sales"
+    assert (dashboard_dir / "dashboard.yaml").exists()
+    assert (dashboard_dir / "charts/sales_chart.yaml").exists()
+    assert (dashboard_dir / "datasets/db1/sales_dataset.yaml").exists()
+    assert (dashboard_dir / "databases/db1.yaml").exists()
+
+
+def test_export_assets_output_zip_with_per_asset_folder(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--output-zip`` and ``--per-asset-folder``.
+    """
+    output_zip = Path("/path/to/output.zip")
+    fs.create_dir(output_zip.parent)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.export_zip.return_value = make_dashboard_export_zip()
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "1",
+            "--output-zip",
+            str(output_zip),
+            "--per-asset-folder",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert output_zip.exists()
+
+    with ZipFile(output_zip) as bundle:
+        names = bundle.namelist()
+    assert "dashboards/quarterly_sales_123/dashboard.yaml" in names
+    assert "dashboards/quarterly_sales_123/charts/sales_chart_456.yaml" in names
+
+
+def test_unique_simple_name_multiple_collisions() -> None:
+    """
+    Test ``_unique_simple_name`` when base and suffixed names already exist.
+    """
+    parent = Path("/tmp/test")
+    registry = {parent: {"sales.yaml", "sales_2.yaml"}}
+
+    assert _unique_simple_name(parent, "sales.yaml", registry) == "sales_3.yaml"
+
+
+def test_restructure_per_asset_folder_missing_dashboards_dir(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``restructure_per_asset_folder`` returns when dashboards dir is absent.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    restructure_per_asset_folder(root)
+    assert not (root / "dashboards").exists()
+
+
+def test_restructure_per_asset_folder_missing_dependencies(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``restructure_per_asset_folder`` handles missing chart/dataset/database refs.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root / "dashboards")
+    fs.create_dir(root / "charts")
+    fs.create_dir(root / "datasets/db")
+    fs.create_dir(root / "databases")
+
+    dashboard = {
+        "uuid": "dash-uuid",
+        "position": {
+            "CHART_MISSING": {"type": "CHART", "meta": {"uuid": "chart-missing"}},
+            "CHART_PRESENT": {"type": "CHART", "meta": {"uuid": "chart-present"}},
+        },
+        "metadata": {
+            "native_filter_configuration": [
+                {"targets": [{"datasetUuid": "dataset-missing"}]},
+            ],
+        },
+    }
+    chart = {"uuid": "chart-present", "dataset_uuid": "dataset-present"}
+    dataset = {"uuid": "dataset-present", "database_uuid": "database-missing"}
+
+    (root / "dashboards/dash_1.yaml").write_text(yaml.dump(dashboard), encoding="utf-8")
+    (root / "charts/chart_1.yaml").write_text(yaml.dump(chart), encoding="utf-8")
+    (root / "datasets/db/ds_1.yaml").write_text(yaml.dump(dataset), encoding="utf-8")
+
+    restructure_per_asset_folder(root)
+
+    dashboard_dir = root / "dashboards/dash_1"
+    assert (dashboard_dir / "dashboard.yaml").exists()
+    assert (dashboard_dir / "charts/chart_1.yaml").exists()
+    assert (dashboard_dir / "datasets/db/ds_1.yaml").exists()
+
+
+def test_export_assets_filter_fallback_on_not_allowed_error(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` falls back to local filtering on unsupported API filters.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.side_effect = [
+        SupersetError(
+            errors=[{"message": "Filter column: slug not allowed to filter"}],
+        ),
+        [{"id": 9, "slug": "test"}],
+    ]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert client.get_dashboards.call_count == 2
+    export_resource.assert_called_once()
+
+
+def test_export_assets_filter_unexpected_error_raises(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` raises a ClickException for unexpected filter errors.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.side_effect = Exception("boom")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "may not be supported" in result.output
+
+
+def test_export_assets_missing_directory_error(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test ``export_assets`` fails when directory argument does not exist.
+    """
+    mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/does/not/exist",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "does not exist" in result.output.lower()
+
+
+def test_export_assets_filter_without_asset_type(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--filter`` but no ``--asset-type`` auto-selects dashboard.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [{"id": 11, "slug": "test"}]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--filter",
+            "slug=test",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    export_resource.assert_called_once()
+    assert export_resource.call_args.args[0] == "dashboard"
+    assert export_resource.call_args.args[1] == {11}
+
+
+def test_export_assets_filter_combined_with_dashboard_ids(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with both ``--filter`` and ``--dashboard-ids`` (union).
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [{"id": 11, "slug": "test"}]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+            "--dashboard-ids",
+            "99",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    export_resource.assert_called_once()
+    assert export_resource.call_args.args[1] == {11, 99}
+
+
+def test_export_assets_filter_by_id(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--filter id=<int>``.
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [{"id": 123, "slug": "revenue"}]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "id=123",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    client.get_dashboards.assert_called_once_with(id=123)
+    export_resource.assert_called_once()
+    assert export_resource.call_args.args[1] == {123}
+
+
+def test_export_assets_output_zip_creates_parent_dir(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--output-zip`` auto-creates parent directories.
+    """
+    output_zip = Path("/path/to/nested/deep/output.zip")
+
+    mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    def _fake_export_resource(  # pylint: disable=unused-argument, too-many-arguments
+        resource_name,
+        requested_ids,
+        root,
+        client,
+        overwrite,
+        disable_jinja_escaping,
+        skip_related=True,
+        force_unix_eol=False,
+        simple_file_names=False,
+        simple_name_registry=None,
+    ):
+        target = root / "dashboards" / "test_1.yaml"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w", encoding="utf-8") as output:
+            output.write("uuid: dash-uuid\n")
+
+    mocker.patch(
+        "preset_cli.cli.superset.export.export_resource",
+        side_effect=_fake_export_resource,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "--asset-type",
+            "dashboard",
+            "--dashboard-ids",
+            "1",
+            "--output-zip",
+            str(output_zip),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert output_zip.exists()
+    assert output_zip.parent.exists()
+
+
+def test_export_assets_full_combination(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with filter + output-zip + per-asset-folder + simple-file-names.
+    """
+    output_zip = Path("/path/to/output.zip")
+    fs.create_dir(output_zip.parent)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [{"id": 55, "slug": "test"}]
+    client.export_zip.return_value = make_dashboard_export_zip(
+        dashboard_file="dashboards/quarterly_sales_123.yaml",
+    )
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "slug=test",
+            "--output-zip",
+            str(output_zip),
+            "--per-asset-folder",
+            "--simple-file-names",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert output_zip.exists()
+
+    with ZipFile(output_zip) as bundle:
+        names = bundle.namelist()
+    assert "dashboards/quarterly_sales/dashboard.yaml" in names
+    assert "dashboards/quarterly_sales/charts/sales_chart.yaml" in names
+    assert "dashboards/quarterly_sales/datasets/db1/sales_dataset.yaml" in names
+    assert "dashboards/quarterly_sales/databases/db1.yaml" in names
+
+
+def test_export_assets_filter_by_dashboard_title(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--filter dashboard_title=<substr>`` (partial match).
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [
+        {"id": 33, "dashboard_title": "Sales Overview"},
+    ]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "dashboard_title=Sales",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    call_kwargs = client.get_dashboards.call_args.kwargs
+    assert isinstance(call_kwargs["dashboard_title"], Contains)
+    assert call_kwargs["dashboard_title"].value == "Sales"
+    export_resource.assert_called_once()
+    assert export_resource.call_args.args[1] == {33}
+
+
+def test_export_assets_filter_by_managed_externally(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test ``export_assets`` with ``--filter managed_externally=true`` (boolean local filter).
+    """
+    root = Path("/path/to/root")
+    fs.create_dir(root)
+
+    SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
+    client = SupersetClient()
+    client.get_dashboards.return_value = [
+        {"id": 44, "is_managed_externally": True},
+        {"id": 45, "is_managed_externally": False},
+    ]
+    export_resource = mocker.patch("preset_cli.cli.superset.export.export_resource")
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        [
+            "https://superset.example.org/",
+            "export-assets",
+            "/path/to/root",
+            "--asset-type",
+            "dashboard",
+            "--filter",
+            "managed_externally=true",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    client.get_dashboards.assert_called_once_with()
+    export_resource.assert_called_once()
+    assert export_resource.call_args.args[1] == {44}
+
+
+def test_build_resource_uuid_map_missing_dir(fs: FakeFilesystem) -> None:
+    """
+    Test ``_build_resource_uuid_map`` returns empty mapping for missing directory.
+    """
+    missing = Path("/missing/resources")
+    assert _build_resource_uuid_map(missing, "*.yaml") == {}
+
+
+def test_cleanup_resource_directory_missing_dir(fs: FakeFilesystem) -> None:
+    """
+    Test ``_cleanup_resource_directory`` is a no-op for missing directories.
+    """
+    missing = Path("/missing/resources")
+    _cleanup_resource_directory(missing)
+    assert not missing.exists()
+
+
+def test_get_dashboard_chart_uuids_skips_non_chart_nodes() -> None:
+    """
+    Test dashboard chart UUID extraction ignores non-chart/invalid nodes.
+    """
+    config = {
+        "position": {
+            "TEXT": {"type": "MARKDOWN", "meta": {"uuid": "ignore"}},
+            "CHART_NO_META": {"type": "CHART"},
+            "VALID_CHART": {"type": "CHART", "meta": {"uuid": "chart-1"}},
+        },
+    }
+    assert list(_get_dashboard_chart_uuids(config)) == ["chart-1"]
+
+
+def test_get_dashboard_chart_uuids_handles_non_dict_position() -> None:
+    """
+    Test chart UUID extraction returns empty when ``position`` is not a dict.
+    """
+    assert list(_get_dashboard_chart_uuids({"position": "invalid"})) == []
+
+
+def test_get_dashboard_dataset_filter_uuids_skips_targets_without_uuid() -> None:
+    """
+    Test dataset UUID extraction ignores filter targets without ``datasetUuid``.
+    """
+    config = {
+        "metadata": {
+            "native_filter_configuration": [
+                {"targets": [{"column": "x"}, {"datasetUuid": "dataset-1"}]},
+            ],
+        },
+    }
+    assert _get_dashboard_dataset_filter_uuids(config) == {"dataset-1"}
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"metadata": "invalid"},
+        {"metadata": {"native_filter_configuration": "invalid"}},
+        {"metadata": {"native_filter_configuration": [123]}},
+        {"metadata": {"native_filter_configuration": [{"targets": "invalid"}]}},
+        {"metadata": {"native_filter_configuration": [{"targets": [123]}]}},
+    ],
+)
+def test_get_dashboard_dataset_filter_uuids_handles_invalid_shapes(
+    config: Dict[str, object],
+) -> None:
+    """
+    Test dataset UUID extraction tolerates malformed filter metadata.
+    """
+    assert _get_dashboard_dataset_filter_uuids(config) == set()
+
+
+def test_build_resource_uuid_map_skips_files_without_uuid(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test UUID mapping ignores yaml files that do not define a UUID.
+    """
+    resource_dir = Path("/tmp/charts")
+    fs.create_dir(resource_dir)
+    fs.create_file(resource_dir / "chart.yaml", contents=yaml.dump({"name": "chart"}))
+    assert _build_resource_uuid_map(resource_dir, "*.yaml") == {}
+
+
+def test_copy_chart_dependencies_handles_charts_without_dataset_uuid(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test chart dependency copy succeeds even when chart configs omit dataset UUIDs.
+    """
+    root = Path("/tmp/export")
+    dashboard_dir = root / "dashboards" / "dash"
+    chart_file = root / "charts" / "chart.yaml"
+    fs.create_dir(chart_file.parent)
+    fs.create_dir(dashboard_dir)
+    fs.create_file(chart_file, contents=yaml.dump({"uuid": "chart-uuid"}))
+
+    dataset_uuids = _copy_chart_dependencies(
+        root,
+        dashboard_dir,
+        {"chart-uuid"},
+        {"chart-uuid": chart_file},
+    )
+    assert dataset_uuids == set()
+    assert (dashboard_dir / "charts" / "chart.yaml").exists()
+
+
+def test_copy_dataset_dependencies_handles_missing_database_uuid(
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test dataset dependency copy succeeds when database UUID is absent.
+    """
+    root = Path("/tmp/export")
+    dashboard_dir = root / "dashboards" / "dash"
+    dataset_file = root / "datasets" / "db" / "dataset.yaml"
+    fs.create_dir(dataset_file.parent)
+    fs.create_dir(dashboard_dir)
+    fs.create_file(dataset_file, contents=yaml.dump({"uuid": "dataset-uuid"}))
+
+    database_uuids = _copy_dataset_dependencies(
+        root,
+        dashboard_dir,
+        {"dataset-uuid"},
+        {"dataset-uuid": dataset_file},
+    )
+    assert database_uuids == set()
+    assert (dashboard_dir / "datasets" / "db" / "dataset.yaml").exists()

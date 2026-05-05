@@ -383,16 +383,16 @@ def export_users(
     # Role mapping dictionaries
     workspace_role_map = {
         "Admin": "workspace admin",
-        "PresetAlpha": "primary contributor",
-        "PresetBeta": "secondary contributor",
-        "PresetGamma": "limited contributor",
+        "PresetAlpha": "primary creator",
+        "PresetBeta": "secondary creator",
+        "PresetGamma": "limited creator",
         "PresetReportsOnly": "viewer",
         "PresetDashboardsOnly": "dashboard viewer",
         "PresetNoAccess": "no access",
         # Additional possible role identifiers
-        "Alpha": "primary contributor",
-        "Beta": "secondary contributor",
-        "Gamma": "limited contributor",
+        "Alpha": "primary creator",
+        "Beta": "secondary creator",
+        "Gamma": "limited creator",
         "ReportsOnly": "viewer",
         "DashboardsOnly": "dashboard viewer",
         "NoAccess": "no access",

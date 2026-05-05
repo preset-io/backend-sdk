@@ -5,6 +5,43 @@ Changelog
 Next
 ====
 
+Version 0.3.12 - 2026-04-22
+==========================
+
+- The ``sqlglot`` dependency now has an upper bound limit to avoid incompatibility issues (`#382 <https://github.com/preset-io/backend-sdk/pull/382>`_).
+- The ``sql`` command is now fixed and works with both ``v6.x`` and older instances (`#383 <https://github.com/preset-io/backend-sdk/pull/383>`_).
+
+Version 0.3.11 - 2026-03-05
+==========================
+
+- ``datajunction`` is now an optional dependency (`#372 <https://github.com/preset-io/backend-sdk/pull/372>`_).
+- The ``delete-assets`` command now supports ``chart``, ``dataset``, and ``database`` asset types with ``id`` filters only (`#376 <https://github.com/preset-io/backend-sdk/pull/376>`_).
+- The ``delete-assets`` command accepts ``--dry-run=false`` as an alias for ``--no-dry-run`` (`#378 <https://github.com/preset-io/backend-sdk/pull/378>`_).
+- The ``delete-assets`` rollback behavior is now documented as best-effort (backup + re-import), not transactional (`#378 <https://github.com/preset-io/backend-sdk/pull/378>`_).
+- The ``export-assets`` command now writes per-asset dashboard files as ``dashboard.yaml`` inside each dashboard folder (previously the original dashboard filename) (`#377 <https://github.com/preset-io/backend-sdk/pull/377>`_).
+- Re-named ``Contributor`` roles to ``Creator`` to support new role naming in Preset Cloud (backwards compatible) (`#373 <https://github.com/preset-io/backend-sdk/pull/373>`_).
+
+Version 0.3.10 - 2026-01-16
+==========================
+
+- It's now possible to sync from ``dj`` using the ``sync dj`` command (`#355 <https://github.com/preset-io/backend-sdk/pull/355>`_).
+- New methods were added to the ``SupersetClient`` (`#362 <https://github.com/preset-io/backend-sdk/pull/362>`_).
+- Performance for the ``export-assets`` command when passing asset IDs is now improved (`#368 <https://github.com/preset-io/backend-sdk/pull/368>`_).
+- The ``export-ownership`` command now supports filtering by asset IDs (`#369 <https://github.com/preset-io/backend-sdk/pull/369>`_).
+
+Version 0.3.9 - 2025-11-06
+==========================
+
+- The ``export-assets`` command now considers the ``uuid`` value instead of file name to decide when to overwrite files (`#364 <https://github.com/preset-io/backend-sdk/pull/364>`_).
+- New ``exclude-old-users`` flag added to the ``export-ownership`` command to remove legacy users from ownership configurations (`#365 <https://github.com/preset-io/backend-sdk/pull/365>`_).
+
+Version 0.3.8 - 2025-09-23
+==========================
+
+- It's now possible to use nested properties under `config` to filter models in the dbt sync command (`#359 <https://github.com/preset-io/backend-sdk/pull/359>`_).
+- New command ``export-users`` added to export users from the Preset team (`#361 <https://github.com/preset-io/backend-sdk/pull/361>`_).
+- The ``superset export-users`` command now also include the user's Workspace Role for Preset Workspaces (`#361 <https://github.com/preset-io/backend-sdk/pull/361>`_).
+
 Version 0.3.7 - 2025-07-24
 ==========================
 

@@ -33,6 +33,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     TypedDict,
     Union,
@@ -49,7 +50,7 @@ from yarl import URL
 
 from preset_cli import __version__
 from preset_cli.api.clients.preset import PresetClient
-from preset_cli.api.operators import Equal, Operator
+from preset_cli.api.operators import Equal, In, Operator
 from preset_cli.auth.main import Auth
 from preset_cli.lib import remove_root, validate_response
 from preset_cli.typing import UserType
@@ -276,7 +277,6 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         data = {
             "client_id": shortid()[:10],
             "database_id": database_id,
-            "json": True,
             "runAsync": False,
             "schema": schema,
             "sql": sql,
@@ -431,7 +431,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return resource
 
-    def get_resources(self, resource_name: str, **kwargs: Any) -> List[Any]:
+    def get_resources(
+        self,
+        resource_name: str,
+        order_column: str = "changed_on_delta_humanized",
+        **kwargs: Any,
+    ) -> List[Any]:
         """
         Return one or more of a resource, possibly filtered.
         """
@@ -449,7 +454,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                         dict(col=col, opr=value.operator, value=value.value)
                         for col, value in operations.items()
                     ],
-                    "order_column": "changed_on_delta_humanized",
+                    "order_column": order_column,
                     "order_direction": "desc",
                     "page": page,
                     "page_size": MAX_PAGE_SIZE,
@@ -507,6 +512,15 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return resource
 
+    def delete_resource(self, resource_name: str, resource_id: int):
+        """
+        Delete a resource.
+        """
+        url = self.baseurl / "api/v1" / resource_name / str(resource_id)
+
+        response = self.session.delete(url)
+        validate_response(response)
+
     def get_resource_endpoint_info(self, resource_name: str, **kwargs: Any) -> Any:
         """
         Get resource endpoint info (such as available columns) possibly filtered.
@@ -523,7 +537,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         return endpoint_info
 
     def validate_key_in_resource_schema(
-        self, resource_name: str, key_name: str, **kwargs: Any
+        self,
+        resource_name: str,
+        key_name: str,
+        **kwargs: Any,
     ) -> Any:
         """
         Validate if a key is present in a resource schema.
@@ -679,6 +696,30 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         return self.get_resources("chart", **kwargs)
 
+    def update_chart(self, chart_id: int, **kwargs: Any) -> Any:
+        """
+        Update a chart.
+        """
+        return self.update_resource("chart", chart_id, **kwargs)
+
+    def delete_chart(self, chart_id):
+        """
+        delete a chart.
+        """
+        self.delete_resource("chart", chart_id)
+
+    def delete_dataset(self, dataset_id: int) -> None:
+        """
+        Delete a dataset.
+        """
+        self.delete_resource("dataset", dataset_id)
+
+    def delete_database(self, database_id: int) -> None:
+        """
+        Delete a database.
+        """
+        self.delete_resource("database", database_id)
+
     def get_dashboard(self, dashboard_id: int) -> Any:
         """
         Return a single dashboard.
@@ -702,6 +743,42 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Update a dashboard.
         """
         return self.update_resource("dashboard", dashboard_id, **kwargs)
+
+    def delete_dashboard(self, dashboard_id: int) -> Any:
+        """
+        Delete a dashboard.
+        """
+        self.delete_resource("dashboard", dashboard_id)
+
+    def get_users(self, **kwargs: str) -> List[Any]:
+        """
+        Return users, possibly filtered.
+        """
+        return self.get_resources("security/users", "id", **kwargs)
+
+    def get_report(self, report_id: int) -> Any:
+        """
+        Return a single report.
+        """
+        return self.get_resource("report", report_id)
+
+    def get_reports(self, **kwargs: str) -> List[Any]:
+        """
+        Return reports, possibly filtered.
+        """
+        return self.get_resources("report", **kwargs)
+
+    def create_report(self, **kwargs: Any) -> Any:
+        """
+        Create a report.
+        """
+        return self.create_resource("report", **kwargs)
+
+    def update_report(self, report_id: int, **kwargs: Any) -> Any:
+        """
+        Update a report.
+        """
+        return self.update_resource("report", report_id, **kwargs)
 
     def export_zip(self, resource_name: str, ids: List[int]) -> BytesIO:
         """
@@ -727,17 +804,28 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return buf
 
-    def get_uuids(self, resource_name: str) -> Dict[int, UUID]:
+    def get_uuids(
+        self,
+        resource_name: str,
+        ids: Set[int] | None = None,
+    ) -> Dict[int, UUID]:
         """
-        Get UUID of a list of resources.
+        Get UUID of a list of resources, possibly filtering by IDs.
 
-        Still method is very inneficient, but it's the only way to get the mapping
+        This method is very inneficient, but it's the only way to get the mapping
         between IDs and UUIDs in older versions of Superset.
+
+        #TODO: Rely on UUIDs from API responses
         """
         url = self.baseurl / "api/v1" / resource_name / "export/"
 
         uuids: Dict[int, UUID] = {}
-        for resource in self.get_resources(resource_name):
+        resources = (
+            self.get_resources(resource_name, id=In(list(ids)))
+            if ids
+            else self.get_resources(resource_name)
+        )
+        for resource in resources:
             id_ = resource["id"]
             params = {"q": prison.dumps([id_])}
             _logger.debug("GET %s", url % params)
@@ -1029,15 +1117,15 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 permission = PERMISSION_MAP[permission]
             elif match_ := DATABASE_PERMISSION.match(permission):
                 permission = "Database access on {database_name}".format(
-                    **match_.groupdict()
+                    **match_.groupdict(),
                 )
             elif match_ := SCHEMA_PERMISSION.match(permission):
                 permission = "Schema access on {database_name}.{schema_name}".format(
-                    **match_.groupdict()
+                    **match_.groupdict(),
                 )
             elif match_ := DATASET_PERMISSION.match(permission):
                 permission = "Dataset access on {database_name}.{dataset_name}".format(
-                    **match_.groupdict()
+                    **match_.groupdict(),
                 )
 
             if permission in permission_id_map:
@@ -1165,24 +1253,53 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         return id_
 
-    def export_ownership(self, resource_name: str) -> Iterator[OwnershipType]:
+    def export_ownership(
+        self,
+        resource_name: str,
+        requested_ids: Set[int],
+        users: Dict[int, str],
+        exclude_old_users: bool,
+    ) -> Iterator[OwnershipType]:
         """
         Return information about resource ownership.
         """
-        emails = {user["id"]: user["email"] for user in self.export_users()}
-        uuids = self.get_uuids(resource_name)
+        uuids = self.get_uuids(resource_name, requested_ids)
         name_key = {
             "dataset": "table_name",
             "chart": "slice_name",
             "dashboard": "dashboard_title",
         }[resource_name]
 
-        for resource in self.get_resources(resource_name):
-            yield {
+        resources = (
+            self.get_resources(resource_name, id=In(list(requested_ids)))
+            if requested_ids
+            else self.get_resources(resource_name)
+        )
+        for resource in resources:
+            info: OwnershipType = {
                 "name": resource[name_key],
                 "uuid": uuids[resource["id"]],
-                "owners": [emails[owner["id"]] for owner in resource.get("owners", [])],
+                "owners": [],
             }
+            for owner in resource.get("owners", []):
+                if user := users.get(owner["id"]):
+                    info["owners"].append(user)
+                else:
+                    if not exclude_old_users:
+                        raise Exception(
+                            f"User {owner['first_name']} {owner['last_name']} owns the "
+                            f"{resource_name} {resource[name_key]} but is not a member in the team."
+                            " You can trigger this command with ``--exclude-old-users`` to "
+                            "automatically remove old members.",
+                        )
+                    _logger.warning(
+                        "User %s %s not found in team. Removing from ownership config for %s %s.",
+                        owner["first_name"],
+                        owner["last_name"],
+                        resource_name,
+                        resource[name_key],
+                    )
+            yield info
 
     def import_ownership(
         self,

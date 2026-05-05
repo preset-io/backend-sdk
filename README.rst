@@ -118,6 +118,7 @@ The following commands are currently available:
 - ``preset-cli list-group-membership``: List SCIM groups from a team and their memberships.
 - ``preset-cli superset sql``: run SQL interactively or programmatically against an analytical database.
 - ``preset-cli superset export-assets`` (alternatively, ``preset-cli superset export``): export resources (databases, datasets, charts, dashboards) into a directory as YAML files.
+- ``preset-cli superset delete-assets``: delete resources by filter with dry-run by default and optional best-effort rollback.
 - ``preset-cli superset export-ownership``: export resource ownership (UUID -> email) into a YAML file.
 - ``preset-cli superset export-rls``: export RLS rules into a YAML file.
 - ``preset-cli superset export-roles``: export user roles into a YAML file.
@@ -125,6 +126,17 @@ The following commands are currently available:
 - ``preset-cli superset sync native`` (alternatively, ``preset-cli superset import-assets``): synchronize the workspace from a directory of templated configuration files.
 - ``preset-cli superset sync dbt-core``: synchronize the workspace from a dbt Core project.
 - ``preset-cli superset sync dbt-cloud``: synchronize the workspace from a dbt Cloud project.
+
+Delete Rollback Semantics
+-------------------------
+
+The ``delete-assets`` command is API-driven and performs individual delete calls. When
+``--rollback`` is enabled (default), the CLI attempts a best-effort rollback by
+re-importing a pre-delete backup if failures happen after at least one successful
+deletion.
+
+This is not a single transaction, so partial failure is still possible. For recovery,
+the command prints the backup path and a restore command after each execute run.
 
 All the ``superset`` sub-commands can also be executed against a standalone Superset instance, using the ``superset-cli`` command. This means that if you are running an instance of Superset at https://superset.example.org/ you can export its resources with the command:
 

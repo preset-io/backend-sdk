@@ -2,6 +2,7 @@
 Basic helper functions.
 """
 
+import functools
 import json
 import logging
 import sys
@@ -131,6 +132,7 @@ def raise_cli_errors(function: Callable[..., Any]) -> Callable[..., Any]:
     Decorator to catch any CLIError raised and exits the execution with an error code.
     """
 
+    @functools.wraps(function)
     def wrapper(*args, **kwargs):
         try:
             return function(*args, **kwargs)

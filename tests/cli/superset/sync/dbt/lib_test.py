@@ -1,6 +1,7 @@
 """
 Test for ``preset_cli.cli.superset.sync.dbt.lib``.
 """
+
 # pylint: disable=invalid-name, too-many-lines
 import copy
 import json
