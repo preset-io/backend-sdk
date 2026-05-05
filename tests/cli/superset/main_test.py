@@ -67,16 +67,13 @@ def test_mutate_commands() -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """
+    assert result.output == """
 instance1
 Hello, Alice!
 
 instance2
 Hello, Alice!
 """
-    )
 
     result = runner.invoke(
         target_group,
@@ -84,16 +81,13 @@ Hello, Alice!
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """
+    assert result.output == """
 instance1
 Goodbye, Alice!
 
 instance2
 Goodbye, Alice!
 """
-    )
 
 
 def test_superset() -> None:
@@ -104,9 +98,7 @@ def test_superset() -> None:
 
     result = runner.invoke(superset, ["--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    assert (
-        result.output
-        == """Usage: superset [OPTIONS] COMMAND [ARGS]...
+    assert result.output == """Usage: superset [OPTIONS] COMMAND [ARGS]...
 
   Send commands to one or more Superset instances.
 
@@ -128,7 +120,6 @@ Commands:
   sql
   sync
 """
-    )
 
     result = runner.invoke(superset, ["export", "--help"], catch_exceptions=False)
     assert result.exit_code == 0
@@ -163,3 +154,49 @@ def test_superset_jwt_auth(mocker: MockerFixture) -> None:
     )
 
     SupersetJWTAuth.assert_called_with("SECRET", URL("http://localhost:8088/"))
+
+
+def test_superset_cli_default_provider(mocker: MockerFixture) -> None:
+    """
+    Test that the --provider option defaults to 'db'.
+    """
+    username_password_auth = mocker.patch(
+        "preset_cli.cli.superset.main.UsernamePasswordAuth",
+    )
+
+    runner = CliRunner()
+    runner.invoke(
+        superset_cli,
+        ["http://localhost:8088/", "export"],
+        catch_exceptions=False,
+    )
+
+    username_password_auth.assert_called_with(
+        URL("http://localhost:8088/"),
+        "admin",
+        "admin",
+        "db",
+    )
+
+
+def test_superset_cli_provider(mocker: MockerFixture) -> None:
+    """
+    Test that --provider db is passed through to UsernamePasswordAuth.
+    """
+    username_password_auth = mocker.patch(
+        "preset_cli.cli.superset.main.UsernamePasswordAuth",
+    )
+
+    runner = CliRunner()
+    runner.invoke(
+        superset_cli,
+        ["--provider=ldap", "http://localhost:8088/", "export"],
+        catch_exceptions=False,
+    )
+
+    username_password_auth.assert_called_with(
+        URL("http://localhost:8088/"),
+        "admin",
+        "admin",
+        "ldap",
+    )
