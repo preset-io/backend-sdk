@@ -67,13 +67,16 @@ def test_mutate_commands() -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert result.output == """
+    assert (
+        result.output
+        == """
 instance1
 Hello, Alice!
 
 instance2
 Hello, Alice!
 """
+    )
 
     result = runner.invoke(
         target_group,
@@ -81,13 +84,16 @@ Hello, Alice!
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert result.output == """
+    assert (
+        result.output
+        == """
 instance1
 Goodbye, Alice!
 
 instance2
 Goodbye, Alice!
 """
+    )
 
 
 def test_superset() -> None:
@@ -98,7 +104,9 @@ def test_superset() -> None:
 
     result = runner.invoke(superset, ["--help"], catch_exceptions=False)
     assert result.exit_code == 0
-    assert result.output == """Usage: superset [OPTIONS] COMMAND [ARGS]...
+    assert (
+        result.output
+        == """Usage: superset [OPTIONS] COMMAND [ARGS]...
 
   Send commands to one or more Superset instances.
 
@@ -120,6 +128,7 @@ Commands:
   sql
   sync
 """
+    )
 
     result = runner.invoke(superset, ["export", "--help"], catch_exceptions=False)
     assert result.exit_code == 0
