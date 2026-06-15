@@ -31,8 +31,8 @@ def test_export_users_no_teams(mocker: MockerFixture) -> None:
             obj={"AUTH": Mock(), "MANAGER_URL": "https://api.preset.io/"},
         )
 
-    assert result.exit_code == 0
-    assert "No teams found." in result.output
+    assert result.exit_code == 1
+    assert "No teams available" in result.output
 
 
 def test_export_users_with_team_filter(mocker: MockerFixture) -> None:
@@ -55,7 +55,7 @@ def test_export_users_with_team_filter(mocker: MockerFixture) -> None:
     with runner.isolated_filesystem():
         result = runner.invoke(
             export_users,
-            ["--teams", "team1", "--teams", "Team Three", "output.yaml"],
+            ["--teams", "team1,Team Three", "output.yaml"],
             obj={"AUTH": Mock(), "MANAGER_URL": "https://api.preset.io/"},
         )
 
@@ -69,6 +69,39 @@ def test_export_users_with_team_filter(mocker: MockerFixture) -> None:
         with open("output.yaml", "r", encoding="utf-8") as file:
             data = yaml.safe_load(file)
             assert data == []  # No users since we mocked empty responses
+
+
+def test_export_users_prompts_for_teams(mocker: MockerFixture) -> None:
+    """
+    Test export_users prompts for teams when ``--teams`` isn't provided.
+    """
+    runner = CliRunner()
+
+    mock_client = MagicMock()
+    mock_client.get_teams.return_value = [
+        {"name": "team1", "title": "Team One"},
+        {"name": "team2", "title": "Team Two"},
+        {"name": "team3", "title": "Team Three"},
+    ]
+    mock_client.get_team_members.return_value = []
+    mock_client.get_workspaces.return_value = []
+
+    mocker.patch("preset_cli.cli.export_users.PresetClient", return_value=mock_client)
+    # prompt is handled by ``get_teams`` in ``preset_cli.cli.main``
+    mocker.patch("preset_cli.cli.main.input", side_effect=["1,3"])
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            export_users,
+            ["output.yaml"],
+            obj={"AUTH": Mock(), "MANAGER_URL": "https://api.preset.io/"},
+        )
+
+        assert result.exit_code == 0
+        assert "Choose one or more teams" in result.output
+        assert "Processing team: Team One" in result.output
+        assert "Processing team: Team Three" in result.output
+        assert "Processing team: Team Two" not in result.output
 
 
 def test_export_users_full_flow(mocker: MockerFixture) -> None:
@@ -423,7 +456,11 @@ def test_export_users_default_filename(mocker: MockerFixture) -> None:
     runner = CliRunner()
 
     mock_client = MagicMock()
-    mock_client.get_teams.return_value = []
+    mock_client.get_teams.return_value = [
+        {"name": "team1", "title": "Team One"},
+    ]
+    mock_client.get_team_members.return_value = []
+    mock_client.get_workspaces.return_value = []
 
     mocker.patch("preset_cli.cli.export_users.PresetClient", return_value=mock_client)
 
@@ -436,7 +473,7 @@ def test_export_users_default_filename(mocker: MockerFixture) -> None:
 
         assert result.exit_code == 0
         # The default filename from the command definition
-        assert "No teams found." in result.output
+        assert Path("users_workspace_roles.yaml").exists()
 
 
 def test_export_users_case_sensitive_emails(mocker: MockerFixture) -> None:
