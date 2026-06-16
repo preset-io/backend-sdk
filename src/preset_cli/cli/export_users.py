@@ -11,7 +11,7 @@ import click
 import yaml
 
 from preset_cli.api.clients.preset import PresetClient
-from preset_cli.lib import raise_cli_errors
+from preset_cli.lib import raise_cli_errors, split_comma
 
 _logger = logging.getLogger(__name__)
 
@@ -344,13 +344,13 @@ def write_users_to_file(users_list: List[Dict[str, Any]], path: str) -> None:
     type=click.Path(resolve_path=True),
     default="users_workspace_roles.yaml",
 )
-@click.option("--teams", multiple=True, help="Specific teams to export (optional)")
+@click.option("--teams", callback=split_comma)
 @click.pass_context
 @raise_cli_errors
 def export_users(
     ctx: click.core.Context,
     path: str,
-    teams: tuple,
+    teams: List[str],
 ) -> None:
     """
     Export users and their roles for all workspaces.
@@ -358,9 +358,15 @@ def export_users(
     This command exports a YAML file containing user information
     and their roles in each workspace across all teams.
     """
+    # pylint: disable=import-outside-toplevel, cyclic-import
+    from preset_cli.cli.main import get_teams
+
     auth = ctx.obj["AUTH"]
     manager_url = ctx.obj["MANAGER_URL"]
     client = PresetClient(manager_url, auth)
+
+    if not teams:
+        teams = get_teams(client)
 
     # Get filtered teams
     filtered_teams = get_filtered_teams(client, set(teams))
