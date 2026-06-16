@@ -71,6 +71,31 @@ def test_export_users_with_team_filter(mocker: MockerFixture) -> None:
             assert data == []  # No users since we mocked empty responses
 
 
+def test_export_users_no_matching_teams(mocker: MockerFixture) -> None:
+    """
+    Test export_users when ``--teams`` doesn't match any available team.
+    """
+    runner = CliRunner()
+
+    mock_client = MagicMock()
+    mock_client.get_teams.return_value = [
+        {"name": "team1", "title": "Team One"},
+        {"name": "team2", "title": "Team Two"},
+    ]
+
+    mocker.patch("preset_cli.cli.export_users.PresetClient", return_value=mock_client)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            export_users,
+            ["--teams", "nonexistent", "output.yaml"],
+            obj={"AUTH": Mock(), "MANAGER_URL": "https://api.preset.io/"},
+        )
+
+    assert result.exit_code == 0
+    assert "No teams found." in result.output
+
+
 def test_export_users_prompts_for_teams(mocker: MockerFixture) -> None:
     """
     Test export_users prompts for teams when ``--teams`` isn't provided.
