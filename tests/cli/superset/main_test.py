@@ -117,6 +117,7 @@ Commands:
   delete-assets
   export
   export-assets
+  export-metric-view
   export-ownership
   export-rls
   export-roles
