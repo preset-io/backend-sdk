@@ -1436,7 +1436,7 @@ def test_sync_all_user_roles_to_team(mocker: MockerFixture) -> None:
     ]
     SupersetClient = mocker.patch("preset_cli.cli.main.SupersetClient")
     superset_client = SupersetClient()
-    superset_client.export_users.return_value = [
+    superset_client.get_users.return_value = [
         {"email": "adoe@example.com", "id": 1},
         {"email": "bdoe@example.com", "id": 2},
     ]
@@ -1496,7 +1496,7 @@ def test_sync_all_user_roles_to_team_workspace_title(mocker: MockerFixture) -> N
     ]
     SupersetClient = mocker.patch("preset_cli.cli.main.SupersetClient")
     superset_client = SupersetClient()
-    superset_client.export_users.return_value = [
+    superset_client.get_users.return_value = [
         {"email": "adoe@example.com", "id": 1},
         {"email": "bdoe@example.com", "id": 2},
     ]

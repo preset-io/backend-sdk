@@ -623,7 +623,7 @@ def export_users(
     client = SupersetClient(url, auth, preset_baseurl)
 
     users = [
-        {k: v for k, v in user.items() if k != "id"} for user in client.export_users()
+        {k: v for k, v in user.items() if k != "id"} for user in client.get_users()
     ]
 
     newline = get_newline_char(force_unix_eol)
@@ -747,7 +747,7 @@ def export_ownership(  # pylint: disable=too-many-locals, too-many-arguments
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
-    users = {user["id"]: user["email"] for user in client.export_users()}
+    users = {user["id"]: user["email"] for user in client.get_users()}
 
     asset_types = set(asset_type)
     ids = {
