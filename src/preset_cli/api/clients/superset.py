@@ -49,9 +49,9 @@ from bs4 import BeautifulSoup
 from yarl import URL
 
 from preset_cli import __version__
-from preset_cli.api.clients.preset import PresetClient
 from preset_cli.api.operators import Equal, In, Operator
 from preset_cli.auth.main import Auth
+from preset_cli.exceptions import SupersetError
 from preset_cli.lib import remove_root, validate_response
 from preset_cli.typing import UserType
 
@@ -59,8 +59,7 @@ _logger = logging.getLogger(__name__)
 
 MAX_PAGE_SIZE = 100
 MAX_IDS_IN_EXPORT = 50
-
-
+PRESET_WORKSPACE_DOMAIN = "preset.io"
 PERMISSION_MAP = {
     "all datasource access on all_datasource_access": "All dataset access",
     "all database access on all_database_access": "All database access",
@@ -75,6 +74,14 @@ SCHEMA_PERMISSION = re.compile(
 DATASET_PERMISSION = re.compile(
     r"datasource access on \[(?P<database_name>.*?)\].\[(?P<dataset_name>.*?)\]\(id:\d+\)",
 )
+
+
+def format_permission(permission: str, view_menu: str) -> str:
+    """
+    Convert the permission name from API responses into human-readable
+    values for role exports.
+    """
+    return f"{permission.replace('_', ' ')} on {view_menu}"
 
 
 class GenericDataType(IntEnum):
@@ -205,6 +212,7 @@ class RoleType(TypedDict):
     name: str
     permissions: List[str]
     users: List[str]
+    groups: List[str]
 
 
 class RuleType(TypedDict):
@@ -750,11 +758,36 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         self.delete_resource("dashboard", dashboard_id)
 
-    def get_users(self, **kwargs: str) -> List[Any]:
+    def get_users(self, **kwargs: str) -> List[UserType]:
+        """
+        Return users.
+
+        Tries the REST API first (``/api/v1/security/users/``), which works for both
+        Preset Cloud and recent Superset versions. Older Superset instances don't expose
+        this endpoint, so we fall back to crawling the CRUD HTML page. Filtering is only
+        supported for the API path.
+        """
+        try:
+            return self._get_users_api(**kwargs)
+        except SupersetError:
+            return self._get_users_legacy()
+
+    def _get_users_api(self, **kwargs: str) -> List[UserType]:
         """
         Return users, possibly filtered.
         """
-        return self.get_resources("security/users", "id", **kwargs)
+        return [
+            {
+                "id": user["id"],
+                "first_name": user["first_name"],
+                "last_name": user["last_name"],
+                "username": user["username"],
+                "email": user["email"],
+                "role": [role["name"] for role in user.get("roles", [])],
+                # TODO: Include groups as well
+            }
+            for user in self.get_resources("security/users", "id", **kwargs)
+        ]
 
     def get_report(self, report_id: int) -> Any:
         """
@@ -873,33 +906,19 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         return self.get_resources("rowlevelsecurity", **kwargs)
 
-    def export_users(self) -> Iterator[UserType]:
+    def _is_preset_workspace(self) -> bool:
         """
-        Return all users.
+        Return whether the target is a Preset workspace or a Superset instance.
         """
-        # For on-premise OSS Superset we can fetch the list of users by crawling the
-        # ``/users/list/`` page. For a Preset workspace we need custom logic to talk
-        # to Manager.
-        url = self.baseurl / "users/list/"
-        _logger.debug("GET %s", url)
-        response = self.session.get(url)
-        if response.ok:
-            return self._export_users_superset()
-        return self._export_users_preset()
+        return str(self.baseurl.host).endswith(f".{PRESET_WORKSPACE_DOMAIN}")
 
-    def _export_users_preset(self) -> Iterator[UserType]:
+    def _get_users_legacy(self) -> List[UserType]:
         """
-        Return all users from a Preset workspace.
-        """
-        client = PresetClient(self.preset_baseurl, self.auth)
-        return client.export_users(self.baseurl)
-
-    def _export_users_superset(self) -> Iterator[UserType]:
-        """
-        Return all users from a standalone Superset instance.
+        Return all users from an older Superset instance.
 
         Since this is not exposed via an API we need to crawl the CRUD page.
         """
+        users: List[UserType] = []
         page = 0
         while True:
             params = {
@@ -919,30 +938,108 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
             for tr in trs[1:]:  # pylint: disable=invalid-name
                 tds = tr.find_all("td")
-                yield {
-                    "id": int(tds[0].find("a").attrs["href"].split("/")[-1]),
-                    "first_name": tds[1].text,
-                    "last_name": tds[2].text,
-                    "username": tds[3].text,
-                    "email": tds[4].text,
-                    "role": parse_html_array(tds[6].text.strip()),
-                }
+                users.append(
+                    {
+                        "id": int(tds[0].find("a").attrs["href"].split("/")[-1]),
+                        "first_name": tds[1].text,
+                        "last_name": tds[2].text,
+                        "username": tds[3].text,
+                        "email": tds[4].text,
+                        "role": parse_html_array(tds[6].text.strip()),
+                    },
+                )
+        return users
 
-    def export_roles(self) -> Iterator[RoleType]:  # pylint: disable=too-many-locals
+    def export_roles(self) -> List[RoleType]:
         """
         Return all roles.
         """
-        user_email_map = {user["id"]: user["email"] for user in self.export_users()}
+        if self._is_preset_workspace():
+            return self._export_dars_preset()
 
+        try:
+            return self._export_roles_superset()
+        except SupersetError:
+            return self._export_roles_legacy()
+
+    def _export_roles_superset(self) -> List[RoleType]:
+        """
+        Return all roles from a standalone Superset instance via the REST API.
+        """
+        user_email_map = {user["id"]: user["email"] for user in self.get_users()}
+        perm_map = {
+            perm["id"]: format_permission(
+                perm["permission"]["name"],
+                perm["view_menu"]["name"],
+            )
+            for perm in self.get_resources("security/permissions-resources", "id")
+        }
+        group_map = {
+            group["id"]: group["name"]
+            for group in self.get_resources("security/groups", "id")
+        }
+
+        roles: List[RoleType] = []
+        for role in self.get_resources("security/roles/search", "id"):
+            roles.append(
+                {
+                    "name": role["name"],
+                    "permissions": [
+                        perm_map[perm_id]
+                        for perm_id in role["permission_ids"]
+                        if perm_id in perm_map
+                    ],
+                    "users": [
+                        user_email_map[user_id]
+                        for user_id in role["user_ids"]
+                        if user_id in user_email_map
+                    ],
+                    "groups": [
+                        group_map[group_id]
+                        for group_id in role["group_ids"]
+                        if group_id in group_map
+                    ],
+                },
+            )
+        return roles
+
+    def _export_dars_preset(self) -> List[RoleType]:
+        """
+        Return all DARs from a Preset workspace via the DAR API.
+        """
+        user_email_map = {user["id"]: user["email"] for user in self.get_users()}
+        roles: List[RoleType] = []
+        for role in self.get_resources("security/dar", "name"):
+            roles.append(
+                {
+                    "name": role["name"],
+                    "permissions": [
+                        format_permission(perm["permission"], perm["view_menu"])
+                        for perm in role["permissions"]
+                    ],
+                    "users": [
+                        user_email_map[user["id"]]
+                        for user in role["users"]
+                        if user["id"] in user_email_map
+                    ],
+                    "groups": [group["name"] for group in role.get("groups", [])],
+                },
+            )
+        return roles
+
+    def _export_roles_legacy(  # pylint: disable=too-many-locals
+        self,
+    ) -> List[RoleType]:
+        """
+        Return all roles by crawling the CRUD HTML pages (older Superset versions).
+        """
+        user_email_map = {user["id"]: user["email"] for user in self.get_users()}
+        roles: List[RoleType] = []
         page = 0
         while True:
             params = {
-                # Superset
                 "psize_RoleModelView": MAX_PAGE_SIZE,
                 "page_RoleModelView": page,
-                # Preset
-                "psize_DataRoleModelView": MAX_PAGE_SIZE,
-                "page_DataRoleModelView": page,
             }
             url = self.baseurl / "roles/list/"
             page += 1
@@ -984,11 +1081,16 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     and int(option.attrs["value"]) in user_email_map
                 ]
 
-                yield {
-                    "name": name,
-                    "permissions": permissions,
-                    "users": users,
-                }
+                roles.append(
+                    {
+                        "name": name,
+                        "permissions": permissions,
+                        "users": users,
+                        # Legacy Superset instances didn't support groups
+                        "groups": [],
+                    },
+                )
+        return roles
 
     def export_rls_legacy(self) -> Iterator[RuleType]:
         """
@@ -1095,7 +1197,7 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Note: this only works with Preset workspaces for now, since it translates the
         Superset permissions to the Preset permissions.
         """
-        user_id_map = {user["email"]: user["id"] for user in self.export_users()}
+        user_id_map = {user["email"]: user["id"] for user in self.get_users()}
         user_ids = [
             user_id_map[email] for email in role["users"] if email in user_id_map
         ]

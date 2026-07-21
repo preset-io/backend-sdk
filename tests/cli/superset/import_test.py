@@ -82,7 +82,7 @@ def test_import_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     client = SupersetClient()
-    client.export_users.return_value = [{"id": 1, "email": "admin@example.com"}]
+    client.get_users.return_value = [{"id": 1, "email": "admin@example.com"}]
     client.get_uuids.return_value = {1: UUID("e4e6a14b-c3e8-4fdf-a850-183ba6ce15e0")}
     ownership = {
         "dataset": [
@@ -147,7 +147,7 @@ def test_import_ownership_progress_log(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {"id": 1, "email": "admin@example.com"},
         {"id": 2, "email": "viewer@example.com"},
     ]
@@ -230,7 +230,7 @@ def test_import_ownership_failure(mocker: MockerFixture, fs: FakeFilesystem) -> 
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     client = SupersetClient()
-    client.export_users.return_value = [{"id": 1, "email": "admin@example.com"}]
+    client.get_users.return_value = [{"id": 1, "email": "admin@example.com"}]
     client.get_uuids.return_value = {
         1: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e6"),
         2: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e7"),
@@ -292,7 +292,7 @@ def test_import_ownership_failure_continue(
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     client = SupersetClient()
-    client.export_users.return_value = [{"id": 1, "email": "admin@example.com"}]
+    client.get_users.return_value = [{"id": 1, "email": "admin@example.com"}]
     client.get_uuids.return_value = {
         1: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e6"),
         2: UUID("18ddf8ab-68f9-4c15-ba9f-c75921b019e7"),

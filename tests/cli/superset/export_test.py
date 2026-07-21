@@ -623,7 +623,7 @@ def test_export_users(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {
             "first_name": "admin",
             "last_name": "admin",
@@ -664,7 +664,7 @@ def test_export_users_force_unix_eol_enable(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {
             "first_name": "admin",
             "last_name": "admin",
@@ -866,7 +866,7 @@ def test_export_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {"id": 1, "email": "adoe@example.com"},
         {"id": 2, "email": "bdoe@example.com"},
     ]
@@ -920,7 +920,7 @@ def test_export_ownership_force_unix_eol_enable(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {"id": 1, "email": "adoe@example.com"},
         {"id": 2, "email": "bdoe@example.com"},
     ]
@@ -967,7 +967,7 @@ def test_export_ownership_by_asset_type(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {"id": 1, "email": "adoe@example.com"},
         {"id": 2, "email": "bdoe@example.com"},
     ]
@@ -1039,7 +1039,7 @@ def test_export_ownership_single_asset_type(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {"id": 3, "email": "cdoe@example.com"},
     ]
     client.export_ownership.return_value = [
@@ -2010,7 +2010,7 @@ def test_export_ownership_by_ids(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {"id": 1, "email": "adoe@example.com"},
     ]
     client.export_ownership.side_effect = [
@@ -2081,7 +2081,7 @@ def test_export_ownership_by_ids_and_asset_type(
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
     SupersetClient = mocker.patch("preset_cli.cli.superset.export.SupersetClient")
     client = SupersetClient()
-    client.export_users.return_value = [
+    client.get_users.return_value = [
         {"id": 1, "email": "adoe@example.com"},
     ]
     client.export_ownership.return_value = [

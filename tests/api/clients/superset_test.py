@@ -1685,16 +1685,37 @@ def test_delete_database(mocker: MockerFixture) -> None:
 
 def test_get_users(mocker: MockerFixture) -> None:
     """
-    Test the ``get_users`` method.
+    Test the ``get_users`` method (REST API path).
     """
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    get_resources = mocker.patch.object(client, "get_resources")
+    get_resources = mocker.patch.object(
+        client,
+        "get_resources",
+        return_value=[
+            {
+                "id": 1,
+                "first_name": "Alice",
+                "last_name": "Doe",
+                "username": "adoe",
+                "email": "adoe@example.com",
+                "roles": [{"id": 1, "name": "Admin"}],
+                "active": True,
+            },
+        ],
+    )
 
-    client.get_users()
+    assert client.get_users() == [
+        {
+            "id": 1,
+            "first_name": "Alice",
+            "last_name": "Doe",
+            "username": "adoe",
+            "email": "adoe@example.com",
+            "role": ["Admin"],
+        },
+    ]
     get_resources.assert_called_with("security/users", "id")
-    client.get_users(username="john")
-    get_resources.assert_called_with("security/users", "id", username="john")
 
 
 def test_get_report(mocker: MockerFixture) -> None:
@@ -1906,11 +1927,16 @@ def test_get_rls(mocker: MockerFixture) -> None:
     get_resources.assert_called_with("rowlevelsecurity")
 
 
-def test_export_users(requests_mock: Mocker) -> None:
+def test_get_users_legacy(requests_mock: Mocker) -> None:
     """
-    Test ``export_users``.
+    Test ``get_users`` falling back to crawling the CRUD HTML page.
     """
-    requests_mock.get("https://superset.example.org/users/list/")
+    # the users API is unavailable on older Superset, so we fall back to the HTML
+    # crawl
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/users/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/users/list/?psize_UserDBModelView=100&page_UserDBModelView=0",
         text="""
@@ -1982,7 +2008,7 @@ def test_export_users(requests_mock: Mocker) -> None:
 
     auth = Auth()
     client = SupersetClient("https://superset.example.org/", auth)
-    assert list(client.export_users()) == [
+    assert client.get_users() == [
         {
             "id": 1,
             "first_name": "Alice",
@@ -2002,149 +2028,16 @@ def test_export_users(requests_mock: Mocker) -> None:
     ]
 
 
-def test_export_users_preset(requests_mock: Mocker) -> None:
-    """
-    Test ``export_users``.
-    """
-    requests_mock.get("https://superset.example.org/users/list/", status_code=404)
-    requests_mock.get(
-        "https://api.app.preset.io/v1/teams",
-        json={
-            "payload": [{"name": "team1"}],
-        },
-    )
-    requests_mock.get(
-        "https://api.app.preset.io/v1/teams/team1/workspaces",
-        json={
-            "payload": [{"id": 1, "hostname": "superset.example.org"}],
-        },
-    )
-    requests_mock.get(
-        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships?page_number=1&page_size=250",
-        json={
-            "payload": [
-                {
-                    "user": {
-                        "username": "adoe",
-                        "first_name": "Alice",
-                        "last_name": "Doe",
-                        "email": "adoe@example.com",
-                    },
-                    "workspace_role": {
-                        "name": "NoAccess",
-                    },
-                },
-                {
-                    "user": {
-                        "username": "bdoe",
-                        "first_name": "Bob",
-                        "last_name": "Doe",
-                        "email": "BDoe@example.com",
-                    },
-                    "workspace_role": {
-                        "name": "NoAccess",
-                    },
-                },
-            ],
-            "meta": {
-                "count": 251,
-            },
-        },
-    )
-
-    requests_mock.get(
-        "https://api.app.preset.io/v1/teams/team1/workspaces/1/memberships?page_number=2&page_size=250",
-        json={
-            "payload": [
-                {
-                    "user": {
-                        "username": "cdoe",
-                        "first_name": "Clarisse",
-                        "last_name": "Doe",
-                        "email": "cdoe@example.com",
-                    },
-                    "workspace_role": {
-                        "name": "NoAccess",
-                    },
-                },
-            ],
-            "meta": {
-                "count": 251,
-            },
-        },
-    )
-
-    requests_mock.get(
-        "https://superset.example.org/api/v1/chart/related/owners?q=(page:0,page_size:100)",
-        json={
-            "count": 3,
-            "result": [
-                {
-                    "extra": {
-                        "active": True,
-                        "email": "adoe@example.com",
-                    },
-                    "text": "Alice Doe",
-                    "value": 1,
-                },
-                {
-                    "extra": {
-                        "active": True,
-                        "email": "bdoe@example.com",
-                    },
-                    "text": "Bob Doe",
-                    "value": 2,
-                },
-                {
-                    "extra": {
-                        "active": True,
-                        "email": "CDoe@example.com",
-                    },
-                    "text": "Clarisse Doe",
-                    "value": 3,
-                },
-            ],
-        },
-    )
-    requests_mock.get(
-        "https://superset.example.org/api/v1/chart/related/owners?q=(page:1,page_size:100)",
-        json={"count": 3, "result": []},  # empty result to break the loop
-    )
-
-    auth = Auth()
-    client = SupersetClient("https://superset.example.org/", auth)
-    assert list(client.export_users()) == [
-        {
-            "id": 1,
-            "first_name": "Alice",
-            "last_name": "Doe",
-            "username": "adoe",
-            "email": "adoe@example.com",
-            "role": ["noaccess"],
-        },
-        {
-            "id": 2,
-            "first_name": "Bob",
-            "last_name": "Doe",
-            "username": "bdoe",
-            "email": "bdoe@example.com",
-            "role": ["noaccess"],
-        },
-        {
-            "id": 3,
-            "first_name": "Clarisse",
-            "last_name": "Doe",
-            "username": "cdoe",
-            "email": "cdoe@example.com",
-            "role": ["noaccess"],
-        },
-    ]
-
-
 def test_export_roles(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
-    Test ``export_roles``.
+    Test ``export_roles`` falling back to crawling the CRUD HTML pages.
     """
+    # a non-preset.io host routes to the Superset API path; failing the API makes
+    # it fall back to the legacy HTML crawl
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/",
+        status_code=500,
+    )
     requests_mock.get(
         (
             "https://superset.example.org/roles/list/?"
@@ -2249,7 +2142,7 @@ def test_export_roles(mocker: MockerFixture, requests_mock: Mocker) -> None:
     )
     mocker.patch.object(
         SupersetClient,
-        "export_users",
+        "get_users",
         return_value=[
             {"id": 1, "email": "adoe@example.com"},
             {"id": 2, "email": "bdoe@example.com"},
@@ -2263,11 +2156,13 @@ def test_export_roles(mocker: MockerFixture, requests_mock: Mocker) -> None:
             "name": "Admin",
             "permissions": ["can this", "can that"],
             "users": ["adoe@example.com"],
+            "groups": [],
         },
         {
             "name": "Public",
             "permissions": [],
             "users": [],
+            "groups": [],
         },
     ]
 
@@ -2277,8 +2172,14 @@ def test_export_roles_anchor_role_id(
     requests_mock: Mocker,
 ) -> None:
     """
-    Test ``export_roles``.
+    Test ``export_roles`` legacy crawl when role IDs come from anchor links.
     """
+    # a non-preset.io host routes to the Superset API path; failing the API makes
+    # it fall back to the legacy HTML crawl
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/",
+        status_code=500,
+    )
     requests_mock.get(
         (
             "https://superset.example.org/roles/list/?"
@@ -2383,7 +2284,7 @@ def test_export_roles_anchor_role_id(
     )
     mocker.patch.object(
         SupersetClient,
-        "export_users",
+        "get_users",
         return_value=[
             {"id": 1, "email": "adoe@example.com"},
             {"id": 2, "email": "bdoe@example.com"},
@@ -2397,13 +2298,199 @@ def test_export_roles_anchor_role_id(
             "name": "Admin",
             "permissions": ["can this", "can that"],
             "users": ["adoe@example.com"],
+            "groups": [],
         },
         {
             "name": "Public",
             "permissions": [],
             "users": [],
+            "groups": [],
         },
     ]
+
+
+def test_export_roles_superset_api(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``export_roles`` against a standalone Superset via the REST API.
+    """
+    # a non-preset.io host routes to the Superset API path
+    mocker.patch.object(
+        SupersetClient,
+        "get_users",
+        return_value=[
+            {"id": 1, "email": "adoe@example.com"},
+            {"id": 2, "email": "bdoe@example.com"},
+        ],
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={
+            "result": [
+                {
+                    "id": 1,
+                    "permission": {"name": "can_read"},
+                    "view_menu": {"name": "Chart"},
+                },
+                {
+                    "id": 2,
+                    "permission": {"name": "can_write"},
+                    "view_menu": {"name": "Chart"},
+                },
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 10, "name": "Data Team"}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={
+            "result": [
+                {
+                    "id": 1,
+                    "name": "Admin",
+                    "user_ids": [1],
+                    "group_ids": [10],
+                    "permission_ids": [1, 2],
+                },
+                {
+                    "id": 2,
+                    "name": "Public",
+                    "user_ids": [],
+                    "group_ids": [],
+                    "permission_ids": [],
+                },
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    assert list(client.export_roles()) == [
+        {
+            "name": "Admin",
+            "permissions": ["can read on Chart", "can write on Chart"],
+            # direct members only; group assignment is exported as a name
+            "users": ["adoe@example.com"],
+            "groups": ["Data Team"],
+        },
+        {
+            "name": "Public",
+            "permissions": [],
+            "users": [],
+            "groups": [],
+        },
+    ]
+
+
+def test_export_roles_preset_api(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``export_roles`` against a Preset workspace via the ``dar`` API.
+    """
+    # a ``*.preset.io`` host routes to the Preset DAR path
+    mocker.patch.object(
+        SupersetClient,
+        "get_users",
+        return_value=[{"id": 10, "email": "vitor@example.com"}],
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:0,page_size:100)",
+        json={
+            "result": [
+                {
+                    "id": 37,
+                    "name": "rls_test",
+                    "permissions": [
+                        {
+                            "id": 214,
+                            "name": "All database access",
+                            "permission": "all_database_access",
+                            "view_menu": "all_database_access",
+                        },
+                    ],
+                    "users": [{"id": 10, "name": "Vitor", "username": "vitor"}],
+                    "groups": [{"id": 5, "name": "Analysts"}],
+                },
+                {
+                    "id": 38,
+                    "name": "empty",
+                    "permissions": [],
+                    "users": [],
+                    "groups": [],
+                },
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+
+    auth = Auth()
+    client = SupersetClient("https://abc123.app.preset.io/", auth)
+    assert client.export_roles() == [
+        {
+            "name": "rls_test",
+            "permissions": ["all database access on all_database_access"],
+            "users": ["vitor@example.com"],
+            "groups": ["Analysts"],
+        },
+        {
+            "name": "empty",
+            "permissions": [],
+            "users": [],
+            "groups": [],
+        },
+    ]
+
+
+def test_is_preset_workspace() -> None:
+    """
+    Test ``_is_preset_workspace`` hostname detection.
+    """
+    auth = Auth()
+
+    def is_preset(baseurl: str) -> bool:
+        # pylint: disable=protected-access
+        return SupersetClient(baseurl, auth)._is_preset_workspace()
+
+    # Preset Cloud workspaces (prod and non-prod) are served from ``*.preset.io``
+    assert is_preset("https://87eb76e3.us2a.app.preset.io/") is True
+    assert is_preset("https://abc123.app-stg.preset.io/") is True
+
+    # standalone Superset instances are not
+    assert is_preset("http://10.33.92.175:9787/analytics/") is False
+    assert is_preset("https://superset.example.org/") is False
+    # look-alike hosts must not be treated as Preset
+    assert is_preset("https://notpreset.io.evil.com/") is False
+    assert is_preset("https://evilpreset.io/") is False
 
 
 def test_export_rls_legacy(requests_mock: Mocker) -> None:
@@ -2940,7 +3027,7 @@ def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
     )
     mocker.patch.object(
         SupersetClient,
-        "export_users",
+        "get_users",
         return_value=[
             {"id": 1, "email": "admin@example.com"},
             {"id": 2, "email": "adoe@example.com"},
@@ -2957,6 +3044,7 @@ def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
             "datasource access on [Not added].[nope](id:42)",
         ],
         "users": ["admin@example.com", "adoe@example.com", "bdoe@example.com"],
+        "groups": [],
     }
 
     auth = Auth()
@@ -3063,7 +3151,7 @@ def test_import_role_update(mocker: MockerFixture, requests_mock: Mocker) -> Non
     )
     mocker.patch.object(
         SupersetClient,
-        "export_users",
+        "get_users",
         return_value=[
             {"id": 1, "email": "admin@example.com"},
             {"id": 2, "email": "adoe@example.com"},
@@ -3080,6 +3168,7 @@ def test_import_role_update(mocker: MockerFixture, requests_mock: Mocker) -> Non
             "datasource access on [Not added].[nope](id:42)",
         ],
         "users": ["admin@example.com", "adoe@example.com", "bdoe@example.com"],
+        "groups": [],
     }
 
     auth = Auth()
