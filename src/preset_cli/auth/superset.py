@@ -2,10 +2,12 @@
 Mechanisms for authentication and authorization for Superset instances.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Dict, Optional
 
 from bs4 import BeautifulSoup
+from requests import Session
 from requests.exceptions import RequestException
 from yarl import URL
 
@@ -15,80 +17,106 @@ from preset_cli.auth.token import TokenAuth
 _logger = logging.getLogger(__name__)
 
 
+def get_access_token(
+    session: Session,
+    baseurl: URL,
+    username: str,
+    password: str | None,
+    provider: str,
+) -> str:
+    """
+    Fetch a JWT access token from Superset's security API.
+    """
+    session.headers.pop("Referer", None)
+    response = session.post(
+        baseurl / "api/v1/security/login",
+        json={
+            "username": username,
+            "password": password,
+            "provider": provider,
+        },
+    )
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
+def get_csrf_token(
+    session: Session,
+    baseurl: URL,
+    token: str | None = None,
+) -> str:
+    """
+    Fetch a CSRF token from Superset's security API.
+    """
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    response = session.get(
+        baseurl / "api/v1/security/csrf_token/",
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()["result"]
+
+
 class UsernamePasswordAuth(Auth):  # pylint: disable=too-few-public-methods
     """
     Auth to Superset via username/password.
+
+    Authenticates against the documented security API, obtaining a JWT access
+    token and a CSRF token. Falls back to the legacy HTML-scraping login flow
+    for older Superset instances that do not expose ``/api/v1/security/login``.
     """
 
     def __init__(
         self,
         baseurl: URL,
         username: str,
-        password: Optional[str] = None,
-        provider: Optional[str] = "db",
+        password: str | None = None,
+        provider: str = "db",
     ):
         super().__init__()
 
-        self.csrf_token: Optional[str] = None
         self.baseurl = baseurl
         self.username = username
         self.password = password
         self.provider = provider or "db"
+
+        self.token: str | None = None
+        self.csrf_token: str | None = None
         self.auth()
 
-    def get_headers(self) -> Dict[str, str]:
-        return {"X-CSRFToken": self.csrf_token} if self.csrf_token else {}
-
-    def get_access_token(self):
-        """
-        Get an access token from superset API: api/v1/security/login.
-        """
-        body = {
-            "username": self.username,
-            "password": self.password,
-            "provider": self.provider,
-        }
-        if "Referer" in self.session.headers:
-            del self.session.headers["Referer"]
-        response = self.session.post(self.baseurl / "api/v1/security/login", json=body)
-        response.raise_for_status()
-        return response.json()["access_token"]
-
-    def get_csrf_token(self):
-        """
-        Get a CSRF token from superset API: api/v1/security/csrf_token .
-        """
-        response = self.session.get(self.baseurl / "api/v1/security/csrf_token/")
-        response.raise_for_status()
-        return response.json()["result"]
+    def get_headers(self) -> dict[str, str]:
+        headers = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        if self.csrf_token:
+            headers["X-CSRFToken"] = self.csrf_token
+        return headers
 
     def auth(self) -> None:
         """
-        Login to get CSRF token and cookies.
-
-        Try the documented REST API first; fall back to the legacy HTML-scraping
-        flow if the API is unavailable (e.g. on older Superset versions that do
-        not expose ``/api/v1/security/login``).
+        Authenticate via the security API, falling back to the legacy flow.
         """
         try:
-            self.session.headers["Authorization"] = f"Bearer {self.get_access_token()}"
-            csrf_token = self.get_csrf_token()
+            self.token = get_access_token(
+                self.session,
+                self.baseurl,
+                self.username,
+                self.password,
+                self.provider,
+            )
+            self.csrf_token = get_csrf_token(
+                self.session,
+                self.baseurl,
+                self.token,
+            )
         except (RequestException, KeyError, ValueError) as ex:
             _logger.warning(
                 "API authentication failed (%s); falling back to legacy "
                 "HTML-based login flow.",
                 ex,
             )
-            self.session.headers.pop("Authorization", None)
+            self.token = None
             self._legacy_auth()
-            return
-
-        if csrf_token:
-            self.session.headers["X-CSRFToken"] = csrf_token
-            self.session.headers["Referer"] = str(
-                self.baseurl / "api/v1/security/csrf_token/",
-            )
-            self.csrf_token = csrf_token
 
     def _legacy_auth(self) -> None:
         """
@@ -119,20 +147,8 @@ class SupersetJWTAuth(TokenAuth):  # pylint: disable=abstract-method
         super().__init__(token)
         self.baseurl = baseurl
 
-    def get_csrf_token(self, jwt: str) -> str:
-        """
-        Get a CSRF token.
-        """
-        response = self.session.get(
-            self.baseurl / "api/v1/security/csrf_token/",  # type: ignore
-            headers={"Authorization": f"Bearer {jwt}"},
-        )
-        response.raise_for_status()
-        payload = response.json()
-        return payload["result"]
-
-    def get_headers(self) -> Dict[str, str]:
+    def get_headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self.token}",
-            "X-CSRFToken": self.get_csrf_token(self.token),
+            "X-CSRFToken": get_csrf_token(self.session, self.baseurl, self.token),
         }
