@@ -759,7 +759,7 @@ def sync_all_user_roles_to_team(  # pylint: disable=too-many-locals
         superset_client = SupersetClient(f"https://{workspace_hostname}/", client.auth)
 
         user_id_map = {
-            user["email"]: user["id"] for user in superset_client.export_users()
+            user["email"]: user["id"] for user in superset_client.get_users()
         }
         for data_access_role, user_emails in workspace_data_access_roles.items():
             role_id = superset_client.get_role_id(data_access_role)
