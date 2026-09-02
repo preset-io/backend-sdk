@@ -2,11 +2,14 @@
 Mechanisms for authentication and authorization.
 """
 
+import logging
 from typing import Any, Dict
 
 from requests import Response, Session
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
+
+_logger = logging.getLogger(__name__)
 
 
 class Auth:  # pylint: disable=too-few-public-methods
@@ -46,11 +49,35 @@ class Auth:  # pylint: disable=too-few-public-methods
         if r.status_code != 401:
             return r
 
+        _logger.debug("Token expired. Re-authenticating...")
+
         try:
             self.auth()
         except NotImplementedError:
             return r
 
-        self.session.headers.update(self.get_headers())
-        r.request.headers.update(self.get_headers())
-        return self.session.send(r.request, verify=False)
+        headers = self.get_headers()
+        request = r.request.copy()
+        request.hooks = request.hooks.copy()
+        request.hooks["response"] = [
+            hook
+            for hook in request.hooks["response"]
+            if not (
+                getattr(hook, "__self__", None) is self
+                and getattr(hook, "__func__", None)
+                is getattr(self.reauth, "__func__", None)
+            )
+        ]
+        for target in (self.session.headers, request.headers):
+            target.pop("Authorization", None)
+            target.pop("X-CSRFToken", None)
+            target.update(headers)
+
+        # A prepared request does not pick up cookies added to the session
+        # after it was prepared.  Legacy auth deliberately supports only the
+        # ordinary Session cookie-jar flow here, not raw Cookie provenance.
+        if getattr(self, "_using_legacy_auth", False):
+            request.headers.pop("Cookie", None)
+            request.prepare_cookies(self.session.cookies)
+
+        return self.session.send(request, verify=False)
