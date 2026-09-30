@@ -21,7 +21,7 @@ def test_mutate_commands() -> None:
         A simple group of commands.
         """
 
-    @click.command()
+    @click.command(name="source-command")
     @click.argument("name")
     def source_command(name: str) -> None:
         """
