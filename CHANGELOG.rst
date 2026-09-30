@@ -5,8 +5,13 @@ Changelog
 Next
 ====
 
-- The ``click`` dependency upper bound is relaxed to ``<9``, so ``preset-cli`` can be installed alongside ``dbt-core`` 1.11+ (`#388 <https://github.com/preset-io/backend-sdk/pull/388>`_).
+Version 0.3.13 - 2026-09-30
+==========================
 
+- The team selector for the ``export-users`` command now accepts a comma separated list (`#385 <https://github.com/preset-io/backend-sdk/pull/385>`_).
+- The ``export-roles`` command now uses the API, and fallback to HTML crawling (`#386 <https://github.com/preset-io/backend-sdk/pull/386>`_).
+- It's now possible to authenticate to ``superset-cli`` using JWT auth (`#387 <https://github.com/preset-io/backend-sdk/pull/387>`_).
+- The ``click`` dependency upper bound is relaxed to ``<9``, so ``preset-cli`` can be installed alongside ``dbt-core`` 1.11+ (`#388 <https://github.com/preset-io/backend-sdk/pull/388>`_).
 
 Version 0.3.12 - 2026-04-22
 ==========================
