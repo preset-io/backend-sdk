@@ -5,7 +5,7 @@ Changelog
 Next
 ====
 
-- The ``click`` dependency upper bound is relaxed to ``<9``, so ``preset-cli`` can be installed alongside ``dbt-core`` 1.11+.
+- The ``click`` dependency upper bound is relaxed to ``<9``, so ``preset-cli`` can be installed alongside ``dbt-core`` 1.11+ (`#388 <https://github.com/preset-io/backend-sdk/pull/388>`_).
 
 
 Version 0.3.12 - 2026-04-22
