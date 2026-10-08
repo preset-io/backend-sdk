@@ -8,7 +8,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from sqlalchemy.engine.url import URL as SQLAlchemyURL
 from sqlalchemy.engine.url import make_url
@@ -353,6 +353,26 @@ def compute_dataset_metadata(  # pylint: disable=too-many-arguments
     return update
 
 
+def warn_missing_columns(
+    model_id: str,
+    dbt_column_names: Set[str],
+    dataset_columns: List[Any],
+) -> None:
+    """
+    Warn about dbt columns that are not in the dataset, since their metadata is skipped.
+    """
+    missing = sorted(
+        dbt_column_names - {column["column_name"] for column in dataset_columns},
+    )
+    if missing:
+        _logger.warning(
+            "Model %s has columns that are not in the dataset, so their dbt metadata "
+            "was not synced: %s",
+            model_id,
+            ", ".join(missing),
+        )
+
+
 def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
     client: SupersetClient,
     models: List[ModelSchema],
@@ -439,6 +459,11 @@ def sync_datasets(  # pylint: disable=too-many-locals, too-many-arguments
                 merge_metadata,
                 default_configs.get("columns", {}),
                 calculated_columns,
+            )
+            warn_missing_columns(
+                model["unique_id"],
+                {column["name"] for column in dbt_columns},
+                dataset_columns,
             )
             try:
                 client.update_dataset(dataset["id"], columns=dataset_columns)
