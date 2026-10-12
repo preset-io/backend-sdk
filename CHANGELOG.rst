@@ -5,6 +5,8 @@ Changelog
 Next
 ====
 
+- The dbt sync now logs a warning when a column defined in a dbt model doesn't exist in the Superset dataset, instead of silently skipping its metadata. (`#390 <https://github.com/preset-io/backend-sdk/pull/390>`_)
+
 Version 0.3.13 - 2026-09-30
 ==========================
 

@@ -777,6 +777,105 @@ def test_sync_datasets_no_columns(mocker: MockerFixture) -> None:
     )
 
 
+def test_sync_datasets_warns_about_missing_columns(mocker: MockerFixture) -> None:
+    """
+    Test ``sync_datasets`` when dbt columns are not in the dataset.
+    """
+    _logger = mocker.patch("preset_cli.cli.superset.sync.dbt.datasets._logger")
+    client = mocker.MagicMock()
+    client.get_dataset.return_value = {
+        "id": 1,
+        "columns": [{"column_name": "date"}, {"column_name": "calendar"}],
+    }
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.datasets.get_or_create_dataset",
+        return_value={"id": 1, "metrics": [], "columns": []},
+    )
+    mocker.patch("preset_cli.cli.superset.sync.dbt.datasets.compute_dataset_metadata")
+    model = model_schema.load(
+        {
+            "database": "examples_dev",
+            "schema": "public",
+            "description": "",
+            "meta": {},
+            "name": "events",
+            "uniqueId": "model.superset_examples.events",
+            "columns": [
+                {"name": "date", "description": "Event date"},
+                {"name": "calendar.day", "description": "Weekday"},
+                {"name": "calendar.client.week_number", "description": "Week"},
+            ],
+        },
+    )
+
+    sync_datasets(
+        client=client,
+        models=[model],
+        metrics={},
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+
+    _logger.warning.assert_called_once_with(
+        "Model %s has columns that are not in the dataset, so their dbt metadata "
+        "was not synced: %s",
+        "model.superset_examples.events",
+        "calendar.client.week_number, calendar.day",
+    )
+    columns = client.update_dataset.call_args.kwargs["columns"]
+    assert [column["column_name"] for column in columns] == ["date", "calendar"]
+
+
+def test_sync_datasets_no_warning_for_new_calculated_columns(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test ``sync_datasets`` doesn't warn about calculated columns it creates.
+    """
+    _logger = mocker.patch("preset_cli.cli.superset.sync.dbt.datasets._logger")
+    client = mocker.MagicMock()
+    client.get_dataset.return_value = {"id": 1, "columns": [{"column_name": "day"}]}
+    mocker.patch(
+        "preset_cli.cli.superset.sync.dbt.datasets.get_or_create_dataset",
+        return_value={"id": 1, "metrics": [], "columns": []},
+    )
+    mocker.patch("preset_cli.cli.superset.sync.dbt.datasets.compute_dataset_metadata")
+    model = model_schema.load(
+        {
+            "database": "examples_dev",
+            "schema": "public",
+            "description": "",
+            "meta": {
+                "superset": {
+                    "calculated_columns": [
+                        {"column_name": "day_upper", "expression": "UPPER(day)"},
+                    ],
+                },
+            },
+            "name": "events",
+            "uniqueId": "model.superset_examples.events",
+            "columns": [
+                {"name": "day", "description": "Weekday"},
+                {"name": "day_upper", "description": "Upper weekday"},
+            ],
+        },
+    )
+
+    sync_datasets(
+        client=client,
+        models=[model],
+        metrics={},
+        database={"id": 1},
+        disallow_edits=False,
+        external_url_prefix="",
+    )
+
+    _logger.warning.assert_not_called()
+    columns = client.update_dataset.call_args.kwargs["columns"]
+    assert [column["column_name"] for column in columns] == ["day", "day_upper"]
+
+
 @pytest.fixture()
 def no_catalog_support_client(mocker: MockerFixture) -> Any:
     """
