@@ -656,9 +656,10 @@ def export_roles(
     url = URL(ctx.obj["INSTANCE"])
     client = SupersetClient(url, auth)
 
+    contents = yaml.dump(list(client.export_roles()))
     newline = get_newline_char(force_unix_eol)
     with open(path, "w", encoding="utf-8", newline=newline) as output:
-        yaml.dump(list(client.export_roles()), output)
+        output.write(contents)
 
 
 @click.command()

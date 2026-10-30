@@ -1,6 +1,6 @@
 """Dataset identity and permission-set regressions for role migrations."""
 
-# pylint: disable=protected-access
+# pylint: disable=protected-access, too-many-lines
 
 import pytest
 import yaml
@@ -729,16 +729,26 @@ def test_imports_resolve_the_correct_schema(
         assert requests_mock.last_request.text == "name=Analyst&permissions=502"
 
 
-@pytest.mark.parametrize("catalog, schema", [("cat", "pii"), ("other", "public")])
+@pytest.mark.parametrize(
+    "catalog, schema, table",
+    [
+        ("cat", "pii", "orders"),
+        ("other", "public", "orders"),
+        ("cat", "public", "renamed_orders"),
+    ],
+)
 def test_unique_wrong_dataset_is_not_granted(
     requests_mock: Mocker,
     catalog: str,
     schema: str,
+    table: str,
 ) -> None:
     """A unique table-name match is insufficient when its full path differs."""
     base = "https://superset.example.org/"
     client = SupersetClient(base, Auth())
-    _metadata(requests_mock, base, _datasets([schema], catalog))
+    datasets = _datasets([schema], catalog)
+    datasets[0]["table_name"] = table
+    _metadata(requests_mock, base, datasets)
     with pytest.raises(ValueError, match="not found in target"):
         client._resolve_role_permission_ids(
             ["dataset access on [warehouse].[cat].[public].[orders]"],
@@ -761,22 +771,6 @@ def test_duplicate_full_paths_remain_ambiguous(requests_mock: Mocker) -> None:
         )
 
 
-def test_target_permission_disagreeing_with_metadata_is_rejected(
-    requests_mock: Mocker,
-) -> None:
-    """A stale permission menu must not be rebound to a renamed dataset."""
-    base = "https://superset.example.org/"
-    client = SupersetClient(base, Auth())
-    datasets = _datasets(["public"])
-    datasets[0]["table_name"] = "renamed_orders"
-    _metadata(requests_mock, base, datasets)
-    with pytest.raises(ValueError, match="Cannot determine full dataset path"):
-        client._resolve_role_permission_ids(
-            ["dataset access on [warehouse].[cat].[public].[orders]"],
-            [("datasource access on [warehouse].[orders](id:11)", 501)],
-        )
-
-
 @pytest.mark.parametrize("unavailable", [False, True])
 def test_qualified_import_requires_target_metadata(
     requests_mock: Mocker,
@@ -792,7 +786,7 @@ def test_qualified_import_requires_target_metadata(
     )
     with pytest.raises(
         ValueError,
-        match="metadata is unavailable|Cannot determine full dataset path",
+        match="metadata is unavailable|not found in target",
     ):
         client._resolve_role_permission_ids(
             ["dataset access on [warehouse].[cat].[public].[orders]"],
@@ -862,10 +856,7 @@ def test_dataset_schema_can_be_null_and_catalog_can_be_absent(
     _metadata(requests_mock, base, [dataset])
 
     assert client._get_dataset_permission_names({11}) == {
-        11: (
-            "datasource access on [warehouse].[orders]",
-            f"dataset access on [warehouse].[].[{schema or ''}].[orders]",
-        ),
+        11: f"dataset access on [warehouse].[].[{schema or ''}].[orders]",
     }
 
 
@@ -913,3 +904,98 @@ def test_dataset_metadata_requests_are_batched(
     assert set(client._get_dataset_permission_names({11, 12})) == {11, 12}
     assert "value:!(11)" in requests_mock.request_history[0].qs["q"][0]
     assert "value:!(12)" in requests_mock.request_history[2].qs["q"][0]
+
+
+@pytest.mark.parametrize("stale", ["missing", "renamed"])
+def test_dead_candidate_does_not_block_a_live_full_path(
+    requests_mock: Mocker,
+    stale: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Discarding a candidate must not discard or weaken the requested grant."""
+    base = "https://superset.example.org/"
+    client = SupersetClient(base, Auth())
+    datasets = _datasets(["public"])
+    if stale == "renamed":
+        renamed = _datasets(["public", "public"])[1]
+        renamed["table_name"] = "renamed_orders"
+        datasets.append(renamed)
+    _metadata(requests_mock, base, datasets)
+    names: dict[int, str | None] = {}
+    for _ in range(2):
+        assert client._resolve_role_permission_ids(
+            ["dataset access on [warehouse].[cat].[public].[orders]"],
+            [
+                ("datasource access on [warehouse].[orders](id:11)", 501),
+                ("datasource access on [warehouse].[orders](id:12)", 502),
+            ],
+            names,
+        ) == [501]
+    assert "Ignoring target permission" in caplog.text
+    # Missing datasets, as well as live metadata, are remembered in shared data.
+    assert len(requests_mock.request_history) == 2
+
+
+@pytest.mark.parametrize("database", ["warehouse", "other_database"])
+def test_database_display_label_does_not_replace_canonical_identity(
+    requests_mock: Mocker,
+    database: str,
+) -> None:
+    """IDs locate metadata; canonical full paths still decide the target grant."""
+    base = "https://superset.example.org/"
+    client = SupersetClient(base, Auth())
+    datasets = _datasets(["public"])
+    datasets[0]["database"]["database_name"] = database
+    _metadata(requests_mock, base, datasets)
+    available = [("datasource access on [A display label].[orders](id:11)", 501)]
+    requested = ["dataset access on [warehouse].[cat].[public].[orders]"]
+    if database == "warehouse":
+        assert client._resolve_role_permission_ids(requested, available) == [501]
+    else:
+        with pytest.raises(ValueError, match="not found in target"):
+            client._resolve_role_permission_ids(requested, available)
+
+
+def test_export_qualifies_database_display_label_using_dataset_id(
+    requests_mock: Mocker,
+) -> None:
+    """Exports use canonical database names even when permission labels differ."""
+    base = "https://superset.example.org/"
+    client = SupersetClient(base, Auth())
+    _metadata(requests_mock, base, _datasets(["public"]))
+    roles: list[RoleType] = [
+        {
+            "name": "Analyst",
+            "permissions": ["datasource access on [A display label].[orders](id:11)"],
+            "users": [],
+            "groups": [],
+        },
+    ]
+    assert client._qualify_role_datasets(roles)[0]["permissions"] == [
+        "dataset access on [warehouse].[cat].[public].[orders]",
+    ]
+
+
+@pytest.mark.parametrize("reject_filter", [False, True])
+def test_old_dataset_api_scans_all_rows_only_once(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+    reject_filter: bool,
+) -> None:
+    """Ignored/rejected ID filters must not cause one full scan per ID batch."""
+    base = "https://superset.example.org/"
+    client = SupersetClient(base, Auth())
+    mocker.patch("preset_cli.api.clients.superset.MAX_PAGE_SIZE", 1)
+    datasets = _datasets(["public", "pii"])
+    _metadata(requests_mock, base, datasets)
+    if reject_filter:
+        requests_mock.get(
+            base + "api/v1/dataset/",
+            status_code=400,
+            json={"message": "Unsupported filter"},
+            additional_matcher=lambda request: "opr:in" in request.qs["q"][0],
+        )
+    # Include absent IDs beyond the first batch, so skipping only known pending
+    # IDs would still keep scanning. An unfiltered result proves the scan is done.
+    assert set(client._get_dataset_permission_names({11, 12, 99, 100})) == {11, 12}
+    assert len(requests_mock.request_history) == (3 if reject_filter else 2)

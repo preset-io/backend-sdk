@@ -171,6 +171,13 @@ def resolve_role_permissions(
                     "include it explicitly as [database].[catalog].[schema]; "
                     "older Superset exports may omit it.",
                 )
+            if permission.startswith(QUALIFIED_DATASET_PREFIX):
+                raise ValueError(
+                    f"Dataset permission {permission!r} not found in target. "
+                    "Database, catalog, schema, and table must match exactly. "
+                    "An empty catalog is not a wildcard; older Superset exports "
+                    "may need the target catalog added explicitly to the YAML.",
+                )
             raise ValueError(f"Permission {permission!r} not found in target")
     return list(dict.fromkeys(permission_ids))
 
@@ -314,7 +321,7 @@ class RoleImportData(TypedDict):
     roles: Dict[str, Dict[str, Any]]
     users: Optional[Dict[str, int]]
     groups: Optional[Dict[str, int]]
-    datasets: Dict[int, Tuple[str, str]]
+    datasets: Dict[int, Optional[str]]
 
 
 class RuleType(TypedDict):
@@ -1097,13 +1104,23 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
     def _get_dataset_permission_names(
         self,
         dataset_ids: Set[int],
-    ) -> Dict[int, Tuple[str, str]]:
-        """Read legacy and fully qualified names for the requested datasets."""
-        result: Dict[int, Tuple[str, str]] = {}
+    ) -> Dict[int, str]:
+        """Read canonical full paths for the requested datasets."""
+        result: Dict[int, str] = {}
         pending = sorted(dataset_ids)
         while pending:
             batch, pending = pending[:MAX_PAGE_SIZE], pending[MAX_PAGE_SIZE:]
-            for dataset in self.get_resources("dataset", id=In(batch)):
+            unfiltered = False
+            try:
+                datasets = self.get_resources("dataset", id=In(batch))
+            except SupersetError as exc:
+                if exc.status_code != 400:
+                    raise
+                # Some older APIs reject unsupported filters instead of
+                # silently ignoring them. Fetch the complete listing once.
+                datasets = self.get_resources("dataset")
+                unfiltered = True
+            for dataset in datasets:
                 try:
                     dataset_id = dataset["id"]
                     name = dataset["database"]["database_name"]
@@ -1114,15 +1131,16 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                         "Incomplete dataset metadata: expected id, "
                         "database.database_name, table_name, and schema",
                     ) from exc
-                result[dataset_id] = (
-                    f"datasource access on [{name}].[{table}]",
-                    format_dataset_permission(
-                        name,
-                        dataset.get("catalog"),
-                        schema,
-                        table,
-                    ),
+                result[dataset_id] = format_dataset_permission(
+                    name,
+                    dataset.get("catalog"),
+                    schema,
+                    table,
                 )
+            # Older FAB versions can ignore integer "in" and return the full
+            # listing. Reuse that response instead of scanning it per batch.
+            if unfiltered or any(dataset["id"] not in batch for dataset in datasets):
+                break
         return result
 
     def _qualify_role_datasets(self, roles: List[RoleType]) -> List[RoleType]:
@@ -1146,8 +1164,12 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         replacements = {}
         for permission, dataset_id in grants.items():
             reference = names.get(dataset_id)
-            if reference and reference[0] == normalize_role_permission(permission):
-                replacements[permission] = reference[1]
+            if reference and self._dataset_permission_matches_table(
+                permission,
+                dataset_id,
+                reference,
+            ):
+                replacements[permission] = reference
             else:
                 _logger.warning(
                     "Cannot determine full dataset path for %s; exporting its legacy name",
@@ -1160,23 +1182,38 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             ]
         return roles
 
+    @staticmethod
+    def _dataset_permission_matches_table(
+        permission: str,
+        dataset_id: int,
+        qualified: str,
+    ) -> bool:
+        """Allow database display labels, while rejecting renamed-table menus."""
+        path = parse_dataset_permission(qualified)
+        return path is not None and permission.endswith(
+            f"].[{path[3]}](id:{dataset_id})",
+        )
+
     def _resolve_role_permission_ids(
         self,
         permissions: List[str],
         available: List[Tuple[str, int]],
-        dataset_names: Optional[Dict[int, Tuple[str, str]]] = None,
+        dataset_names: Optional[Dict[int, Optional[str]]] = None,
     ) -> List[int]:
         """Resolve qualified dataset paths using target metadata and raw grants."""
-        requested = {
-            f"datasource access on [{path[0]}].[{path[3]}]"
+        requested_tables = {
+            path[3]
             for permission in permissions
             if (path := parse_dataset_permission(permission)) is not None
         }
         candidates = [
             (permission, permission_id, int(match[1]))
             for permission, permission_id in available
-            if normalize_role_permission(permission) in requested
-            and (match := DATASET_PERMISSION_ID.fullmatch(permission))
+            if (match := DATASET_PERMISSION_ID.fullmatch(permission))
+            and any(
+                permission.endswith(f"].[{table}](id:{match[1]})")
+                for table in requested_tables
+            )
         ]
         if candidates:
             try:
@@ -1184,6 +1221,8 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 pending = {dataset_id for _, _, dataset_id in candidates} - names.keys()
                 if pending:
                     names.update(self._get_dataset_permission_names(pending))
+                    for dataset_id in pending:
+                        names.setdefault(dataset_id, None)
             except SupersetError as exc:
                 raise ValueError(
                     "Cannot resolve qualified dataset permissions: target dataset "
@@ -1191,13 +1230,18 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                 ) from exc
             for permission, permission_id, dataset_id in candidates:
                 reference = names.get(dataset_id)
-                if reference is None or reference[0] != normalize_role_permission(
+                if reference is None or not self._dataset_permission_matches_table(
                     permission,
+                    dataset_id,
+                    reference,
                 ):
-                    raise ValueError(
-                        f"Cannot determine full dataset path for target permission {permission!r}",
+                    _logger.warning(
+                        "Ignoring target permission %s: its dataset is missing, "
+                        "inaccessible, or has a different table name",
+                        permission,
                     )
-                available.append((reference[1], permission_id))
+                    continue
+                available.append((reference, permission_id))
         return resolve_role_permissions(permissions, available)
 
     def _export_roles_superset(self) -> List[RoleType]:
@@ -1428,6 +1472,24 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         else:
             yield from self.export_rls_legacy()
 
+    def validate_role_import_names(self, roles: List[RoleType]) -> None:
+        """Reject conflicting Preset target names before importing any role."""
+        if not self._is_preset_workspace():
+            return
+        names = {role["name"] for role in roles}
+        collisions = [
+            f"{name!r} and {name + '_Preset'!r} both map to {name + '_Preset'!r}"
+            for name in sorted(BUILTIN_ROLE_NAMES)
+            if name in names and f"{name}_Preset" in names
+        ]
+        if collisions:
+            raise ValueError(
+                "Preset role-name collision: "
+                + "; ".join(collisions)
+                + ". Rename or remove one source role before importing. "
+                "No roles were imported.",
+            )
+
     def get_role_import_data(
         self,
         role: RoleType,
@@ -1601,6 +1663,17 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         if role["name"] in BUILTIN_ROLE_NAMES:
             if not permission_ids:
+                target_name = f"{role['name']}_Preset"
+                if target_name in data["roles"]:
+                    _logger.warning(
+                        "Skipping built-in role %s: it requests no data-access "
+                        "permissions. Existing Data Access Role %s retains its "
+                        "permissions and memberships and may still grant access. "
+                        "Update or delete it explicitly to revoke access.",
+                        role["name"],
+                        target_name,
+                    )
+                    return
                 _logger.warning(
                     "Skipping built-in role %s: no data-access permissions resolve "
                     "on the target. No Data Access Role was created or updated. ",

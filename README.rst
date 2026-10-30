@@ -588,6 +588,19 @@ target dataset metadata. Multiple datasets with an identical complete path are
 ambiguous and fail the role import before its permissions or memberships change.
 Resolved permission IDs are deduplicated.
 
+Qualified dataset grants require a CLI version that supports this format on
+import. Older CLI versions may silently omit these grants, so upgrade pinned CI
+jobs and other import clients before using new exports. ``dataset access`` is a
+portable role-file reference resolved by this CLI, rather than a native Superset
+permission name; other tools consuming these files must support it as well.
+
+An empty catalog is matched literally, not as a wildcard. Superset versions
+before catalog support export paths such as
+``[database].[].[schema].[table]``. If the target uses a default catalog, update
+the YAML explicitly, for example to ``[database].[catalog].[schema].[table]``.
+Re-exporting from the same older server cannot supply this missing catalog.
+Bulk edits should preserve the intended database, schema, and table identities.
+
 Role files describe the complete intended permissions and memberships. All
 requested permissions must resolve on the target; a missing or ambiguous grant
 fails that role before it is created or updated. Unknown users and groups also
@@ -600,6 +613,13 @@ roles with only action grants are imported as empty Data Access Roles with a
 warning, since they can still be used for RLS or asset access. Built-in roles
 with data grants are imported with the ``_Preset`` suffix; built-ins without
 data grants are skipped. Missing data grants fail even for built-in roles.
+
+If a previously imported ``<name>_Preset`` DAR exists when its source built-in
+has no data grants, the skip leaves that DAR's permissions and memberships in
+place. The warning identifies this retained access; explicitly update or delete
+the mapped DAR to revoke it. A file containing both a built-in and its mapped
+name (for example, ``Gamma`` and ``Gamma_Preset``) is rejected before any import
+writes, including with ``--continue-on-error``.
 
 By default, ``import-roles`` stops at the first failed role. With
 ``--continue-on-error``, it records the failure and attempts the remaining roles,
@@ -628,12 +648,25 @@ qualified format requires target dataset metadata and never falls back to
 table-name matching. Re-export older files where metadata is available to obtain
 qualified paths.
 
+Missing or stale target dataset-permission candidates are ignored when resolving
+qualified paths; the requested grant still fails if no verified full-path match
+exists, or if multiple permission IDs match. Dataset metadata is fetched in
+batches; when an older server ignores the ID filter and returns unrelated IDs,
+the complete response is reused instead of repeating the full scan per batch.
+Incomplete dataset metadata is a contract error and fails export rather than
+silently dropping path information. Roles are fetched and serialized before the
+output file is opened, preserving an existing file if preparation fails.
+
 Schema permissions must match the target exactly. Older Superset exports use
 ``schema access on [database].[schema]``; catalog-aware targets may instead use
 ``schema access on [database].[catalog].[schema]``. Unmatched schema permissions
 fail the role import before any permissions or memberships are changed. Update
 the YAML to specify the intended target catalog explicitly; import never guesses
 the catalog or expands a schema grant across catalogs.
+
+Action permissions can also change between Superset versions. An OSS-to-OSS
+import fails if the target no longer supports a permission declared in the YAML;
+remove or update that grant explicitly rather than expecting it to be skipped.
 
 Exporting RLS rules
 ~~~~~~~~~~~~~~~~~~~

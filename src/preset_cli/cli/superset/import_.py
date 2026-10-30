@@ -70,6 +70,8 @@ def import_roles(  # pylint: disable=too-many-locals
     with open(path, encoding="utf-8") as input_:
         config = yaml.load(input_, Loader=yaml.SafeLoader)
 
+    client.validate_role_import_names(config)
+
     log_file_path, logs = get_logs(LogType.ROLES)
     roles_to_skip = {log["name"] for log in logs[LogType.ROLES]}
 

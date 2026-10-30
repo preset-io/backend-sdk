@@ -95,6 +95,18 @@ def _role(name: str = "Analyst") -> RoleType:
     }
 
 
+@pytest.mark.parametrize(
+    "names",
+    [[], ["Gamma"], ["Gamma_Preset"], ["Gamma", "Alpha_Preset"]],
+)
+def test_preset_role_name_validation_accepts_non_colliding_roles(
+    names: list[str],
+) -> None:
+    """Built-ins and suffixed custom names are valid without a conflicting pair."""
+    client = SupersetClient("https://test.app.preset.io/", Auth())
+    client.validate_role_import_names([_role(name) for name in names])
+
+
 @pytest.mark.parametrize("backend", ["superset", "preset"])
 def test_reference_lookups_are_shared_explicitly(
     requests_mock: Mocker,

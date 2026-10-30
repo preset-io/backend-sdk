@@ -5250,3 +5250,44 @@ def test_get_database_connection(requests_mock: Mocker) -> None:
 
     response = client.get_database(1)
     assert response["sqlalchemy_uri"] == "preset://"
+
+
+def test_skipped_builtin_warns_about_retained_mapped_access(
+    mocker: MockerFixture,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A built-in skip must disclose access retained by a previous migration."""
+    client = SupersetClient("https://test.app.preset.io/", Auth())
+    mocker.patch.object(
+        client,
+        "get_resources",
+        side_effect=[
+            [],
+            [
+                {
+                    "id": 42,
+                    "name": "Gamma_Preset",
+                    "permissions": [{"id": 5}],
+                    "users": [{"id": 7}],
+                    "groups": [{"id": 8}],
+                },
+            ],
+        ],
+    )
+    users = mocker.patch.object(client, "get_users")
+    create = mocker.patch.object(client, "create_resource")
+    update = mocker.patch.object(client, "update_resource")
+    client.import_role(
+        {
+            "name": "Gamma",
+            "permissions": [],
+            "users": ["uninvited@example.com"],
+            "groups": [],
+        },
+    )
+    users.assert_not_called()
+    create.assert_not_called()
+    update.assert_not_called()
+    assert "Gamma_Preset retains its permissions and memberships" in caplog.text
+    assert "may still grant access" in caplog.text
+    assert "Update or delete it explicitly" in caplog.text

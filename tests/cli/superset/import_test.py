@@ -644,3 +644,49 @@ def test_import_ownership_continue_on_errors(
     )
     assert result.exit_code == 0
     assert not Path("progress.log").exists()
+
+
+@pytest.mark.parametrize("continue_on_error", [False, True])
+@pytest.mark.parametrize("builtin", ["Admin", "Alpha", "Gamma", "Public", "sql_lab"])
+def test_preset_target_name_collisions_fail_before_any_import(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    continue_on_error: bool,
+    builtin: str,
+) -> None:
+    """Conflicting source declarations reject the entire file before writes."""
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    base = "https://test.app.preset.io/"
+    client = superset.SupersetClient(base, Auth())
+    mocker.patch("preset_cli.cli.superset.import_.SupersetClient", return_value=client)
+    prepared = mocker.patch.object(client, "get_role_import_data")
+    imported = mocker.patch.object(client, "import_role")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    roles = [
+        {"name": name, "permissions": [], "users": [], "groups": []}
+        for name in ("Unrelated", builtin, f"{builtin}_Preset")
+    ]
+    fs.create_file("roles.yaml", contents=yaml.safe_dump(roles))
+    args = [base, "import-roles"]
+    if continue_on_error:
+        args.append("--continue-on-error")
+    result = CliRunner().invoke(superset_cli, args)
+    assert result.exit_code == 1
+    assert isinstance(result.exception, ValueError)
+    assert "both map to" in str(result.exception)
+    assert builtin in str(result.exception)
+    assert "No roles were imported" in str(result.exception)
+    prepared.assert_not_called()
+    imported.assert_not_called()
+    assert not Path("progress.log").exists()
+
+
+def test_oss_builtin_and_suffixed_name_are_independent() -> None:
+    """The collision rule applies only to Preset's built-in name mapping."""
+    client = superset.SupersetClient("https://superset.example.org/", Auth())
+    client.validate_role_import_names(
+        [
+            {"name": name, "permissions": [], "users": [], "groups": []}
+            for name in ("Gamma", "Gamma_Preset")
+        ],
+    )
