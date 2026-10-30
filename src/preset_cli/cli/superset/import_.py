@@ -3,12 +3,13 @@ Commands to import RLS rules, ownership, and more.
 """
 
 import logging
+from typing import Optional
 
 import click
 import yaml
 from yarl import URL
 
-from preset_cli.api.clients.superset import SupersetClient
+from preset_cli.api.clients.superset import RoleImportData, SupersetClient
 from preset_cli.cli.superset.lib import (
     LogType,
     clean_logs,
@@ -72,6 +73,7 @@ def import_roles(  # pylint: disable=too-many-locals
     log_file_path, logs = get_logs(LogType.ROLES)
     roles_to_skip = {log["name"] for log in logs[LogType.ROLES]}
 
+    data: Optional[RoleImportData] = None
     with open(log_file_path, "w", encoding="utf-8") as log_file:
         for role in config:
             if role["name"] in roles_to_skip:
@@ -81,7 +83,8 @@ def import_roles(  # pylint: disable=too-many-locals
             role_log = {"name": role["name"], "status": "SUCCESS"}
 
             try:
-                client.import_role(role)
+                data = client.get_role_import_data(role, data)
+                client.import_role(role, data)
             except Exception as exc:  # pylint: disable=broad-except
                 _logger.debug("Failed to import role %s: %s", role["name"], str(exc))
                 if not continue_on_error:

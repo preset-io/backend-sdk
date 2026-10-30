@@ -99,7 +99,7 @@ def validate_response(response: Response) -> None:
         ]
 
     _logger.error(message)
-    raise SupersetError(errors=errors)
+    raise SupersetError(errors=errors, status_code=response.status_code)
 
 
 def split_comma(  # pylint: disable=unused-argument

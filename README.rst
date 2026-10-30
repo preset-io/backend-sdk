@@ -568,7 +568,72 @@ Exporting users
 
 The ``preset-cli superset export-users`` command can be used to export a list of users. These users can then be imported to Preset via the ``preset-cli import-users`` command.
 
-You can also export roles via ``preset-cli superset export-roles``, and import with ``import-roles``.
+Exporting roles
+~~~~~~~~~~~~~~~
+
+You can export roles via ``preset-cli superset export-roles``, and import with ``import-roles``.
+
+Dataset permissions in new role exports include database, catalog, schema, and
+table names, so importing into another instance does not rely on local dataset
+IDs. For example::
+
+    permissions:
+      - dataset access on [analytics].[warehouse].[public].[orders]
+      - dataset access on [analytics].[].[public].[customers]
+
+The four path components are always present. Empty brackets represent a missing
+catalog or schema. Dots inside brackets are part of the name; a closing bracket
+inside a name is escaped as ``]]``. Import resolves the complete path against the
+target dataset metadata. Multiple datasets with an identical complete path are
+ambiguous and fail the role import before its permissions or memberships change.
+Resolved permission IDs are deduplicated.
+
+Role files describe the complete intended permissions and memberships. All
+requested permissions must resolve on the target; a missing or ambiguous grant
+fails that role before it is created or updated. Unknown users and groups also
+fail the role. Legacy Superset imports reject nonempty group assignments because
+the legacy interface cannot apply them. Omitting ``groups`` means an empty list.
+
+When migrating to Preset, action permissions are an explicit exception: they are
+skipped with warnings because Data Access Roles cannot represent them. Custom 
+roles with only action grants are imported as empty Data Access Roles with a
+warning, since they can still be used for RLS or asset access. Built-in roles
+with data grants are imported with the ``_Preset`` suffix; built-ins without
+data grants are skipped. Missing data grants fail even for built-in roles.
+
+By default, ``import-roles`` stops at the first failed role. With
+``--continue-on-error``, it records the failure and attempts the remaining roles,
+then exits nonzero if any role failed. These validation errors follow the same
+policy as API errors. Successful roles from earlier in the run are not rolled
+back; Superset REST permission, user, and group updates use separate requests,
+so an API failure during those writes can leave a role partially updated.
+
+Within one ``import-roles`` run, the command prepares shared target lookups and
+passes them into each role import. Permissions, role names, users, groups, and
+resolved dataset names are reused. User and group listings are read only when
+memberships are requested; empty lists still clear existing memberships. Role
+indexes track successful writes, including creation before a later relationship
+update fails. Independent runs fetch fresh reference data.
+
+Standalone Superset imports read ``security/permissions-resources`` before
+selecting the REST implementation. A 404 during permission or role-search
+detection selects the legacy HTML interface. Authentication, authorization, and
+server errors fail the role. Errors during REST writes never retry via HTML.
+
+Older role files remain readable. Their ``datasource access`` permissions lack
+schema/catalog identity and use database/table-name matching with a warning;
+ambiguous matches fail. If an older Superset server cannot expose dataset
+metadata, export retains this legacy format and logs a warning. Importing the new
+qualified format requires target dataset metadata and never falls back to
+table-name matching. Re-export older files where metadata is available to obtain
+qualified paths.
+
+Schema permissions must match the target exactly. Older Superset exports use
+``schema access on [database].[schema]``; catalog-aware targets may instead use
+``schema access on [database].[catalog].[schema]``. Unmatched schema permissions
+fail the role import before any permissions or memberships are changed. Update
+the YAML to specify the intended target catalog explicitly; import never guesses
+the catalog or expands a schema grant across catalogs.
 
 Exporting RLS rules
 ~~~~~~~~~~~~~~~~~~~

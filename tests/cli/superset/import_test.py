@@ -13,8 +13,12 @@ import yaml
 from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
+from requests_mock.mocker import Mocker
 
+from preset_cli.api.clients import superset
+from preset_cli.auth.main import Auth
 from preset_cli.cli.superset.main import superset_cli
+from preset_cli.exceptions import SupersetError
 
 
 def test_import_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -72,7 +76,7 @@ def test_import_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     assert result.exit_code == 0
 
-    client.import_role.assert_called_with(roles[0])
+    client.import_role.assert_called_with(roles[0], mock.ANY)
     # a fully successful run cleans up the checkpoint log
     assert not Path("progress.log").exists()
 
@@ -143,7 +147,8 @@ def test_import_roles_resumes_after_failure(
     assert result.exit_code == 1
     assert Path("progress.log").exists()
     assert client.import_role.call_args_list == [
-        mock.call(role) for role in (roles if continue_on_error else roles[:2])
+        mock.call(role, mock.ANY)
+        for role in (roles if continue_on_error else roles[:2])
     ]
 
     client.import_role.reset_mock(side_effect=True)
@@ -151,9 +156,110 @@ def test_import_roles_resumes_after_failure(
 
     assert result.exit_code == 0
     assert client.import_role.call_args_list == [
-        mock.call(role) for role in (roles[1:2] if continue_on_error else roles[1:])
+        mock.call(role, mock.ANY)
+        for role in (roles[1:2] if continue_on_error else roles[1:])
     ]
     assert not Path("progress.log").exists()
+
+
+@pytest.mark.parametrize("continue_on_error", [False, True])
+@pytest.mark.parametrize(
+    "failure",
+    ["permission", "schema", "dataset", "legacy_user", "legacy_groups", "api"],
+)
+def test_role_validation_respects_continue_on_error(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    requests_mock: Mocker,
+    continue_on_error: bool,
+    failure: str,
+) -> None:
+    """Real role validation errors obey the CLI's stop/continue policy."""
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    base = "https://superset.example.org/"
+    client = superset.SupersetClient(base, Auth())
+    mocker.patch("preset_cli.cli.superset.import_.SupersetClient", return_value=client)
+    if failure == "api":
+        requests_mock.get(
+            base + "api/v1/security/permissions-resources/",
+            json={"result": []},
+        )
+        requests_mock.post(
+            base + "api/v1/security/roles/",
+            [
+                {"json": {"id": 42}},
+                {"status_code": 403, "json": {"message": "Forbidden"}},
+                {"json": {"id": 43}},
+            ],
+        )
+        for endpoint in ("roles/search", "groups"):
+            requests_mock.get(
+                base + f"api/v1/security/{endpoint}/",
+                json={"result": []},
+            )
+    else:
+        if not failure.startswith("legacy_"):
+            mocker.patch.object(client, "get_resources", return_value=[])
+        mocker.patch.object(client, "create_resource", return_value={"id": 42})
+    mocker.patch.object(client, "get_users", return_value=[])
+    mocker.patch.object(client, "update_role_permissions")
+    mocker.patch.object(client, "update_role_users")
+    mocker.patch.object(client, "update_role_groups")
+    if failure.startswith("legacy_"):
+        requests_mock.get(
+            base + "api/v1/security/permissions-resources/",
+            status_code=404,
+        )
+        requests_mock.get(base + "roles/add", text='<select id="permissions"></select>')
+        requests_mock.get(base + "roles/list/", text="<table></table>")
+        requests_mock.post(base + "roles/add")
+    imported = mocker.spy(client, "import_role")
+    roles: list[superset.RoleType] = [
+        {"name": name, "permissions": [], "users": [], "groups": []}
+        for name in ("Before", "Invalid", "After")
+    ]
+    if failure == "legacy_user":
+        roles[1]["users"] = ["missing@example.com"]
+    elif failure == "legacy_groups":
+        roles[1]["groups"] = ["Analysts"]
+    elif failure != "api":
+        roles[1]["permissions"] = [
+            {
+                "permission": "database access on [Missing].(id:1)",
+                "schema": "schema access on [warehouse].[public]",
+                "dataset": "dataset access on [warehouse].[cat].[public].[orders]",
+            }[failure],
+        ]
+    fs.create_file("roles.yaml", contents=yaml.dump(roles))
+    args = [base, "import-roles"]
+    if continue_on_error:
+        args.append("--continue-on-error")
+
+    result = CliRunner().invoke(superset_cli, args)
+
+    assert result.exit_code == 1
+    assert imported.call_args_list == [
+        mock.call(role, mock.ANY)
+        for role in (roles if continue_on_error else roles[:2])
+    ]
+    with open("progress.log", encoding="utf-8") as log_file:
+        logs = yaml.safe_load(log_file)
+    expected = [{"name": "Before", "status": "SUCCESS"}]
+    if continue_on_error:
+        expected.extend(
+            [
+                {"name": "Invalid", "status": "FAILED"},
+                {"name": "After", "status": "SUCCESS"},
+            ],
+        )
+    else:
+        if failure == "api":
+            assert isinstance(result.exception, SupersetError)
+            assert result.exception.status_code == 403
+        else:
+            assert isinstance(result.exception, ValueError)
+    assert logs["roles"] == expected
 
 
 def test_import_roles_failure_continue(

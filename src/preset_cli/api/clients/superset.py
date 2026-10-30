@@ -60,6 +60,7 @@ _logger = logging.getLogger(__name__)
 MAX_PAGE_SIZE = 100
 MAX_IDS_IN_EXPORT = 50
 PRESET_WORKSPACE_DOMAIN = "preset.io"
+BUILTIN_ROLE_NAMES = frozenset({"Admin", "Alpha", "Gamma", "Public", "sql_lab"})
 DATA_ACCESS_PERMISSION_NAMES = frozenset(
     {
         "all datasource access",
@@ -67,11 +68,18 @@ DATA_ACCESS_PERMISSION_NAMES = frozenset(
         "all query access",
         "database access",
         "datasource access",
+        "dataset access",
         "schema access",
         "catalog access",
     },
 )
 PERMISSION_ID_SUFFIX = re.compile(r"\(id:[0-9a-fA-F-]+\)$")
+DATASET_PERMISSION_ID = re.compile(r"^datasource access on \[.*\]\(id:(\d+)\)$")
+QUALIFIED_DATASET_PREFIX = "dataset access on "
+QUALIFIED_DATASET_PATH = re.compile(
+    r"\[((?:[^\]]|\]\])*)\]\.\[((?:[^\]]|\]\])*)\]\."
+    r"\[((?:[^\]]|\]\])*)\]\.\[((?:[^\]]|\]\])*)\]",
+)
 
 
 def format_permission(permission: str, view_menu: str) -> str:
@@ -92,6 +100,33 @@ def normalize_role_permission(permission: str) -> str:
     if permission.startswith(("database access on [", "datasource access on [")):
         return PERMISSION_ID_SUFFIX.sub("", permission)
     return permission
+
+
+def format_dataset_permission(
+    database: str,
+    catalog: Optional[str],
+    schema: Optional[str],
+    table: str,
+) -> str:
+    """Encode a dataset's complete path, with empty catalog/schema slots."""
+    parts = (database, catalog or "", schema or "", table)
+    return QUALIFIED_DATASET_PREFIX + ".".join(
+        "[" + part.replace("]", "]]") + "]" for part in parts
+    )
+
+
+def parse_dataset_permission(permission: str) -> Optional[Tuple[str, str, str, str]]:
+    """Read a qualified path without splitting dots inside identifiers."""
+    if not permission.startswith(QUALIFIED_DATASET_PREFIX):
+        return None
+    prefix_length = len(QUALIFIED_DATASET_PREFIX)
+    match = QUALIFIED_DATASET_PATH.fullmatch(permission[prefix_length:])
+    if match is None or not match[1] or not match[4]:
+        raise ValueError(f"Invalid qualified dataset permission: {permission!r}")
+    return cast(
+        Tuple[str, str, str, str],
+        tuple(part.replace("]]", "]") for part in match.groups()),
+    )
 
 
 def resolve_role_permissions(
@@ -118,10 +153,26 @@ def resolve_role_permissions(
         if len(matches) > 1:
             raise ValueError(f"Permission {permission!r} is ambiguous in target")
         if matches:
+            if permission.startswith("datasource access on [") and "].[" in permission:
+                _logger.warning(
+                    "Dataset permission %s has no schema/catalog identity and is "
+                    "matched by database and table name only. Re-export roles to "
+                    "include full dataset paths.",
+                    permission,
+                )
             permission_ids.append(next(iter(matches)))
         else:
-            _logger.warning("Permission %s not found in target", permission)
-    return permission_ids
+            if permission.startswith("schema access on "):
+                raise ValueError(
+                    f"Schema permission {permission!r} not found in target. "
+                    "Schema grants must match the target database, catalog "
+                    "(when present), and schema exactly. Update the YAML to use "
+                    "the target schema permission. If the target uses a catalog, "
+                    "include it explicitly as [database].[catalog].[schema]; "
+                    "older Superset exports may omit it.",
+                )
+            raise ValueError(f"Permission {permission!r} not found in target")
+    return list(dict.fromkeys(permission_ids))
 
 
 class GenericDataType(IntEnum):
@@ -253,6 +304,17 @@ class RoleType(TypedDict):
     permissions: List[str]
     users: List[str]
     groups: List[str]
+
+
+class RoleImportData(TypedDict):
+    """Target reference data shared explicitly by a batch of role imports."""
+
+    backend: Literal["superset", "preset", "legacy"]
+    permissions: List[Tuple[str, int]]
+    roles: Dict[str, Dict[str, Any]]
+    users: Optional[Dict[str, int]]
+    groups: Optional[Dict[str, int]]
+    datasets: Dict[int, Tuple[str, str]]
 
 
 class RuleType(TypedDict):
@@ -1022,12 +1084,121 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Return all roles.
         """
         if self._is_preset_workspace():
-            return self._export_dars_preset()
+            roles = self._export_dars_preset()
+        else:
+            try:
+                roles = self._export_roles_superset()
+            except SupersetError as exc:
+                if exc.status_code != 404:
+                    raise
+                roles = self._export_roles_legacy()
+        return self._qualify_role_datasets(roles)
 
+    def _get_dataset_permission_names(
+        self,
+        dataset_ids: Set[int],
+    ) -> Dict[int, Tuple[str, str]]:
+        """Read legacy and fully qualified names for the requested datasets."""
+        result: Dict[int, Tuple[str, str]] = {}
+        pending = sorted(dataset_ids)
+        while pending:
+            batch, pending = pending[:MAX_PAGE_SIZE], pending[MAX_PAGE_SIZE:]
+            for dataset in self.get_resources("dataset", id=In(batch)):
+                try:
+                    dataset_id = dataset["id"]
+                    name = dataset["database"]["database_name"]
+                    table = dataset["table_name"]
+                    schema = dataset["schema"]
+                except (KeyError, TypeError) as exc:
+                    raise ValueError(
+                        "Incomplete dataset metadata: expected id, "
+                        "database.database_name, table_name, and schema",
+                    ) from exc
+                result[dataset_id] = (
+                    f"datasource access on [{name}].[{table}]",
+                    format_dataset_permission(
+                        name,
+                        dataset.get("catalog"),
+                        schema,
+                        table,
+                    ),
+                )
+        return result
+
+    def _qualify_role_datasets(self, roles: List[RoleType]) -> List[RoleType]:
+        """Enrich dataset grants while keeping exports usable on older servers."""
+        grants = {
+            permission: int(match[1])
+            for role in roles
+            for permission in role["permissions"]
+            if (match := DATASET_PERMISSION_ID.fullmatch(permission))
+        }
+        if not grants:
+            return roles
         try:
-            return self._export_roles_superset()
+            names = self._get_dataset_permission_names(set(grants.values()))
         except SupersetError:
-            return self._export_roles_legacy()
+            _logger.warning(
+                "Dataset metadata is unavailable; exporting legacy dataset permissions "
+                "without schema/catalog identity. Cross-instance matching requires review.",
+            )
+            return roles
+        replacements = {}
+        for permission, dataset_id in grants.items():
+            reference = names.get(dataset_id)
+            if reference and reference[0] == normalize_role_permission(permission):
+                replacements[permission] = reference[1]
+            else:
+                _logger.warning(
+                    "Cannot determine full dataset path for %s; exporting its legacy name",
+                    permission,
+                )
+        for role in roles:
+            role["permissions"] = [
+                replacements.get(permission, permission)
+                for permission in role["permissions"]
+            ]
+        return roles
+
+    def _resolve_role_permission_ids(
+        self,
+        permissions: List[str],
+        available: List[Tuple[str, int]],
+        dataset_names: Optional[Dict[int, Tuple[str, str]]] = None,
+    ) -> List[int]:
+        """Resolve qualified dataset paths using target metadata and raw grants."""
+        requested = {
+            f"datasource access on [{path[0]}].[{path[3]}]"
+            for permission in permissions
+            if (path := parse_dataset_permission(permission)) is not None
+        }
+        candidates = [
+            (permission, permission_id, int(match[1]))
+            for permission, permission_id in available
+            if normalize_role_permission(permission) in requested
+            and (match := DATASET_PERMISSION_ID.fullmatch(permission))
+        ]
+        if candidates:
+            try:
+                names = dataset_names if dataset_names is not None else {}
+                pending = {dataset_id for _, _, dataset_id in candidates} - names.keys()
+                if pending:
+                    names.update(self._get_dataset_permission_names(pending))
+            except SupersetError as exc:
+                raise ValueError(
+                    "Cannot resolve qualified dataset permissions: target dataset "
+                    "metadata is unavailable",
+                ) from exc
+            for permission, permission_id, dataset_id in candidates:
+                reference = names.get(dataset_id)
+                if reference is None or reference[0] != normalize_role_permission(
+                    permission,
+                ):
+                    raise ValueError(
+                        f"Cannot determine full dataset path for target permission {permission!r}",
+                    )
+                available.append((reference[1], permission_id))
+        return resolve_role_permissions(permissions, available)
 
     def _export_roles_superset(self) -> List[RoleType]:
         """
@@ -1257,110 +1428,144 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         else:
             yield from self.export_rls_legacy()
 
-    def import_role(self, role: RoleType) -> None:
-        """
-        Import a given role.
-
-        When migrating Superset roles into Preset, only data-access perms
-        are migrated. Action perms are skipped with a warning (since in
-        Preset Cloud these are controlled via Workspace Roles).
-        """
-        if self._is_preset_workspace():
-            return self._import_dar_preset(role)
-
-        try:
-            existing_role_id = self._find_role_id_superset(role["name"])
-        except SupersetError:
-            return self._import_role_legacy(role)
-
-        return self._import_role_superset(role, existing_role_id)
-
-    def _find_role_id_superset(self, name: str) -> Optional[int]:
-        """
-        Return the id of an existing role with the given exact name via the
-        standard Superset Role REST API, or ``None`` if none exists.
-
-        Name filters on ``security/roles/search`` only support partial
-        matching, so we fetch the full list and match exactly, like
-        ``_export_roles_superset`` already does.
-
-        Raises ``SupersetError`` if the REST security API isn't available
-        (eg, an older Superset version), so callers can fall back to the
-        legacy CRUD forms.
-        """
-        for existing in self.get_resources("security/roles/search", "id"):
-            if existing["name"] == name:
-                return existing["id"]
-        return None
-
-    def _find_dar_preset(self, name: str) -> Optional[Dict[str, Any]]:
-        """
-        Return an existing DAR with the given exact name, or ``None`` if
-        none exists, including its current permissions. DAR name filters only
-        support partial matching, so we fetch the full list and match
-        exactly.
-        """
-        for existing in self.get_resources("security/dar", "name"):
-            if existing["name"] == name:
-                return existing
-        return None
-
-    def _import_role_superset(
+    def get_role_import_data(
         self,
         role: RoleType,
-        existing_role_id: Optional[int],
+        data: Optional[RoleImportData] = None,
+    ) -> RoleImportData:
+        """Fetch target lookups upstream, reusing results supplied by the caller."""
+        if data is None:
+            backend: Literal["superset", "preset", "legacy"] = "superset"
+            if self._is_preset_workspace():
+                backend = "preset"
+                raw_permissions = self.get_resources("security/dar_permissions", "id")
+                permissions = [
+                    (
+                        format_permission(perm["permission"], perm["view_menu"]),
+                        perm["id"],
+                    )
+                    for perm in raw_permissions
+                ]
+                roles = self.get_resources("security/dar", "name")
+            else:
+                try:
+                    raw_permissions = self.get_resources(
+                        "security/permissions-resources",
+                        "id",
+                    )
+                    roles = self.get_resources("security/roles/search", "id")
+                except SupersetError as exc:
+                    if exc.status_code != 404:
+                        raise
+                    backend = "legacy"
+                    permissions = self._get_legacy_role_permissions()
+                    roles = []
+                else:
+                    permissions = [
+                        (
+                            format_permission(
+                                perm["permission"]["name"],
+                                perm["view_menu"]["name"],
+                            ),
+                            perm["id"],
+                        )
+                        for perm in raw_permissions
+                    ]
+            data = {
+                "backend": backend,
+                "permissions": permissions,
+                "roles": {existing["name"]: existing for existing in roles},
+                "users": None,
+                "groups": None,
+                "datasets": {},
+            }
+
+        # Built-ins without data grants are skipped before membership validation.
+        if (
+            data["backend"] == "preset"
+            and role["name"] in BUILTIN_ROLE_NAMES
+            and not any(
+                permission.partition(" on ")[0] in DATA_ACCESS_PERMISSION_NAMES
+                for permission in role["permissions"]
+            )
+        ):
+            return data
+        if role["users"] and data["users"] is None:
+            data["users"] = {user["email"]: user["id"] for user in self.get_users()}
+        if (
+            role.get("groups")
+            and data["groups"] is None
+            and data["backend"] != "legacy"
+        ):
+            data["groups"] = {
+                group["name"]: group["id"]
+                for group in self.get_resources("security/groups", "id")
+            }
+        return data
+
+    def import_role(
+        self,
+        role: RoleType,
+        data: Optional[RoleImportData] = None,
     ) -> None:
-        """
-        Import a role into a standalone Superset instance via the REST API.
+        """Import a role using explicitly shared target lookups when provided.
 
-        Match raw permission names from ``security/permissions-resources``,
-        ignoring source-instance database and datasource IDs.
+        Preset imports skip action permissions, which Workspace Roles control.
         """
-        permission_ids = resolve_role_permissions(
+        if data is None:
+            data = self.get_role_import_data(role)
+        if data["backend"] == "preset":
+            return self._import_dar_preset(role, data)
+        if data["backend"] == "legacy":
+            return self._import_role_legacy(role, data)
+        return self._import_role_superset(role, data)
+
+    def _resolve_role_users(
+        self,
+        emails: List[str],
+        users: Dict[str, int],
+    ) -> List[int]:
+        """Reject requested users absent from the supplied target lookup."""
+        for email in emails:
+            if email not in users:
+                raise ValueError(f"User {email} not found in target")
+        return [users[email] for email in emails]
+
+    def _resolve_role_groups(
+        self,
+        names: List[str],
+        groups: Dict[str, int],
+    ) -> List[int]:
+        """Reject requested groups absent from the supplied target lookup."""
+        for name in names:
+            if name not in groups:
+                raise ValueError(f"Group {name} not found in target")
+        return [groups[name] for name in names]
+
+    def _import_role_superset(self, role: RoleType, data: RoleImportData) -> None:
+        """Replace a standalone role's relationships using target lookups."""
+        permission_ids = self._resolve_role_permission_ids(
             role["permissions"],
-            [
-                (
-                    format_permission(
-                        perm["permission"]["name"],
-                        perm["view_menu"]["name"],
-                    ),
-                    perm["id"],
-                )
-                for perm in self.get_resources("security/permissions-resources", "id")
-            ],
+            list(data["permissions"]),
+            data["datasets"],
         )
-
-        user_email_id_map = {user["email"]: user["id"] for user in self.get_users()}
-        user_ids: List[int] = []
-        for email in role["users"]:
-            if email not in user_email_id_map:
-                raise Exception(f"User {email} not found in target")
-            user_ids.append(user_email_id_map[email])
-
-        group_name_id_map = {
-            group["name"]: group["id"]
-            for group in self.get_resources("security/groups", "id")
-        }
-        group_ids: List[int] = []
-        for group_name in role.get("groups", []):
-            if group_name not in group_name_id_map:
-                raise Exception(f"Group {group_name} not found in target")
-            group_ids.append(group_name_id_map[group_name])
-
-        if existing_role_id is not None:
-            self.update_resource("security/roles", existing_role_id, name=role["name"])
-            role_id = existing_role_id
+        user_ids = self._resolve_role_users(role["users"], data["users"] or {})
+        group_ids = self._resolve_role_groups(
+            role.get("groups", []),
+            data["groups"] or {},
+        )
+        existing = data["roles"].get(role["name"])
+        if existing is not None:
+            role_id = existing["id"]
         else:
             role_id = self.create_resource("security/roles", name=role["name"])["id"]
-
+            # Creation persists even if a later relationship update fails.
+            data["roles"][role["name"]] = {"id": role_id, "name": role["name"]}
         self.update_role_permissions(role_id, permission_ids)
         self.update_role_users(role_id, user_ids)
         self.update_role_groups(role_id, group_ids)
 
-    def _import_dar_preset(
-        self,
-        role: RoleType,
-    ) -> None:
+    def _import_dar_preset(self, role: RoleType, data: RoleImportData) -> None:
         """
         Import a role into a Preset workspace as a Data Access Role (DAR).
 
@@ -1369,8 +1574,10 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         warning. This allows migrating a role exported from Superset OSS
         into a Preset workspace.
 
-        A source name that conflicts with an existing workspace role must be
-        renamed before importing; workspace roles are never updated here.
+        Built-in role names are suffixed with ``_Preset`` to avoid collisions
+        with system roles. These roles are skipped if they request no data
+        permissions. Requested data permissions must resolve on the target.
+        Workspace roles are never updated here.
         """
         data_permissions: List[str] = []
         skipped_actions = 0
@@ -1386,32 +1593,32 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
             data_permissions.append(permission)
 
-        # Preset labels raw datasource_access as "Dataset access" in "name".
-        # Match the raw fields used by exports instead of translating labels.
-        permission_ids = resolve_role_permissions(
+        permission_ids = self._resolve_role_permission_ids(
             data_permissions,
-            [
-                (format_permission(perm["permission"], perm["view_menu"]), perm["id"])
-                for perm in self.get_resources("security/dar_permissions", "id")
-            ],
+            list(data["permissions"]),
+            data["datasets"],
         )
 
-        user_email_id_map = {user["email"]: user["id"] for user in self.get_users()}
-        user_ids: List[int] = []
-        for email in role["users"]:
-            if email not in user_email_id_map:
-                raise Exception(f"User {email} not found in target")
-            user_ids.append(user_email_id_map[email])
+        if role["name"] in BUILTIN_ROLE_NAMES:
+            if not permission_ids:
+                _logger.warning(
+                    "Skipping built-in role %s: no data-access permissions resolve "
+                    "on the target. No Data Access Role was created or updated. ",
+                    role["name"],
+                )
+                return
+            _logger.info(
+                "Importing built-in role %s as Data Access Role %s_Preset",
+                role["name"],
+                role["name"],
+            )
+            role = {**role, "name": f"{role['name']}_Preset"}
 
-        group_name_id_map = {
-            group["name"]: group["id"]
-            for group in self.get_resources("security/groups", "id")
-        }
-        group_ids: List[int] = []
-        for group_name in role.get("groups", []):
-            if group_name not in group_name_id_map:
-                raise Exception(f"Group {group_name} not found in target")
-            group_ids.append(group_name_id_map[group_name])
+        user_ids = self._resolve_role_users(role["users"], data["users"] or {})
+        group_ids = self._resolve_role_groups(
+            role.get("groups", []),
+            data["groups"] or {},
+        )
 
         payload: Dict[str, Any] = {
             "name": role["name"],
@@ -1420,11 +1627,15 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             "groups": group_ids,
         }
 
-        existing_dar = self._find_dar_preset(role["name"])
+        existing_dar = data["roles"].get(role["name"])
         if existing_dar is not None:
             self.update_resource("security/dar", existing_dar["id"], **payload)
+            role_id = existing_dar["id"]
         else:
-            self.create_resource("security/dar", **payload)
+            created = self.create_resource("security/dar", **payload)
+            role_id = created["id"]
+
+        data["roles"][role["name"]] = {**payload, "id": role_id}
 
         _logger.info(
             "Role %s: imported %d data-access permission(s), skipped %d action "
@@ -1445,18 +1656,32 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     len(existing_dar["permissions"]),
                     len(role["permissions"]),
                 )
-            else:
-                _logger.warning(
-                    "Role %s imported as an empty Data Access Role: none of its %d "
-                    "source permissions could be imported. This role grants no data "
-                    "access.",
-                    role["name"],
-                    len(role["permissions"]),
-                )
+                return
+            _logger.warning(
+                "Role %s imported as an empty Data Access Role: none of its %d "
+                "source permissions could be imported. This role grants no data "
+                "access.",
+                role["name"],
+                len(role["permissions"]),
+            )
+
+    def _get_legacy_role_permissions(self) -> List[Tuple[str, int]]:
+        """Read the target permission choices exposed by the legacy form."""
+        url = self.baseurl / "roles/add"
+        _logger.debug("GET %s", url)
+        response = self.session.get(url)
+        validate_response(response)
+        soup = BeautifulSoup(response.text, features="html.parser")
+        select = soup.find("select", id="permissions")
+        return [
+            (option.text.strip(), int(option.attrs["value"]))
+            for option in select.find_all("option")
+        ]
 
     def _import_role_legacy(  # pylint: disable=too-many-locals
         self,
         role: RoleType,
+        data: RoleImportData,
     ) -> None:
         """
         Import a role by crawling the CRUD HTML pages (for Superset
@@ -1465,25 +1690,18 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         Note: like ``_export_roles_legacy``, this doesn't support groups --
         legacy Superset instances predate the Groups feature.
         """
-        user_id_map = {user["email"]: user["id"] for user in self.get_users()}
-        user_ids = [
-            user_id_map[email] for email in role["users"] if email in user_id_map
-        ]
+        if role.get("groups"):
+            raise ValueError("Legacy Superset role imports do not support groups")
 
-        url = self.baseurl / "roles/add"
-        _logger.debug("GET %s", url)
-        response = self.session.get(url)
-        soup = BeautifulSoup(response.text, features="html.parser")
-        select = soup.find("select", id="permissions")
-        permission_ids = resolve_role_permissions(
+        user_ids = self._resolve_role_users(role["users"], data["users"] or {})
+        permission_ids = self._resolve_role_permission_ids(
             role["permissions"],
-            [
-                (option.text.strip(), int(option.attrs["value"]))
-                for option in select.find_all("option")
-            ],
+            list(data["permissions"]),
+            data["datasets"],
         )
+        url = self.baseurl / "roles/add"
 
-        data = {
+        payload = {
             "name": role["name"],
             "user": user_ids,
             "permissions": permission_ids,
@@ -1509,13 +1727,13 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
                     role_id = int(td.find("input").attrs["id"])
 
                 update_url = self.baseurl / "roles/edit" / str(role_id)
-                _logger.debug("POST %s\n%s", update_url, json.dumps(data, indent=4))
-                response = self.session.post(update_url, data=data)
+                _logger.debug("POST %s\n%s", update_url, json.dumps(payload, indent=4))
+                response = self.session.post(update_url, data=payload)
                 validate_response(response)
                 return
 
-        _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
-        response = self.session.post(url, data=data)
+        _logger.debug("POST %s\n%s", url, json.dumps(payload, indent=4))
+        response = self.session.post(url, data=payload)
         validate_response(response)
 
     def import_rls(self, rls: RuleType) -> None:  # pylint: disable=too-many-locals

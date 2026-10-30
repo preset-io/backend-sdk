@@ -3,7 +3,7 @@ Custom exceptions.
 """
 
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from typing_extensions import TypedDict
 
@@ -34,9 +34,10 @@ class SupersetError(Exception):
     A SIP-40 compliant exception.
     """
 
-    def __init__(self, errors: List[ErrorPayload]):
+    def __init__(self, errors: List[ErrorPayload], status_code: Optional[int] = None):
         super().__init__()
         self.errors = errors
+        self.status_code = status_code
 
 
 class DatabaseNotFoundError(SupersetError):
