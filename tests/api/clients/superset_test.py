@@ -23,7 +23,9 @@ from preset_cli.api.clients.superset import (
     SupersetClient,
     convert_to_adhoc_column,
     convert_to_adhoc_metric,
+    normalize_role_permission,
     parse_html_array,
+    resolve_role_permissions,
 )
 from preset_cli.api.operators import OneToMany
 from preset_cli.auth.main import Auth
@@ -2996,17 +2998,22 @@ def test_parse_html_array() -> None:
     )
 
 
-def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
+def test_import_role_legacy(mocker: MockerFixture, requests_mock: Mocker) -> None:
     """
-    Test the ``import_role`` method.
+    Test the ``import_role`` method falling back to the legacy HTML CRUD forms
+    when the REST security API isn't available.
     """
     _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/roles/add",
         text="""
 <select id="permissions">
-    <option value="1">All database access</option>
-    <option value="2">Schema access on Google Sheets.main</option>
+    <option value="1">all database access on all_database_access</option>
+    <option value="2">schema access on [Google Sheets].[main]</option>
 </select>
     """,
     )
@@ -3061,25 +3068,112 @@ def test_import_role(mocker: MockerFixture, requests_mock: Mocker) -> None:
             "Permission %s not found in target",
             "can do something that is not in Preset",
         ),
-        mock.call("Permission %s not found in target", "Database access on Not added"),
         mock.call(
             "Permission %s not found in target",
-            "Dataset access on Not added.nope",
+            "database access on [Not added].(id:1)",
+        ),
+        mock.call(
+            "Permission %s not found in target",
+            "datasource access on [Not added].[nope](id:42)",
         ),
     ]
 
 
-def test_import_role_update(mocker: MockerFixture, requests_mock: Mocker) -> None:
+def test_legacy_role_round_trip_preserves_underscores(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """Legacy CRUD exports must retain global and resource permission names."""
+    permissions = [
+        "all database access on all_database_access",
+        "all datasource access on all_datasource_access",
+        "all query access on all_query_access",
+        "database access on [analytics_db].(id:4)",
+        "schema access on [analytics_db].[sales_reporting]",
+        "datasource access on [analytics_db].[daily_sales](id:23)",
+        "can read on Chart",
+    ]
+    source = SupersetClient("https://old-source.example.org/", Auth())
+    target = SupersetClient("https://old-target.example.org/", Auth())
+    mocker.patch.object(source, "get_users", return_value=[])
+    mocker.patch.object(target, "get_users", return_value=[])
+    requests_mock.get(
+        "https://old-source.example.org/api/v1/security/permissions-resources/",
+        status_code=404,
+    )
+    requests_mock.get(
+        "https://old-source.example.org/roles/list/",
+        [
+            {
+                "text": '<table></table><table><tr><th>Roles</th></tr><tr><td><a href="/roles/edit/7">Edit</a></td></tr></table>',
+            },
+            {"text": "<table></table><table><tr><th>Roles</th></tr></table>"},
+        ],
+    )
+    source_options = "".join(
+        f'<option value="{i}" selected>{permission}</option>'
+        for i, permission in enumerate(permissions, 1)
+    )
+    requests_mock.get(
+        "https://old-source.example.org/roles/edit/7",
+        text='<input name="name" value="Legacy Analyst" />'
+        f'<select id="permissions">{source_options}</select>'
+        '<select id="user"></select>',
+    )
+    exported = source.export_roles()
+    assert exported == [
+        {
+            "name": "Legacy Analyst",
+            "permissions": permissions,
+            "users": [],
+            "groups": [],
+        },
+    ]
+
+    requests_mock.get(
+        "https://old-target.example.org/api/v1/security/roles/search/",
+        status_code=404,
+    )
+    target_options = "".join(
+        f'<option value="{i}">{permission.replace("(id:4)", "(id:99)").replace("(id:23)", "(id:201)")}</option>'
+        for i, permission in enumerate(permissions, 100)
+    )
+    requests_mock.get(
+        "https://old-target.example.org/roles/add",
+        text=f'<select id="permissions">{target_options}</select>',
+    )
+    requests_mock.get(
+        "https://old-target.example.org/roles/list/",
+        text="<table></table>",
+    )
+    requests_mock.post("https://old-target.example.org/roles/add")
+
+    target.import_role(exported[0])
+
+    assert requests_mock.last_request.text == (
+        "name=Legacy+Analyst&permissions=100&permissions=101&permissions=102"
+        "&permissions=103&permissions=104&permissions=105&permissions=106"
+    )
+
+
+def test_import_role_legacy_update(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
     """
-    Test the ``import_role`` method on updates.
+    Test the ``import_role`` method on updates, via the legacy HTML CRUD forms.
     """
     _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/roles/add",
         text="""
 <select id="permissions">
-    <option value="1">All database access</option>
-    <option value="2">Schema access on Google Sheets.main</option>
+    <option value="1">all database access on all_database_access</option>
+    <option value="2">schema access on [Google Sheets].[main]</option>
 </select>
     """,
     )
@@ -3185,10 +3279,13 @@ def test_import_role_update(mocker: MockerFixture, requests_mock: Mocker) -> Non
             "Permission %s not found in target",
             "can do something that is not in Preset",
         ),
-        mock.call("Permission %s not found in target", "Database access on Not added"),
         mock.call(
             "Permission %s not found in target",
-            "Dataset access on Not added.nope",
+            "database access on [Not added].(id:1)",
+        ),
+        mock.call(
+            "Permission %s not found in target",
+            "datasource access on [Not added].[nope](id:42)",
         ),
     ]
 
@@ -3199,6 +3296,1211 @@ def test_import_role_update(mocker: MockerFixture, requests_mock: Mocker) -> Non
     role["name"] = "Other"
     client.import_role(role)
     assert requests_mock.last_request.url == "https://superset.example.org/roles/add"
+
+
+def _find_request(requests_mock: Mocker, method: str, suffix: str):
+    """
+    Helper to find a specific request in the mock history by method and URL
+    suffix, regardless of the order in which other requests were made.
+    """
+    return next(
+        req
+        for req in requests_mock.request_history
+        if req.method == method and req.url.endswith(suffix)
+    )
+
+
+def test_import_role_superset_api_create(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` creating a new role on a standalone Superset
+    instance via the REST API.
+    """
+    mocker.patch.object(
+        SupersetClient,
+        "get_users",
+        return_value=[
+            {"id": 1, "email": "adoe@example.com"},
+            {"id": 2, "email": "bdoe@example.com"},
+        ],
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={
+            "result": [
+                {
+                    "id": 1,
+                    "permission": {"name": "can_read"},
+                    "view_menu": {"name": "Chart"},
+                },
+                {
+                    "id": 2,
+                    "permission": {"name": "can_write"},
+                    "view_menu": {"name": "Chart"},
+                },
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 10, "name": "Data Team"}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.post(
+        "https://superset.example.org/api/v1/security/roles/",
+        json={"id": 42},
+    )
+    requests_mock.post(
+        "https://superset.example.org/api/v1/security/roles/42/permissions",
+        json={},
+    )
+    requests_mock.put(
+        "https://superset.example.org/api/v1/security/roles/42/users",
+        json={},
+    )
+    requests_mock.put(
+        "https://superset.example.org/api/v1/security/roles/42/groups",
+        json={},
+    )
+
+    role: RoleType = {
+        "name": "Analyst",
+        "permissions": ["can read on Chart", "can write on Chart"],
+        "users": ["adoe@example.com", "bdoe@example.com"],
+        "groups": ["Data Team"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_role(role)
+
+    assert _find_request(
+        requests_mock,
+        "POST",
+        "/api/v1/security/roles/",
+    ).json() == {"name": "Analyst"}
+    assert _find_request(
+        requests_mock,
+        "POST",
+        "/api/v1/security/roles/42/permissions",
+    ).json() == {"permission_view_menu_ids": [1, 2]}
+    assert _find_request(
+        requests_mock,
+        "PUT",
+        "/api/v1/security/roles/42/users",
+    ).json() == {"user_ids": [1, 2]}
+    assert _find_request(
+        requests_mock,
+        "PUT",
+        "/api/v1/security/roles/42/groups",
+    ).json() == {"group_ids": [10]}
+
+
+def test_import_role_superset_api_update(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` updating an existing role on a standalone Superset
+    instance via the REST API. Permissions/users/groups are fully replaced
+    to match the YAML -- an empty ``groups`` clears existing membership.
+    """
+    mocker.patch.object(
+        SupersetClient,
+        "get_users",
+        return_value=[{"id": 1, "email": "adoe@example.com"}],
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 6, "name": "Other"}, {"id": 7, "name": "Analyst"}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 10, "name": "Data Team"}]},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.put(
+        "https://superset.example.org/api/v1/security/roles/7",
+        json={},
+    )
+    requests_mock.post(
+        "https://superset.example.org/api/v1/security/roles/7/permissions",
+        json={},
+    )
+    requests_mock.put(
+        "https://superset.example.org/api/v1/security/roles/7/users",
+        json={},
+    )
+    requests_mock.put(
+        "https://superset.example.org/api/v1/security/roles/7/groups",
+        json={},
+    )
+
+    # ``groups`` is empty -- the role should end up with no groups on the
+    # target, even if it currently belongs to some
+    role: RoleType = {
+        "name": "Analyst",
+        "permissions": [],
+        "users": ["adoe@example.com"],
+        "groups": [],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_role(role)
+
+    assert _find_request(
+        requests_mock,
+        "PUT",
+        "/api/v1/security/roles/7",
+    ).json() == {"name": "Analyst"}
+    assert _find_request(
+        requests_mock,
+        "PUT",
+        "/api/v1/security/roles/7/groups",
+    ).json() == {"group_ids": []}
+
+
+def test_import_role_superset_permission_not_found(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` warning (but not failing) on an unmapped permission.
+    """
+    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+    mocker.patch.object(SupersetClient, "get_users", return_value=[])
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.post(
+        "https://superset.example.org/api/v1/security/roles/",
+        json={"id": 42},
+    )
+    requests_mock.post(
+        "https://superset.example.org/api/v1/security/roles/42/permissions",
+        json={},
+    )
+    requests_mock.put(
+        "https://superset.example.org/api/v1/security/roles/42/users",
+        json={},
+    )
+    requests_mock.put(
+        "https://superset.example.org/api/v1/security/roles/42/groups",
+        json={},
+    )
+
+    role: RoleType = {
+        "name": "Analyst",
+        "permissions": ["can read on Chart"],
+        "users": [],
+        "groups": [],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    client.import_role(role)
+
+    _logger.warning.assert_called_once_with(
+        "Permission %s not found in target",
+        "can read on Chart",
+    )
+    assert _find_request(
+        requests_mock,
+        "POST",
+        "/api/v1/security/roles/42/permissions",
+    ).json() == {"permission_view_menu_ids": []}
+
+
+def test_import_role_superset_user_not_found(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` raising when a user referenced by the YAML doesn't
+    exist on the target.
+    """
+    mocker.patch.object(SupersetClient, "get_users", return_value=[])
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+
+    role: RoleType = {
+        "name": "Analyst",
+        "permissions": [],
+        "users": ["missing@example.com"],
+        "groups": [],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    with pytest.raises(Exception, match="User missing@example.com not found in target"):
+        client.import_role(role)
+
+
+def test_import_role_superset_group_not_found(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` raising when a group referenced by the YAML doesn't
+    exist on the target.
+    """
+    mocker.patch.object(SupersetClient, "get_users", return_value=[])
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/roles/search/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/permissions-resources/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://superset.example.org/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+
+    role: RoleType = {
+        "name": "Analyst",
+        "permissions": [],
+        "users": [],
+        "groups": ["Missing Group"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://superset.example.org/", auth)
+    with pytest.raises(Exception, match="Group Missing Group not found in target"):
+        client.import_role(role)
+
+
+def test_import_dar_preset_create(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` creating a new Data Access Role on a Preset
+    workspace.
+    """
+    mocker.patch.object(
+        SupersetClient,
+        "get_users",
+        return_value=[{"id": 10, "email": "vitor@example.com"}],
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={
+            "result": [
+                {
+                    "id": 5,
+                    "name": "Database access on Google Sheets",
+                    "permission": "database_access",
+                    "view_menu": "[Google Sheets].(id:2)",
+                },
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": [{"id": 20, "name": "Analysts"}]},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.post(
+        "https://abc123.app.preset.io/api/v1/security/dar/",
+        json={"id": 99},
+    )
+
+    role: RoleType = {
+        "name": "rls_test",
+        "permissions": ["database access on [Google Sheets].(id:1)"],
+        "users": ["vitor@example.com"],
+        "groups": ["Analysts"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://abc123.app.preset.io/", auth)
+    client.import_role(role)
+
+    assert _find_request(
+        requests_mock,
+        "POST",
+        "/api/v1/security/dar/",
+    ).json() == {
+        "name": "rls_test",
+        "permissions": [5],
+        "users": [10],
+        "groups": [20],
+    }
+
+
+def test_import_dar_preset_update(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Test ``import_role`` updating an existing Data Access Role on a Preset
+    workspace.
+    """
+    mocker.patch.object(SupersetClient, "get_users", return_value=[])
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:0,page_size:100)",
+        json={
+            "result": [
+                {"id": 36, "name": "other"},
+                {"id": 37, "name": "rls_test", "permissions": [{"id": 1}, {"id": 2}]},
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.put(
+        "https://abc123.app.preset.io/api/v1/security/dar/37",
+        json={},
+    )
+
+    role: RoleType = {
+        "name": "rls_test",
+        "permissions": ["can read on Chart"],
+        "users": [],
+        "groups": [],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://abc123.app.preset.io/", auth)
+    client.import_role(role)
+
+    assert _find_request(
+        requests_mock,
+        "PUT",
+        "/api/v1/security/dar/37",
+    ).json() == {
+        "name": "rls_test",
+        "permissions": [],
+        "users": [],
+        "groups": [],
+    }
+
+    assert any(
+        "Role rls_test overwritten as an empty Data Access Role" in message
+        and "all 2 existing data-access permission(s) were removed" in message
+        for message in caplog.messages
+    )
+
+
+def test_import_dar_preset_group_not_found(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` raising when a DAR references a group that doesn't
+    exist on the target Preset workspace.
+    """
+    mocker.patch.object(SupersetClient, "get_users", return_value=[])
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+
+    role: RoleType = {
+        "name": "rls_test",
+        "permissions": [],
+        "users": [],
+        "groups": ["Missing Group"],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://abc123.app.preset.io/", auth)
+    with pytest.raises(Exception, match="Group Missing Group not found in target"):
+        client.import_role(role)
+
+
+def test_import_dar_preset_user_not_found(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` raising when a DAR references a user that doesn't
+    exist on the target Preset workspace.
+    """
+    mocker.patch.object(SupersetClient, "get_users", return_value=[])
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+
+    role: RoleType = {
+        "name": "rls_test",
+        "permissions": [],
+        "users": ["missing@example.com"],
+        "groups": [],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://abc123.app.preset.io/", auth)
+    with pytest.raises(Exception, match="User missing@example.com not found in target"):
+        client.import_role(role)
+
+
+def test_import_dar_preset_permission_not_found(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test ``import_role`` warning (but not failing) when a data-access
+    permission translates correctly but isn't found on the target Preset
+    workspace's DAR permission list.
+    """
+    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+    mocker.patch.object(SupersetClient, "get_users", return_value=[])
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.post(
+        "https://abc123.app.preset.io/api/v1/security/dar/",
+        json={"id": 99},
+    )
+
+    role: RoleType = {
+        "name": "rls_test",
+        "permissions": ["database access on [Not added].(id:1)"],
+        "users": [],
+        "groups": [],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://abc123.app.preset.io/", auth)
+    client.import_role(role)
+
+    _logger.warning.assert_any_call(
+        "Permission %s not found in target",
+        "database access on [Not added].(id:1)",
+    )
+
+
+@pytest.mark.parametrize(
+    "existing_role_id, existing_permission_ids",
+    [(None, []), (42, []), (42, [1, 2])],
+)
+@pytest.mark.parametrize(
+    "permissions, expected_count, expect_empty_warning",
+    [
+        (["can read on Chart", "can write on Dashboard"], 0, True),
+        (["database access on [Missing].(id:1)"], 0, True),
+        ([], 0, False),  # Intentionally empty roles are useful for RLS.
+        (
+            ["database access on [examples].(id:99)", "can read on Chart"],
+            1,
+            False,
+        ),
+    ],
+)
+def test_import_dar_flags_lost_permissions(  # pylint: disable=too-many-arguments
+    mocker: MockerFixture,
+    caplog: pytest.LogCaptureFixture,
+    existing_role_id: int | None,
+    existing_permission_ids: list[int],
+    permissions: list[str],
+    expected_count: int,
+    expect_empty_warning: bool,
+) -> None:
+    """Flag nonempty roles that become empty on creates and replacements."""
+    client = SupersetClient("https://abc123.app.preset.io/", Auth())
+    mocker.patch.object(
+        client,
+        "get_resources",
+        side_effect=[
+            [
+                {
+                    "id": 5,
+                    "permission": "database_access",
+                    "view_menu": "[examples].(id:7)",
+                },
+            ],
+            [],
+        ],
+    )
+    mocker.patch.object(client, "get_users", return_value=[])
+    mocker.patch.object(
+        client,
+        "_find_dar_preset",
+        return_value=(
+            {"id": existing_role_id, "permissions": existing_permission_ids}
+            if existing_role_id is not None
+            else None
+        ),
+    )
+    create = mocker.patch.object(client, "create_resource")
+    update = mocker.patch.object(client, "update_resource")
+
+    client.import_role(
+        {
+            "name": "Migrated Analyst",
+            "permissions": permissions,
+            "users": [],
+            "groups": [],
+        },
+    )
+
+    payload = {
+        "name": "Migrated Analyst",
+        "permissions": [5] if expected_count else [],
+        "users": [],
+        "groups": [],
+    }
+    if existing_role_id is None:
+        create.assert_called_once_with("security/dar", **payload)
+        update.assert_not_called()
+    else:
+        update.assert_called_once_with("security/dar", existing_role_id, **payload)
+        create.assert_not_called()
+
+    warnings = [
+        message for message in caplog.messages if "empty Data Access Role" in message
+    ]
+    assert bool(warnings) == expect_empty_warning
+    if expect_empty_warning:
+        assert len(warnings) == 1
+        if existing_permission_ids:
+            assert (
+                "Role Migrated Analyst overwritten as an empty Data Access Role"
+                in warnings[0]
+            )
+            assert (
+                f"all {len(existing_permission_ids)} existing data-access permission(s) were removed"
+                in warnings[0]
+            )
+        else:
+            assert (
+                "Role Migrated Analyst imported as an empty Data Access Role"
+                in warnings[0]
+            )
+            assert "were removed" not in warnings[0]
+        assert (
+            f"none of its {len(permissions)} source permissions could be imported"
+            in warnings[0]
+        )
+        assert "This role grants no data access." in warnings[0]
+
+
+@pytest.mark.parametrize("existing_role_id", [None, 42])
+def test_import_dar_does_not_report_success_on_failure(
+    mocker: MockerFixture,
+    caplog: pytest.LogCaptureFixture,
+    existing_role_id: int | None,
+) -> None:
+    """Success summaries and empty-result warnings require a successful write."""
+    caplog.set_level("INFO", logger="preset_cli.api.clients.superset")
+    client = SupersetClient("https://abc123.app.preset.io/", Auth())
+    mocker.patch.object(client, "get_resources", return_value=[])
+    mocker.patch.object(client, "get_users", return_value=[])
+    mocker.patch.object(
+        client,
+        "_find_dar_preset",
+        return_value=(
+            {"id": existing_role_id, "permissions": [1, 2]}
+            if existing_role_id is not None
+            else None
+        ),
+    )
+    mocker.patch.object(
+        client,
+        "create_resource",
+        side_effect=RuntimeError("Import failed"),
+    )
+    mocker.patch.object(
+        client,
+        "update_resource",
+        side_effect=RuntimeError("Import failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="Import failed"):
+        client.import_role(
+            {
+                "name": "Analyst",
+                "permissions": ["can read on Chart"],
+                "users": [],
+                "groups": [],
+            },
+        )
+
+    assert not any("empty Data Access Role" in message for message in caplog.messages)
+    assert not any("Role Analyst: imported" in message for message in caplog.messages)
+
+
+@pytest.mark.parametrize(
+    "permission, expected",
+    [
+        ("database access on [examples].(id:3)", "database access on [examples]."),
+        (
+            "datasource access on [examples].[birth_names](id:18)",
+            "datasource access on [examples].[birth_names]",
+        ),
+        (
+            "datasource access on [Semantic Layer](id:bba21e76ffc348c586d4c28d8aa70e54)",
+            "datasource access on [Semantic Layer]",
+        ),
+        (
+            "schema access on [db].[catalog].[schema]",
+            "schema access on [db].[catalog].[schema]",
+        ),
+        ("catalog access on [db].[catalog]", "catalog access on [db].[catalog]"),
+        ("can read on Resource(id:3)", "can read on Resource(id:3)"),
+    ],
+)
+def test_normalize_role_permission(permission: str, expected: str) -> None:
+    """Only data-resource IDs are local; catalog and action names must survive."""
+    assert normalize_role_permission(permission) == expected
+
+
+@pytest.mark.parametrize(
+    "permission, target_permission",
+    [
+        (
+            "database access on [examples].(id:900003)",
+            "database access on [examples].(id:3)",
+        ),
+        (
+            "datasource access on [examples].[birth_names](id:900018)",
+            "datasource access on [examples].[birth_names](id:18)",
+        ),
+        (
+            "schema access on [db].[catalog].[schema]",
+            "schema access on [db].[catalog].[schema]",
+        ),
+    ],
+)
+def test_import_role_remaps_source_resource_ids(
+    mocker: MockerFixture,
+    permission: str,
+    target_permission: str,
+) -> None:
+    """A role exported from a different instance must retain its data grants."""
+    client = SupersetClient("https://superset.example.org/", Auth())
+    permission_name, _, view_menu = target_permission.partition(" on ")
+    target = {
+        "id": 50,
+        "permission": {"name": permission_name.replace(" ", "_")},
+        "view_menu": {"name": view_menu},
+    }
+    mocker.patch.object(client, "_find_role_id_superset", return_value=None)
+    mocker.patch.object(client, "get_resources", side_effect=[[target], []])
+    mocker.patch.object(client, "get_users", return_value=[])
+    mocker.patch.object(client, "create_resource", return_value={"id": 42})
+    update_permissions = mocker.patch.object(client, "update_role_permissions")
+    update_users = mocker.patch.object(client, "update_role_users")
+    update_groups = mocker.patch.object(client, "update_role_groups")
+
+    client.import_role(
+        {"name": "Analyst", "permissions": [permission], "users": [], "groups": []},
+    )
+
+    update_permissions.assert_called_once_with(42, [50])
+    update_users.assert_called_once_with(42, [])
+    update_groups.assert_called_once_with(42, [])
+
+
+def test_import_role_rejects_ambiguous_dataset_before_updates(
+    mocker: MockerFixture,
+) -> None:
+    """Duplicate dataset names cannot safely be resolved using source IDs."""
+    client = SupersetClient("https://superset.example.org/", Auth())
+    mocker.patch.object(client, "_find_role_id_superset", return_value=42)
+    mocker.patch.object(
+        client,
+        "get_resources",
+        return_value=[
+            {
+                "id": id_,
+                "permission": {"name": "datasource_access"},
+                "view_menu": {"name": f"[examples].[orders](id:{id_})"},
+            }
+            for id_ in (1, 2)
+        ],
+    )
+    update = mocker.patch.object(client, "update_resource")
+    update_permissions = mocker.patch.object(client, "update_role_permissions")
+    update_users = mocker.patch.object(client, "update_role_users")
+    update_groups = mocker.patch.object(client, "update_role_groups")
+    with pytest.raises(ValueError, match="ambiguous in target"):
+        client.import_role(
+            {
+                "name": "Analyst",
+                "permissions": ["datasource access on [examples].[orders](id:1)"],
+                "users": [],
+                "groups": [],
+            },
+        )
+    update.assert_not_called()
+    update_permissions.assert_not_called()
+    update_users.assert_not_called()
+    update_groups.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "permission_name, source_view, target_view, label",
+    [
+        ("database_access", "[db].(id:1)", "[db].(id:9)", "Database access on db"),
+        (
+            "datasource_access",
+            "[db].[table](id:1)",
+            "[db].[table](id:9)",
+            "Dataset access on db.table",
+        ),
+        (
+            "datasource_access",
+            "[db].[table](id:1)",
+            "[db].[table](id:9)",
+            "Datasource access on db.table",
+        ),
+        (
+            "all_datasource_access",
+            "all_datasource_access",
+            "all_datasource_access",
+            "All dataset access",
+        ),
+        (
+            "all_datasource_access",
+            "all_datasource_access",
+            "all_datasource_access",
+            "All datasource access",
+        ),
+        (
+            "all_database_access",
+            "all_database_access",
+            "all_database_access",
+            "All database access",
+        ),
+        (
+            "all_query_access",
+            "all_query_access",
+            "all_query_access",
+            "All query access",
+        ),
+        (
+            "schema_access",
+            "[db].[catalog].[schema]",
+            "[db].[catalog].[schema]",
+            "Schema access on db.catalog.schema",
+        ),
+        (
+            "catalog_access",
+            "[db].[catalog]",
+            "[db].[catalog]",
+            "Catalog access on db.catalog",
+        ),
+    ],
+)
+def test_import_dar_matches_raw_fields(
+    mocker: MockerFixture,
+    permission_name: str,
+    source_view: str,
+    target_view: str,
+    label: str,
+) -> None:
+    """DAR display labels must not affect data grant identity or truncate catalogs."""
+    client = SupersetClient("https://abc123.app.preset.io/", Auth())
+    mocker.patch.object(
+        client,
+        "get_resources",
+        side_effect=[
+            [
+                {
+                    "id": 5,
+                    "name": label,
+                    "permission": permission_name,
+                    "view_menu": target_view,
+                },
+            ],
+            [],
+            [],
+        ],
+    )
+    mocker.patch.object(client, "get_users", return_value=[])
+    create = mocker.patch.object(client, "create_resource")
+    client.import_role(
+        {
+            "name": "Analyst",
+            "permissions": [f"{permission_name.replace('_', ' ')} on {source_view}"],
+            "users": [],
+            "groups": [],
+        },
+    )
+    create.assert_called_once_with(
+        "security/dar",
+        name="Analyst",
+        permissions=[5],
+        users=[],
+        groups=[],
+    )
+
+
+def test_resolve_role_permissions_keeps_catalogs_distinct() -> None:
+    """A grant on one catalog's schema must not select another catalog."""
+    assert resolve_role_permissions(
+        ["schema access on [db].[catalog2].[public]"],
+        [
+            ("schema access on [db].[catalog1].[public]", 1),
+            ("schema access on [db].[catalog2].[public]", 2),
+        ],
+    ) == [2]
+
+
+def test_import_dar_preset_skips_action_permissions(
+    mocker: MockerFixture,
+    requests_mock: Mocker,
+) -> None:
+    """
+    Test that ``import_role`` skips "action" permissions (that DARs can't
+    represent) with a distinct warning when migrating a role into a Preset
+    workspace, e.g. one exported from Superset OSS.
+    """
+    _logger = mocker.patch("preset_cli.api.clients.superset._logger")
+    mocker.patch.object(SupersetClient, "get_users", return_value=[])
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={
+            "result": [
+                {
+                    "id": 5,
+                    "name": "Database access on Google Sheets",
+                    "permission": "database_access",
+                    "view_menu": "[Google Sheets].(id:2)",
+                },
+            ],
+        },
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar_permissions/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/groups/?q="
+        "(filters:!(),order_column:id,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:0,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.get(
+        "https://abc123.app.preset.io/api/v1/security/dar/?q="
+        "(filters:!(),order_column:name,order_direction:desc,page:1,page_size:100)",
+        json={"result": []},
+    )
+    requests_mock.post(
+        "https://abc123.app.preset.io/api/v1/security/dar/",
+        json={"id": 99},
+    )
+
+    role: RoleType = {
+        "name": "Custom Role",
+        "permissions": [
+            "database access on [Google Sheets].(id:1)",
+            "can read on Chart",
+            "menu access on Charts",
+        ],
+        "users": [],
+        "groups": [],
+    }
+
+    auth = Auth()
+    client = SupersetClient("https://abc123.app.preset.io/", auth)
+    client.import_role(role)
+
+    assert (
+        mock.call(
+            "Permission %r cannot be represented in a Data Access Role "
+            "(action permissions are not supported) and will be skipped",
+            "can read on Chart",
+        )
+        in _logger.warning.mock_calls
+    )
+    assert (
+        mock.call(
+            "Permission %r cannot be represented in a Data Access Role "
+            "(action permissions are not supported) and will be skipped",
+            "menu access on Charts",
+        )
+        in _logger.warning.mock_calls
+    )
+    _logger.info.assert_any_call(
+        "Role %s: imported %d data-access permission(s), skipped %d action "
+        "permission(s) unsupported by Data Access Roles",
+        "Custom Role",
+        1,
+        2,
+    )
+    assert _find_request(
+        requests_mock,
+        "POST",
+        "/api/v1/security/dar/",
+    ).json() == {
+        "name": "Custom Role",
+        "permissions": [5],
+        "users": [],
+        "groups": [],
+    }
+
+
+@pytest.mark.parametrize("role_name", ["Admin", "Alpha", "Gamma", "Public", "sql_lab"])
+def test_import_dar_preset_imports_builtin_data_permissions(
+    mocker: MockerFixture,
+    caplog: pytest.LogCaptureFixture,
+    role_name: str,
+) -> None:
+    """Built-in role names must not cause usable data grants to be discarded."""
+    client = SupersetClient("https://abc123.app.preset.io/", Auth())
+    mocker.patch.object(
+        client,
+        "get_resources",
+        side_effect=[
+            [
+                {
+                    "id": 5,
+                    "name": "All dataset access",
+                    "permission": "all_datasource_access",
+                    "view_menu": "all_datasource_access",
+                },
+            ],
+            [],
+        ],
+    )
+    mocker.patch.object(client, "get_users", return_value=[])
+    mocker.patch.object(client, "_find_dar_preset", return_value=None)
+    create = mocker.patch.object(client, "create_resource")
+
+    client.import_role(
+        {
+            "name": role_name,
+            "permissions": [
+                "all datasource access on all_datasource_access",
+                "can read on Chart",
+            ],
+            "users": [],
+            "groups": [],
+        },
+    )
+
+    create.assert_called_once_with(
+        "security/dar",
+        name=role_name,
+        permissions=[5],
+        users=[],
+        groups=[],
+    )
+    assert any(
+        "can read on Chart" in message and "will be skipped" in message
+        for message in caplog.messages
+    )
+    assert not any("empty Data Access Role" in message for message in caplog.messages)
 
 
 def test_import_rls(requests_mock: Mocker) -> None:

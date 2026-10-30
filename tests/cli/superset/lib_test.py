@@ -35,7 +35,7 @@ def test_get_logs_new_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     assert get_logs(LogType.ASSETS) == (
         Path("progress.log"),
-        {"assets": [], "ownership": []},
+        {"assets": [], "ownership": [], "roles": []},
     )
 
 
@@ -88,10 +88,14 @@ def test_get_logs_existing_file(mocker: MockerFixture, fs: FakeFilesystem) -> No
                     "uuid": "uuid2",
                 },
             ],
+            "roles": [],
         },
     )
 
-    assert get_logs(LogType.OWNERSHIP) == (root / "progress.log", logs_content)
+    assert get_logs(LogType.OWNERSHIP) == (
+        root / "progress.log",
+        {**logs_content, "roles": []},
+    )
 
 
 def test_write_logs_to_file(mocker: MockerFixture, fs: FakeFilesystem) -> None:

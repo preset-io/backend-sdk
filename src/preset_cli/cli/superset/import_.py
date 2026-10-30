@@ -46,8 +46,19 @@ def import_rls(ctx: click.core.Context, path: str) -> None:
     type=click.Path(resolve_path=True),
     default="roles.yaml",
 )
+@click.option(
+    "--continue-on-error",
+    "-c",
+    is_flag=True,
+    default=False,
+    help="Continue the import if a role fails to import",
+)
 @click.pass_context
-def import_roles(ctx: click.core.Context, path: str) -> None:
+def import_roles(  # pylint: disable=too-many-locals
+    ctx: click.core.Context,
+    path: str,
+    continue_on_error: bool = False,
+) -> None:
     """
     Import roles from a YAML file.
     """
@@ -57,8 +68,36 @@ def import_roles(ctx: click.core.Context, path: str) -> None:
 
     with open(path, encoding="utf-8") as input_:
         config = yaml.load(input_, Loader=yaml.SafeLoader)
+
+    log_file_path, logs = get_logs(LogType.ROLES)
+    roles_to_skip = {log["name"] for log in logs[LogType.ROLES]}
+
+    with open(log_file_path, "w", encoding="utf-8") as log_file:
         for role in config:
-            client.import_role(role)
+            if role["name"] in roles_to_skip:
+                continue
+
+            _logger.info("Importing role %s", role["name"])
+            role_log = {"name": role["name"], "status": "SUCCESS"}
+
+            try:
+                client.import_role(role)
+            except Exception as exc:  # pylint: disable=broad-except
+                _logger.debug("Failed to import role %s: %s", role["name"], str(exc))
+                if not continue_on_error:
+                    raise
+                _logger.error("Failed to import role %s: %s", role["name"], str(exc))
+                role_log["status"] = "FAILED"
+
+            logs[LogType.ROLES].append(role_log)
+            write_logs_to_file(log_file, logs)
+
+    failed = any(log["status"] == "FAILED" for log in logs[LogType.ROLES])
+    if not continue_on_error or not failed:
+        clean_logs(LogType.ROLES, logs)
+
+    if continue_on_error and failed:
+        ctx.exit(1)
 
 
 @click.command()

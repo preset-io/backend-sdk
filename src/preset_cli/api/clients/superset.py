@@ -60,20 +60,18 @@ _logger = logging.getLogger(__name__)
 MAX_PAGE_SIZE = 100
 MAX_IDS_IN_EXPORT = 50
 PRESET_WORKSPACE_DOMAIN = "preset.io"
-PERMISSION_MAP = {
-    "all datasource access on all_datasource_access": "All dataset access",
-    "all database access on all_database_access": "All database access",
-    "all query access on all_query_access": "All query access",
-}
-DATABASE_PERMISSION = re.compile(
-    r"database access on \[(?P<database_name>.*?)\]\.\(id:\d+\)",
+DATA_ACCESS_PERMISSION_NAMES = frozenset(
+    {
+        "all datasource access",
+        "all database access",
+        "all query access",
+        "database access",
+        "datasource access",
+        "schema access",
+        "catalog access",
+    },
 )
-SCHEMA_PERMISSION = re.compile(
-    r"schema access on \[(?P<database_name>.*?)\].\[(?P<schema_name>.*?)\]",
-)
-DATASET_PERMISSION = re.compile(
-    r"datasource access on \[(?P<database_name>.*?)\].\[(?P<dataset_name>.*?)\]\(id:\d+\)",
-)
+PERMISSION_ID_SUFFIX = re.compile(r"\(id:[0-9a-fA-F-]+\)$")
 
 
 def format_permission(permission: str, view_menu: str) -> str:
@@ -82,6 +80,48 @@ def format_permission(permission: str, view_menu: str) -> str:
     values for role exports.
     """
     return f"{permission.replace('_', ' ')} on {view_menu}"
+
+
+def normalize_role_permission(permission: str) -> str:
+    """
+    Remove instance-specific IDs from database and datasource grants.
+
+    Keep the permission type and complete resource name, including catalogs.
+    Action permissions are matched exactly, even when their names contain IDs.
+    """
+    if permission.startswith(("database access on [", "datasource access on [")):
+        return PERMISSION_ID_SUFFIX.sub("", permission)
+    return permission
+
+
+def resolve_role_permissions(
+    permissions: List[str],
+    available: List[Tuple[str, int]],
+) -> List[int]:
+    """
+    Resolve exported permission strings against the target's raw permissions.
+
+    Names shared by multiple target resources cannot be resolved safely from
+    the export format. Reject those before changing any role relationships.
+    """
+    permission_ids_by_name: Dict[str, Set[int]] = {}
+    for name, permission_id in available:
+        key = normalize_role_permission(name)
+        permission_ids_by_name.setdefault(key, set()).add(permission_id)
+
+    permission_ids: List[int] = []
+    for permission in permissions:
+        matches = permission_ids_by_name.get(
+            normalize_role_permission(permission),
+            set(),
+        )
+        if len(matches) > 1:
+            raise ValueError(f"Permission {permission!r} is ambiguous in target")
+        if matches:
+            permission_ids.append(next(iter(matches)))
+        else:
+            _logger.warning("Permission %s not found in target", permission)
+    return permission_ids
 
 
 class GenericDataType(IntEnum):
@@ -758,6 +798,33 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         self.delete_resource("dashboard", dashboard_id)
 
+    def update_role_permissions(self, role_id: int, permission_ids: List[int]) -> None:
+        """
+        Replace a role's permissions via the Superset REST API.
+        """
+        url = self.baseurl / "api/v1/security/roles" / str(role_id) / "permissions"
+        payload = {"permission_view_menu_ids": permission_ids}
+        _logger.debug("POST %s\n%s", url, json.dumps(payload, indent=4))
+        validate_response(self.session.post(url, json=payload))
+
+    def update_role_users(self, role_id: int, user_ids: List[int]) -> None:
+        """
+        Replace a role's directly assigned users via the Superset REST API.
+        """
+        url = self.baseurl / "api/v1/security/roles" / str(role_id) / "users"
+        payload = {"user_ids": user_ids}
+        _logger.debug("PUT %s\n%s", url, json.dumps(payload, indent=4))
+        validate_response(self.session.put(url, json=payload))
+
+    def update_role_groups(self, role_id: int, group_ids: List[int]) -> None:
+        """
+        Replace a role's assigned groups via the Superset REST API.
+        """
+        url = self.baseurl / "api/v1/security/roles" / str(role_id) / "groups"
+        payload = {"group_ids": group_ids}
+        _logger.debug("PUT %s\n%s", url, json.dumps(payload, indent=4))
+        validate_response(self.session.put(url, json=payload))
+
     def get_users(self, **kwargs: str) -> List[UserType]:
         """
         Return users.
@@ -1190,12 +1257,213 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         else:
             yield from self.export_rls_legacy()
 
-    def import_role(self, role: RoleType) -> None:  # pylint: disable=too-many-locals
+    def import_role(self, role: RoleType) -> None:
         """
         Import a given role.
 
-        Note: this only works with Preset workspaces for now, since it translates the
-        Superset permissions to the Preset permissions.
+        When migrating Superset roles into Preset, only data-access perms
+        are migrated. Action perms are skipped with a warning (since in
+        Preset Cloud these are controlled via Workspace Roles).
+        """
+        if self._is_preset_workspace():
+            return self._import_dar_preset(role)
+
+        try:
+            existing_role_id = self._find_role_id_superset(role["name"])
+        except SupersetError:
+            return self._import_role_legacy(role)
+
+        return self._import_role_superset(role, existing_role_id)
+
+    def _find_role_id_superset(self, name: str) -> Optional[int]:
+        """
+        Return the id of an existing role with the given exact name via the
+        standard Superset Role REST API, or ``None`` if none exists.
+
+        Name filters on ``security/roles/search`` only support partial
+        matching, so we fetch the full list and match exactly, like
+        ``_export_roles_superset`` already does.
+
+        Raises ``SupersetError`` if the REST security API isn't available
+        (eg, an older Superset version), so callers can fall back to the
+        legacy CRUD forms.
+        """
+        for existing in self.get_resources("security/roles/search", "id"):
+            if existing["name"] == name:
+                return existing["id"]
+        return None
+
+    def _find_dar_preset(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Return an existing DAR with the given exact name, or ``None`` if
+        none exists, including its current permissions. DAR name filters only
+        support partial matching, so we fetch the full list and match
+        exactly.
+        """
+        for existing in self.get_resources("security/dar", "name"):
+            if existing["name"] == name:
+                return existing
+        return None
+
+    def _import_role_superset(
+        self,
+        role: RoleType,
+        existing_role_id: Optional[int],
+    ) -> None:
+        """
+        Import a role into a standalone Superset instance via the REST API.
+
+        Match raw permission names from ``security/permissions-resources``,
+        ignoring source-instance database and datasource IDs.
+        """
+        permission_ids = resolve_role_permissions(
+            role["permissions"],
+            [
+                (
+                    format_permission(
+                        perm["permission"]["name"],
+                        perm["view_menu"]["name"],
+                    ),
+                    perm["id"],
+                )
+                for perm in self.get_resources("security/permissions-resources", "id")
+            ],
+        )
+
+        user_email_id_map = {user["email"]: user["id"] for user in self.get_users()}
+        user_ids: List[int] = []
+        for email in role["users"]:
+            if email not in user_email_id_map:
+                raise Exception(f"User {email} not found in target")
+            user_ids.append(user_email_id_map[email])
+
+        group_name_id_map = {
+            group["name"]: group["id"]
+            for group in self.get_resources("security/groups", "id")
+        }
+        group_ids: List[int] = []
+        for group_name in role.get("groups", []):
+            if group_name not in group_name_id_map:
+                raise Exception(f"Group {group_name} not found in target")
+            group_ids.append(group_name_id_map[group_name])
+
+        if existing_role_id is not None:
+            self.update_resource("security/roles", existing_role_id, name=role["name"])
+            role_id = existing_role_id
+        else:
+            role_id = self.create_resource("security/roles", name=role["name"])["id"]
+
+        self.update_role_permissions(role_id, permission_ids)
+        self.update_role_users(role_id, user_ids)
+        self.update_role_groups(role_id, group_ids)
+
+    def _import_dar_preset(
+        self,
+        role: RoleType,
+    ) -> None:
+        """
+        Import a role into a Preset workspace as a Data Access Role (DAR).
+
+        Only data-access perms (database/catalog/schema/dataset access) can
+        be represented by a DAR. Action perms can't,and are skipped with a
+        warning. This allows migrating a role exported from Superset OSS
+        into a Preset workspace.
+
+        A source name that conflicts with an existing workspace role must be
+        renamed before importing; workspace roles are never updated here.
+        """
+        data_permissions: List[str] = []
+        skipped_actions = 0
+        for permission in role["permissions"]:
+            if permission.partition(" on ")[0] not in DATA_ACCESS_PERMISSION_NAMES:
+                _logger.warning(
+                    "Permission %r cannot be represented in a Data Access Role "
+                    "(action permissions are not supported) and will be skipped",
+                    permission,
+                )
+                skipped_actions += 1
+                continue
+
+            data_permissions.append(permission)
+
+        # Preset labels raw datasource_access as "Dataset access" in "name".
+        # Match the raw fields used by exports instead of translating labels.
+        permission_ids = resolve_role_permissions(
+            data_permissions,
+            [
+                (format_permission(perm["permission"], perm["view_menu"]), perm["id"])
+                for perm in self.get_resources("security/dar_permissions", "id")
+            ],
+        )
+
+        user_email_id_map = {user["email"]: user["id"] for user in self.get_users()}
+        user_ids: List[int] = []
+        for email in role["users"]:
+            if email not in user_email_id_map:
+                raise Exception(f"User {email} not found in target")
+            user_ids.append(user_email_id_map[email])
+
+        group_name_id_map = {
+            group["name"]: group["id"]
+            for group in self.get_resources("security/groups", "id")
+        }
+        group_ids: List[int] = []
+        for group_name in role.get("groups", []):
+            if group_name not in group_name_id_map:
+                raise Exception(f"Group {group_name} not found in target")
+            group_ids.append(group_name_id_map[group_name])
+
+        payload: Dict[str, Any] = {
+            "name": role["name"],
+            "permissions": permission_ids,
+            "users": user_ids,
+            "groups": group_ids,
+        }
+
+        existing_dar = self._find_dar_preset(role["name"])
+        if existing_dar is not None:
+            self.update_resource("security/dar", existing_dar["id"], **payload)
+        else:
+            self.create_resource("security/dar", **payload)
+
+        _logger.info(
+            "Role %s: imported %d data-access permission(s), skipped %d action "
+            "permission(s) unsupported by Data Access Roles",
+            role["name"],
+            len(permission_ids),
+            skipped_actions,
+        )
+
+        if role["permissions"] and not permission_ids:
+            if existing_dar and existing_dar["permissions"]:
+                _logger.warning(
+                    "Role %s overwritten as an empty Data Access Role: all %d "
+                    "existing data-access permission(s) were removed because none "
+                    "of its %d source permissions could be imported. This role "
+                    "grants no data access.",
+                    role["name"],
+                    len(existing_dar["permissions"]),
+                    len(role["permissions"]),
+                )
+            else:
+                _logger.warning(
+                    "Role %s imported as an empty Data Access Role: none of its %d "
+                    "source permissions could be imported. This role grants no data "
+                    "access.",
+                    role["name"],
+                    len(role["permissions"]),
+                )
+
+    def _import_role_legacy(  # pylint: disable=too-many-locals
+        self,
+        role: RoleType,
+    ) -> None:
+        """
+        Import a role by crawling the CRUD HTML pages (for Superset
+        instances without the REST security API).
+
+        Note: like ``_export_roles_legacy``, this doesn't support groups --
+        legacy Superset instances predate the Groups feature.
         """
         user_id_map = {user["email"]: user["id"] for user in self.get_users()}
         user_ids = [
@@ -1207,33 +1475,13 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         response = self.session.get(url)
         soup = BeautifulSoup(response.text, features="html.parser")
         select = soup.find("select", id="permissions")
-        permission_id_map = {
-            option.text: int(option.attrs["value"])
-            for option in select.find_all("option")
-        }
-
-        permission_ids: List[int] = []
-        for permission in role["permissions"]:
-            # map to custom Preset permissions
-            if permission in PERMISSION_MAP:
-                permission = PERMISSION_MAP[permission]
-            elif match_ := DATABASE_PERMISSION.match(permission):
-                permission = "Database access on {database_name}".format(
-                    **match_.groupdict(),
-                )
-            elif match_ := SCHEMA_PERMISSION.match(permission):
-                permission = "Schema access on {database_name}.{schema_name}".format(
-                    **match_.groupdict(),
-                )
-            elif match_ := DATASET_PERMISSION.match(permission):
-                permission = "Dataset access on {database_name}.{dataset_name}".format(
-                    **match_.groupdict(),
-                )
-
-            if permission in permission_id_map:
-                permission_ids.append(permission_id_map[permission])
-            else:
-                _logger.warning("Permission %s not found in target", permission)
+        permission_ids = resolve_role_permissions(
+            role["permissions"],
+            [
+                (option.text.strip(), int(option.attrs["value"]))
+                for option in select.find_all("option")
+            ],
+        )
 
         data = {
             "name": role["name"],

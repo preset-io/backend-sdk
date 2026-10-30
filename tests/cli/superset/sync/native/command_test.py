@@ -1695,6 +1695,7 @@ def test_import_resources_individually_checkpoint(
             },
         ],
         "ownership": [],
+        "roles": [],
     }
 
     # retry
@@ -1773,6 +1774,7 @@ def test_import_resources_individually_continue(
             },
         ],
         "ownership": [],
+        "roles": [],
     }
 
     # retry should succeed and delete the log file
