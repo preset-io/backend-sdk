@@ -5,7 +5,11 @@ Changelog
 Next
 ====
 
+Version 0.3.14 - 2026-10-30
+==========================
+
 - The dbt sync now logs a warning when a column defined in a dbt model doesn't exist in the Superset dataset, instead of silently skipping its metadata. (`#390 <https://github.com/preset-io/backend-sdk/pull/390>`_)
+- The ``import-roles`` command now uses REST API and support importing roles to Superset OSS and Preset Cloud. (`#391 <https://github.com/preset-io/backend-sdk/pull/391>`_)
 
 Version 0.3.13 - 2026-09-30
 ==========================
