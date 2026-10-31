@@ -47,6 +47,7 @@ def test_validate_response(mocker: MockerFixture) -> None:
 
     # SIP-40 payload
     response.ok = False
+    response.status_code = 403
     response.headers.get.return_value = "application/json"
     response.json.return_value = {
         "errors": [{"message": "Some message", "level": "error"}],
@@ -56,6 +57,7 @@ def test_validate_response(mocker: MockerFixture) -> None:
     assert excinfo.value.errors == [
         {"message": "Some message", "level": ErrorLevel.ERROR},
     ]
+    assert excinfo.value.status_code == 403
 
     # SIP-40-ish payload
     response.ok = False

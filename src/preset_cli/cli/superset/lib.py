@@ -60,6 +60,7 @@ class LogType(str, Enum):
 
     ASSETS = "assets"
     OWNERSHIP = "ownership"
+    ROLES = "roles"
 
 
 def get_logs(log_type: LogType) -> Tuple[Path, LogsByType]:

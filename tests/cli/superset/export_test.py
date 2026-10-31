@@ -3220,3 +3220,30 @@ def test_copy_dataset_dependencies_handles_missing_database_uuid(
     )
     assert database_uuids == set()
     assert (dashboard_dir / "datasets" / "db" / "dataset.yaml").exists()
+
+
+@pytest.mark.parametrize("failure", ["metadata", "serialization"])
+def test_failed_role_export_preserves_existing_file(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    failure: str,
+) -> None:
+    """A failed export must not truncate a previously authoritative role file."""
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    client = mocker.patch("preset_cli.cli.superset.export.SupersetClient").return_value
+    original = "# Existing role configuration\n- name: Important\n"
+    fs.create_file("roles.yaml", contents=original)
+    if failure == "metadata":
+        client.export_roles.side_effect = ValueError("Incomplete dataset metadata")
+    else:
+        client.export_roles.return_value = [{"name": "Public", "permissions": []}]
+        mocker.patch(
+            "preset_cli.cli.superset.export.yaml.dump",
+            side_effect=yaml.YAMLError("Cannot serialize"),
+        )
+    result = CliRunner().invoke(
+        superset_cli,
+        ["https://superset.example.org/", "export-roles", "roles.yaml"],
+    )
+    assert result.exit_code == 1
+    assert Path("roles.yaml").read_text(encoding="utf-8") == original

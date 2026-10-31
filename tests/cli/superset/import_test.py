@@ -13,8 +13,12 @@ import yaml
 from click.testing import CliRunner
 from pyfakefs.fake_filesystem import FakeFilesystem
 from pytest_mock import MockerFixture
+from requests_mock.mocker import Mocker
 
+from preset_cli.api.clients import superset
+from preset_cli.auth.main import Auth
 from preset_cli.cli.superset.main import superset_cli
+from preset_cli.exceptions import SupersetError
 
 
 def test_import_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -53,6 +57,7 @@ def test_import_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     Test the ``import_roles`` command.
     """
     mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
     SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
     client = SupersetClient()
     roles = [
@@ -71,7 +76,262 @@ def test_import_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     assert result.exit_code == 0
 
-    client.import_role.assert_called_with(roles[0])
+    client.import_role.assert_called_with(roles[0], mock.ANY)
+    # a fully successful run cleans up the checkpoint log
+    assert not Path("progress.log").exists()
+
+
+def test_import_roles_failure(mocker: MockerFixture, fs: FakeFilesystem) -> None:
+    """
+    Test the ``import_roles`` command when a failure happens without the
+    ``--continue-on-error`` flag.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
+    client = SupersetClient()
+    roles = [
+        {"name": "Role one", "permissions": []},
+        {"name": "Role two", "permissions": []},
+    ]
+    fs.create_file("roles.yaml", contents=yaml.dump(roles))
+    client.import_role.side_effect = [None, Exception("An error occurred!")]
+
+    assert not Path("progress.log").exists()
+
+    runner = CliRunner()
+    with pytest.raises(Exception):
+        runner.invoke(
+            superset_cli,
+            ["https://superset.example.org/", "import-roles"],
+            catch_exceptions=False,
+        )
+
+    assert Path("progress.log").exists()
+    with open("progress.log", encoding="utf-8") as log:
+        content = yaml.load(log, Loader=yaml.SafeLoader)
+
+    assert content == {
+        "assets": [],
+        "ownership": [],
+        "roles": [
+            {"name": "Role one", "status": "SUCCESS"},
+        ],
+    }
+
+
+@pytest.mark.parametrize("continue_on_error", [False, True])
+def test_import_roles_resumes_after_failure(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    continue_on_error: bool,
+) -> None:
+    """Retry failed or pending roles while skipping checkpointed successes."""
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
+    client = SupersetClient()
+    roles = [
+        {"name": "Role one", "permissions": []},
+        {"name": "Role two", "permissions": []},
+        {"name": "Role three", "permissions": []},
+    ]
+    fs.create_file("roles.yaml", contents=yaml.dump(roles))
+    client.import_role.side_effect = [None, RuntimeError("Import failed"), None]
+    args = ["https://superset.example.org/", "import-roles"]
+    if continue_on_error:
+        args.append("--continue-on-error")
+
+    runner = CliRunner()
+    result = runner.invoke(superset_cli, args)
+    assert result.exit_code == 1
+    assert Path("progress.log").exists()
+    assert client.import_role.call_args_list == [
+        mock.call(role, mock.ANY)
+        for role in (roles if continue_on_error else roles[:2])
+    ]
+
+    client.import_role.reset_mock(side_effect=True)
+    result = runner.invoke(superset_cli, args, catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert client.import_role.call_args_list == [
+        mock.call(role, mock.ANY)
+        for role in (roles[1:2] if continue_on_error else roles[1:])
+    ]
+    assert not Path("progress.log").exists()
+
+
+@pytest.mark.parametrize("continue_on_error", [False, True])
+@pytest.mark.parametrize(
+    "failure",
+    ["permission", "schema", "dataset", "legacy_user", "legacy_groups", "api"],
+)
+def test_role_validation_respects_continue_on_error(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    requests_mock: Mocker,
+    continue_on_error: bool,
+    failure: str,
+) -> None:
+    """Real role validation errors obey the CLI's stop/continue policy."""
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    base = "https://superset.example.org/"
+    client = superset.SupersetClient(base, Auth())
+    mocker.patch("preset_cli.cli.superset.import_.SupersetClient", return_value=client)
+    if failure == "api":
+        requests_mock.get(
+            base + "api/v1/security/permissions-resources/",
+            json={"result": []},
+        )
+        requests_mock.post(
+            base + "api/v1/security/roles/",
+            [
+                {"json": {"id": 42}},
+                {"status_code": 403, "json": {"message": "Forbidden"}},
+                {"json": {"id": 43}},
+            ],
+        )
+        for endpoint in ("roles/search", "groups"):
+            requests_mock.get(
+                base + f"api/v1/security/{endpoint}/",
+                json={"result": []},
+            )
+    else:
+        if not failure.startswith("legacy_"):
+            mocker.patch.object(client, "get_resources", return_value=[])
+        mocker.patch.object(client, "create_resource", return_value={"id": 42})
+    mocker.patch.object(client, "get_users", return_value=[])
+    mocker.patch.object(client, "update_role_permissions")
+    mocker.patch.object(client, "update_role_users")
+    mocker.patch.object(client, "update_role_groups")
+    if failure.startswith("legacy_"):
+        requests_mock.get(
+            base + "api/v1/security/permissions-resources/",
+            status_code=404,
+        )
+        requests_mock.get(base + "roles/add", text='<select id="permissions"></select>')
+        requests_mock.get(base + "roles/list/", text="<table></table>")
+        requests_mock.post(base + "roles/add")
+    imported = mocker.spy(client, "import_role")
+    roles: list[superset.RoleType] = [
+        {"name": name, "permissions": [], "users": [], "groups": []}
+        for name in ("Before", "Invalid", "After")
+    ]
+    if failure == "legacy_user":
+        roles[1]["users"] = ["missing@example.com"]
+    elif failure == "legacy_groups":
+        roles[1]["groups"] = ["Analysts"]
+    elif failure != "api":
+        roles[1]["permissions"] = [
+            {
+                "permission": "database access on [Missing].(id:1)",
+                "schema": "schema access on [warehouse].[public]",
+                "dataset": "dataset access on [warehouse].[cat].[public].[orders]",
+            }[failure],
+        ]
+    fs.create_file("roles.yaml", contents=yaml.dump(roles))
+    args = [base, "import-roles"]
+    if continue_on_error:
+        args.append("--continue-on-error")
+
+    result = CliRunner().invoke(superset_cli, args)
+
+    assert result.exit_code == 1
+    assert imported.call_args_list == [
+        mock.call(role, mock.ANY)
+        for role in (roles if continue_on_error else roles[:2])
+    ]
+    with open("progress.log", encoding="utf-8") as log_file:
+        logs = yaml.safe_load(log_file)
+    expected = [{"name": "Before", "status": "SUCCESS"}]
+    if continue_on_error:
+        expected.extend(
+            [
+                {"name": "Invalid", "status": "FAILED"},
+                {"name": "After", "status": "SUCCESS"},
+            ],
+        )
+    else:
+        if failure == "api":
+            assert isinstance(result.exception, SupersetError)
+            assert result.exception.status_code == 403
+        else:
+            assert isinstance(result.exception, ValueError)
+    assert logs["roles"] == expected
+
+
+def test_import_roles_failure_continue(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``import_roles`` command when a failure happens with the
+    ``--continue-on-error`` flag. Unlike ``import-ownership``, the command
+    should still exit non-zero when any role failed, so a run with logged
+    failures doesn't silently look successful.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    SupersetClient = mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
+    client = SupersetClient()
+    roles = [
+        {"name": "Role one", "permissions": []},
+        {"name": "Role two", "permissions": []},
+    ]
+    fs.create_file("roles.yaml", contents=yaml.dump(roles))
+    client.import_role.side_effect = [Exception("An error occurred!"), None]
+
+    assert not Path("progress.log").exists()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "import-roles", "--continue-on-error"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1
+
+    assert Path("progress.log").exists()
+    with open("progress.log", encoding="utf-8") as log:
+        content = yaml.load(log, Loader=yaml.SafeLoader)
+
+    assert content == {
+        "assets": [],
+        "ownership": [],
+        "roles": [
+            {"name": "Role one", "status": "FAILED"},
+            {"name": "Role two", "status": "SUCCESS"},
+        ],
+    }
+
+
+def test_import_roles_continue_on_errors(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+) -> None:
+    """
+    Test the ``import_roles`` command with the ``--continue-on-error`` flag
+    when nothing fails -- the checkpoint log should be cleaned up and the
+    command should exit successfully.
+    """
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    mocker.patch("preset_cli.cli.superset.import_.SupersetClient")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    roles = [{"name": "Role name", "permissions": []}]
+    fs.create_file("roles.yaml", contents=yaml.dump(roles))
+
+    assert not Path("progress.log").exists()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        superset_cli,
+        ["https://superset.example.org/", "import-roles", "--continue-on-error"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert not Path("progress.log").exists()
 
 
 def test_import_ownership(mocker: MockerFixture, fs: FakeFilesystem) -> None:
@@ -277,6 +537,7 @@ def test_import_ownership_failure(mocker: MockerFixture, fs: FakeFilesystem) -> 
                 "status": "SUCCESS",
             },
         ],
+        "roles": [],
     }
 
 
@@ -343,6 +604,7 @@ def test_import_ownership_failure_continue(
                 "status": "SUCCESS",
             },
         ],
+        "roles": [],
     }
 
 
@@ -382,3 +644,49 @@ def test_import_ownership_continue_on_errors(
     )
     assert result.exit_code == 0
     assert not Path("progress.log").exists()
+
+
+@pytest.mark.parametrize("continue_on_error", [False, True])
+@pytest.mark.parametrize("builtin", ["Admin", "Alpha", "Gamma", "Public", "sql_lab"])
+def test_preset_target_name_collisions_fail_before_any_import(
+    mocker: MockerFixture,
+    fs: FakeFilesystem,
+    continue_on_error: bool,
+    builtin: str,
+) -> None:
+    """Conflicting source declarations reject the entire file before writes."""
+    mocker.patch("preset_cli.cli.superset.main.UsernamePasswordAuth")
+    base = "https://test.app.preset.io/"
+    client = superset.SupersetClient(base, Auth())
+    mocker.patch("preset_cli.cli.superset.import_.SupersetClient", return_value=client)
+    prepared = mocker.patch.object(client, "get_role_import_data")
+    imported = mocker.patch.object(client, "import_role")
+    mocker.patch("preset_cli.cli.superset.lib.LOG_FILE_PATH", Path("progress.log"))
+    roles = [
+        {"name": name, "permissions": [], "users": [], "groups": []}
+        for name in ("Unrelated", builtin, f"{builtin}_Preset")
+    ]
+    fs.create_file("roles.yaml", contents=yaml.safe_dump(roles))
+    args = [base, "import-roles"]
+    if continue_on_error:
+        args.append("--continue-on-error")
+    result = CliRunner().invoke(superset_cli, args)
+    assert result.exit_code == 1
+    assert isinstance(result.exception, ValueError)
+    assert "both map to" in str(result.exception)
+    assert builtin in str(result.exception)
+    assert "No roles were imported" in str(result.exception)
+    prepared.assert_not_called()
+    imported.assert_not_called()
+    assert not Path("progress.log").exists()
+
+
+def test_oss_builtin_and_suffixed_name_are_independent() -> None:
+    """The collision rule applies only to Preset's built-in name mapping."""
+    client = superset.SupersetClient("https://superset.example.org/", Auth())
+    client.validate_role_import_names(
+        [
+            {"name": name, "permissions": [], "users": [], "groups": []}
+            for name in ("Gamma", "Gamma_Preset")
+        ],
+    )
