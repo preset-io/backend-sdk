@@ -37,8 +37,9 @@ def import_rls(ctx: click.core.Context, path: str) -> None:
 
     with open(path, encoding="utf-8") as input_:
         config = yaml.load(input_, Loader=yaml.SafeLoader)
+        data = client.get_rls_import_data()
         for rls in config:
-            client.import_rls(rls)
+            client.import_rls(rls, data)
 
 
 @click.command()

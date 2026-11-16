@@ -338,6 +338,14 @@ class RuleType(TypedDict):
     clause: str
 
 
+class RLSImportData(TypedDict):
+    """Target reference data shared explicitly by a batch of RLS imports."""
+
+    api: bool
+    roles: Optional[Dict[str, int]]
+    rules: Dict[str, int]
+
+
 class OwnershipType(TypedDict):
     """
     Schema for resource ownership.
@@ -1809,12 +1817,71 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         response = self.session.post(url, data=payload)
         validate_response(response)
 
-    def import_rls(self, rls: RuleType) -> None:  # pylint: disable=too-many-locals
+    def get_rls_import_data(self) -> RLSImportData:
         """
-        Import a given RLS rule.
+        Fetch the target RLS rules and roles once for a batch of RLS imports.
+
+        Targets without the RLS REST API use the legacy CRUD pages instead.
+        """
+        try:
+            rules = self.get_rls()
+        except SupersetError as exc:
+            if exc.status_code != 404:
+                raise
+            return {"api": False, "roles": None, "rules": {}}
+        return {
+            "api": True,
+            "roles": self._get_role_ids_by_name(),
+            "rules": {rule["name"]: rule["id"] for rule in rules},
+        }
+
+    def import_rls(
+        self,
+        rls: RuleType,
+        data: Optional[RLSImportData] = None,
+    ) -> None:
+        """
+        Import a given RLS rule, updating the existing rule with the same name.
+        """
+        if data is None:
+            data = self.get_rls_import_data()
+
+        table_ids = self._get_rls_table_ids(rls["tables"])
+        if not data["api"]:
+            return self._import_rls_legacy(rls, table_ids)
+
+        role_ids: List[int] = []
+        for role_name in rls["roles"]:
+            if data["roles"] is None:
+                role_ids.append(self._get_role_id_legacy(role_name))
+            elif role_name in data["roles"]:
+                role_ids.append(data["roles"][role_name])
+            else:
+                raise Exception(f"Cannot find role: {role_name}")
+
+        payload: Dict[str, Any] = {
+            "name": rls["name"],
+            "description": rls.get("description"),
+            "filter_type": rls["filter_type"],
+            "tables": table_ids,
+            "roles": role_ids,
+            "group_key": rls.get("group_key"),
+            "clause": rls["clause"],
+        }
+        rule_id = data["rules"].get(cast(str, rls["name"]))
+        if rule_id is not None:
+            self.update_resource("rowlevelsecurity", rule_id, **payload)
+        else:
+            created = self.create_resource("rowlevelsecurity", **payload)
+            data["rules"][cast(str, rls["name"])] = created["id"]
+        return None
+
+    def _get_rls_table_ids(self, tables: List[str]) -> List[int]:
+        """
+        Return the IDs of the datasets an RLS rule applies to.
         """
         table_ids: List[int] = []
-        for table in rls["tables"]:
+        for table in tables:
             if "." in table:
                 schema, table_name = table.split(".", 1)
                 datasets = self.get_datasets(schema=schema, table_name=table_name)
@@ -1826,10 +1893,15 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             if len(datasets) > 1:
                 raise Exception(f"More than one table found: {table}")
             table_ids.append(datasets[0]["id"])
+        return table_ids
 
+    def _import_rls_legacy(self, rls: RuleType, table_ids: List[int]) -> None:
+        """
+        Import an RLS rule through the CRUD pages of older Superset versions.
+        """
         role_ids: List[int] = []
         for role_name in rls["roles"]:
-            role_id = self.get_role_id(role_name)
+            role_id = self._get_role_id_legacy(role_name)
             if self.get_role_permissions(role_id):
                 raise Exception(
                     f"Role {role_name} currently has permissions associated with it. To "
@@ -1866,9 +1938,39 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
             if "selected" in option.attrs
         ]
 
+    def _get_role_ids_by_name(self) -> Optional[Dict[str, int]]:
+        """
+        Return the target role IDs by name, or ``None`` when the target only
+        exposes the legacy roles CRUD pages.
+
+        Preset workspaces return their Data Access Roles, the roles that RLS
+        rules and data access role assignments reference there.
+        """
+        if self._is_preset_workspace():
+            roles = self.get_resources("security/dar", "name")
+        else:
+            try:
+                roles = self.get_resources("security/roles/search", "id")
+            except SupersetError as exc:
+                if exc.status_code != 404:
+                    raise
+                return None
+        return {role["name"]: role["id"] for role in roles}
+
     def get_role_id(self, role_name: str) -> int:
         """
         Return the ID of a given role.
+        """
+        role_ids = self._get_role_ids_by_name()
+        if role_ids is None:
+            return self._get_role_id_legacy(role_name)
+        if role_name not in role_ids:
+            raise Exception(f"Cannot find role: {role_name}")
+        return role_ids[role_name]
+
+    def _get_role_id_legacy(self, role_name: str) -> int:
+        """
+        Return the ID of a given role from the legacy roles CRUD pages.
         """
         params = {"_flt_3_name": role_name}
         url = self.baseurl / "roles/list/"
@@ -1965,6 +2067,9 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
         """
         Update a role.
         """
+        if self._is_preset_workspace():
+            return self._update_dar(role_id, **kwargs)
+
         # fetch current role definition
         url = self.baseurl / "roles/edit" / str(role_id)
         _logger.debug("GET %s", url)
@@ -1991,3 +2096,20 @@ class SupersetClient:  # pylint: disable=too-many-public-methods
 
         _logger.debug("POST %s\n%s", url, json.dumps(data, indent=4))
         self.session.post(url, data=data)
+        return None
+
+    def _update_dar(self, role_id: int, **kwargs: Any) -> None:
+        """
+        Update a Preset Data Access Role, taking ``update_role`` arguments.
+
+        Only the relationships passed are replaced.
+        """
+        dars = {role["id"]: role for role in self.get_resources("security/dar", "name")}
+        if role_id not in dars:
+            raise Exception(f"Cannot find role: {role_id}")
+        payload: Dict[str, Any] = {"name": kwargs.get("name", dars[role_id]["name"])}
+        if "user" in kwargs:
+            payload["users"] = kwargs["user"]
+        if "permissions" in kwargs:
+            payload["permissions"] = kwargs["permissions"]
+        self.update_resource("security/dar", role_id, **payload)
