@@ -4282,6 +4282,10 @@ def test_import_rls(requests_mock: Mocker) -> None:
     Test the ``import_rls`` method.
     """
     requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
+    requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:schema,opr:eq,value:main),"
         "(col:table_name,opr:eq,value:test_table)),"
@@ -4373,6 +4377,10 @@ def test_import_rls_no_role_table(requests_mock: Mocker) -> None:
     Test the ``import_rls`` method when there's no table for roles in the DOM.
     """
     requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
+    requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:schema,opr:eq,value:main),"
         "(col:table_name,opr:eq,value:test_table)),"
@@ -4427,6 +4435,10 @@ def test_import_rls_invalid_role(requests_mock: Mocker) -> None:
     """
     Test the ``import_rls`` method when the role has permissions.
     """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:schema,opr:eq,value:main),"
@@ -4513,6 +4525,10 @@ def test_import_rls_no_schema(requests_mock: Mocker) -> None:
     """
     Test the ``import_rls`` method when the table has no schema.
     """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:table_name,opr:eq,value:test_table)),"
@@ -4603,6 +4619,10 @@ def test_import_rls_no_table(requests_mock: Mocker) -> None:
     Test the ``import_rls`` method when no tables are found.
     """
     requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
+    requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:schema,opr:eq,value:main),"
         "(col:table_name,opr:eq,value:test_table)),"
@@ -4633,6 +4653,10 @@ def test_import_rls_multiple_tables(requests_mock: Mocker) -> None:
     """
     Test the ``import_rls`` method when multiple tables are found.
     """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:schema,opr:eq,value:main),"
@@ -4672,6 +4696,10 @@ def test_import_rls_no_role(requests_mock: Mocker) -> None:
     """
     Test the ``import_rls`` method when no role is found.
     """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:schema,opr:eq,value:main),"
@@ -4733,6 +4761,10 @@ def test_import_rls_multiple_roles(requests_mock: Mocker) -> None:
 
     Should not happen.
     """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:schema,opr:eq,value:main),"
@@ -4800,6 +4832,10 @@ def test_import_rls_anchor_role_id(requests_mock: Mocker) -> None:
     """
     Test the ``import_rls`` method when the role ID is in an anchor tag.
     """
+    requests_mock.get(
+        "https://superset.example.org/api/v1/rowlevelsecurity/",
+        status_code=404,
+    )
     requests_mock.get(
         "https://superset.example.org/api/v1/dataset/?q="
         "(filters:!((col:schema,opr:eq,value:main),"

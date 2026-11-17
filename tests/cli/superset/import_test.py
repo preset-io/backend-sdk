@@ -49,7 +49,11 @@ def test_import_rls(mocker: MockerFixture, fs: FakeFilesystem) -> None:
     )
     assert result.exit_code == 0
 
-    client.import_rls.assert_called_with(rls[0])
+    client.get_rls_import_data.assert_called_once_with()
+    client.import_rls.assert_called_with(
+        rls[0],
+        client.get_rls_import_data.return_value,
+    )
 
 
 def test_import_roles(mocker: MockerFixture, fs: FakeFilesystem) -> None:

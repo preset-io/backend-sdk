@@ -5,6 +5,8 @@ Changelog
 Next
 ====
 
+- The ``import-rls`` command now uses the REST API on Superset 6.0+ and Preset workspaces, resolves Data Access Roles, and updates existing rules with the same name. ``sync-roles`` assigns Data Access Roles through the DAR API on Preset workspaces (`#394 <https://github.com/preset-io/backend-sdk/pull/394>`_).
+
 Version 0.3.14 - 2026-10-30
 ==========================
 

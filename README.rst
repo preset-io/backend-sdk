@@ -121,6 +121,7 @@ The following commands are currently available:
 - ``preset-cli superset delete-assets``: delete resources by filter with dry-run by default and optional best-effort rollback.
 - ``preset-cli superset export-ownership``: export resource ownership (UUID -> email) into a YAML file.
 - ``preset-cli superset export-rls``: export RLS rules into a YAML file.
+- ``preset-cli superset import-rls``: import RLS rules from a YAML file.
 - ``preset-cli superset export-roles``: export user roles into a YAML file.
 - ``preset-cli superset export-users``: export users (name, username, email, roles) into a YAML file.
 - ``preset-cli superset sync native`` (alternatively, ``preset-cli superset import-assets``): synchronize the workspace from a directory of templated configuration files.
@@ -668,10 +669,12 @@ Action permissions can also change between Superset versions. An OSS-to-OSS
 import fails if the target no longer supports a permission declared in the YAML;
 remove or update that grant explicitly rather than expecting it to be skipped.
 
-Exporting RLS rules
-~~~~~~~~~~~~~~~~~~~
+Exporting and importing RLS rules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``preset-cli superset export-rls`` command can be used to export a list of RLS rules. Currently there's no way to import this into a workspace, but work is in progress.
+The ``preset-cli superset export-rls`` command can be used to export a list of RLS rules into a YAML file, and ``preset-cli superset import-rls`` imports that file into a workspace.
+
+The import matches rules by name: an existing rule with the same name is updated, so its tables and roles are replaced by the ones in the file, and other rules are created. Roles are matched by name. On Preset workspaces they are Data Access Roles. Every table and role referenced by a rule must exist in the target.
 
 Exporting ownership
 ~~~~~~~~~~~~~~~~~~~
